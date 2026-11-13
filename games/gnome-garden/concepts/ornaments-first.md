@@ -13,24 +13,6 @@
     "settings/economy",
     "beats/three",
     "beats/sawOne"
-  ],
-  "checks": [
-    {
-      "milestone": "gerald",
-      "min": 0.5,
-      "max": 3,
-      "why": "the first gnome comes early: he is the hook"
-    },
-    {
-      "milestone": "three",
-      "min": 4.9,
-      "max": 7
-    },
-    {
-      "milestone": "sawOne",
-      "min": 119.4,
-      "why": "never by day in the first two hours"
-    }
   ]
 }
 ---

@@ -87,15 +87,17 @@ test('the person changes a record at once; the agent proposes, and the person de
   assert.equal((await me('proposals.list', { status: 'pending' })).length, 0);
 });
 
-test('concepts: the person writes them, the agent proposes, firmness and checks are kept', async () => {
+test('concepts: the person writes them, the agent proposes, and nothing in one is a timing', async () => {
   const made = await me('concepts.create', { name: 'The Slow Burn', text: 'It starts as a seed packet and takes hours to turn.' });
   assert.equal(made.id, 'the-slow-burn');
   await refused(me('concepts.create', { name: 'The slow burn' }), 'exists');
-  await me('concepts.update', { id: made.id, firmness: 'fixed', realised: ['beats/*', 'settings/day'], checks: [{ milestone: 'awake', min: 60, max: 80, why: 'the first hour is cosy' }] });
+  await me('concepts.update', { id: made.id, firmness: 'fixed', realised: ['beats/*', 'settings/day'], links: [{ to: 'ornaments', kind: 'part-of' }] });
+  await refused(me('concepts.update', { id: made.id, checks: [{ milestone: 'awake', min: 60 }] }), 'input');
   await refused(me('concepts.update', { id: made.id, firmness: 'solid' }), 'input');
   const c = await me('concepts.get', { id: made.id });
   assert.equal(c.firmness, 'fixed');
-  assert.equal(c.checks[0].max, 80);
+  assert.deepEqual(c.links, [{ to: 'ornaments', kind: 'part-of' }]);
+  assert.ok(!('checks' in c), 'a concept holds words, not windows of minutes');
   assert.match(readFileSync(join(dir, 'game/concepts/the-slow-burn.md'), 'utf8'), /It starts as a seed packet/);
   assert.equal((await me('concepts.list'))[0].summary, 'It starts as a seed packet and takes hours to turn.');
 

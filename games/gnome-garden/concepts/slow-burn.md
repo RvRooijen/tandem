@@ -7,51 +7,6 @@
     "beats/*",
     "settings/day",
     "settings/dig"
-  ],
-  "checks": [
-    {
-      "milestone": "three",
-      "min": 4.9,
-      "max": 7,
-      "why": "they never stir in the first five minutes"
-    },
-    {
-      "milestone": "shovel",
-      "min": 12.9,
-      "max": 17,
-      "why": "the hole is not there in the first quarter of an hour"
-    },
-    {
-      "milestone": "restless",
-      "min": 27.9,
-      "max": 34,
-      "why": "the first night that can be interrupted comes after about half an hour"
-    },
-    {
-      "milestone": "awake",
-      "min": 64.9,
-      "max": 80,
-      "why": "the first hour is cosy: nights are only watched after it"
-    },
-    {
-      "milestone": "sawOne",
-      "min": 119.4,
-      "max": 144,
-      "why": "they move by day only after two hours"
-    },
-    {
-      "milestone": "unearth",
-      "min": 444,
-      "max": 780,
-      "why": "a whole first run is seven and a half to thirteen hours"
-    },
-    {
-      "milestone": "unearth",
-      "min": 618,
-      "max": 1098,
-      "why": "a casual player gets there in ten to eighteen hours",
-      "profile": "casual"
-    }
   ]
 }
 ---

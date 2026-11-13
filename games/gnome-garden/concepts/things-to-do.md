@@ -6,18 +6,6 @@
   "realised": [
     "abilities/*",
     "settings/economy"
-  ],
-  "checks": [
-    {
-      "milestone": "list",
-      "max": 2,
-      "why": "the to-do list is there almost at once"
-    },
-    {
-      "milestone": "catch1",
-      "max": 5,
-      "why": "something to catch in the first minutes"
-    }
   ]
 }
 ---

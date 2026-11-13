@@ -10,8 +10,7 @@
   ],
   "realised": [
     "beats/*"
-  ],
-  "checks": []
+  ]
 }
 ---
 

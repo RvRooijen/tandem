@@ -11,8 +11,7 @@
   "realised": [
     "settings/economy",
     "upgrades/pretend"
-  ],
-  "checks": []
+  ]
 }
 ---
 

@@ -14,7 +14,7 @@ import { encodePng } from './png.ts';
 import { createProposals, type Proposal, type Proposals } from './proposals.ts';
 import { createRecords, type RecordSet, type RecordValue, type Records } from './records.ts';
 import { ecsCommands } from '../ecs/inspect.ts';
-import { compare, evaluate, type Pacing } from '../playtest/pacing.ts';
+import { compare, type Pacing } from '../playtest/pacing.ts';
 
 export const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
@@ -129,7 +129,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   }
 
   function conceptBrief(c: Concept) {
-    return { id: c.id, name: c.name, firmness: c.firmness, summary: c.text.split('\n').find((l) => l.trim())?.slice(0, 140) ?? '', checks: c.checks.length, links: c.links, realised: c.realised };
+    return { id: c.id, name: c.name, firmness: c.firmness, summary: c.text.split('\n').find((l) => l.trim())?.slice(0, 140) ?? '', links: c.links, realised: c.realised };
   }
 
   const checkList = (v: unknown, what: string) => {
@@ -243,7 +243,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
             if (p.kind === 'record') records.set(p.path, { ...(records.get(p.path) ?? {}), ...p.after });
             else {
               const now = concepts.get(p.path);
-              concepts.save({ id: p.path, name: p.path, firmness: 'loose', links: [], realised: [], checks: [], text: '', ...now, ...(p.after as Partial<Concept>) });
+              concepts.save({ id: p.path, name: p.path, firmness: 'loose', links: [], realised: [], text: '', ...now, ...(p.after as Partial<Concept>) });
             }
           }
           contentChanged();
@@ -261,7 +261,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'concepts.get', kind: 'read',
-      about: 'One concept in full: the words, its links, what makes it real, and the checks it promises.',
+      about: 'One concept in full: the words, how firm it is, its links and what makes it real.',
       input: { id: 'string' },
       run(_c, i) {
         const c = concepts.get(i.id);
@@ -277,7 +277,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         const cid = concepts.slug(i.name);
         if (concepts.get(cid)) throw new CommandError('exists', `there already is a concept ${cid}`);
         const firmness = FIRMNESS.includes(i.firmness) ? i.firmness : 'loose';
-        const fresh: Concept = { id: cid, name: i.name, firmness, links: [], realised: [], checks: [], text: i.text ?? '' };
+        const fresh: Concept = { id: cid, name: i.name, firmness, links: [], realised: [], text: i.text ?? '' };
         if (isAgent(c.by)) {
           const round = c.round ?? 'loose';
           const { id: _id, ...after } = fresh;
@@ -292,15 +292,15 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'concepts.update', kind: 'write', agent: 'proposes',
-      about: 'Change a concept: its name, text, firmness, links ([{to, kind}], kind is part-of, leads-to or clashes-with), realised (record paths, drawings, tests) or checks ([{milestone, min, max, why, profile}], in minutes). The agent\'s becomes a proposal.',
-      input: { id: 'string', name: 'string?', text: 'string?', firmness: 'string?', links: 'json?', realised: 'json?', checks: 'json?', note: 'string?' },
+      about: 'Change a concept: its name, text, firmness, links ([{to, kind}], kind is part-of, leads-to or clashes-with), realised (record paths, drawings, tests). The agent\'s becomes a proposal.',
+      input: { id: 'string', name: 'string?', text: 'string?', firmness: 'string?', links: 'json?', realised: 'json?', note: 'string?' },
       run(c, i) {
         const now = concepts.get(i.id);
         if (!now) throw new CommandError('missing', `there is no concept ${i.id}; see concepts.list`);
         if (i.firmness !== undefined && !FIRMNESS.includes(i.firmness)) throw new CommandError('input', `firmness is one of ${FIRMNESS.join(', ')}`);
-        for (const k of ['links', 'realised', 'checks'] as const) checkList(i[k], k);
+        for (const k of ['links', 'realised'] as const) checkList(i[k], k);
         const after: Record<string, unknown> = {};
-        for (const k of ['name', 'text', 'firmness', 'links', 'realised', 'checks'] as const)
+        for (const k of ['name', 'text', 'firmness', 'links', 'realised'] as const)
           if (i[k] !== undefined && !same(i[k], now[k])) after[k] = i[k];
         if (!Object.keys(after).length) return { changed: false };
         if (isAgent(c.by)) {
@@ -398,22 +398,20 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     // ---- playtests
     {
       name: 'playtest.run', kind: 'read',
-      about: 'Let a bot play the whole game (profile eager or casual) and say when every milestone came, in minutes, and whether the concepts\' checks hold. With proposed, on the content as the pending proposals would leave it. About ten seconds.',
+      about: 'Let a bot play the whole game (profile eager or casual) and say when every milestone came, in minutes. With proposed, on the content as the pending proposals would leave it. About ten seconds.',
       input: { profile: 'string?', proposed: 'boolean?', round: 'string?' },
       async run(c, i) {
         const profile = i.profile ?? 'eager';
         if (!game.profiles.includes(profile)) throw new CommandError('input', `profile is one of ${game.profiles.join(', ')}`);
         const set = i.proposed ? proposed(i.round).set : records.all();
         const pacing = await runJob<Pacing>({ game: id, records: set, do: 'pacing', profile });
-        const checks = evaluate(concepts.list(), pacing);
-        const failed = checks.filter((k) => !k.ok);
-        events.add({ type: 'playtest', by: c.by, kind: 'run', profile, proposed: !!i.proposed, length: pacing.length, checks: checks.length, failed: failed.map((k) => ({ concept: k.conceptName, says: k.says })), minutes: pacing.minutes });
-        return { profile, length: pacing.length, minutes: pacing.minutes, checks: { total: checks.length, failed: failed.map((k) => ({ concept: k.concept, says: k.says, why: k.why })) }, took: pacing.took };
+        events.add({ type: 'playtest', by: c.by, kind: 'run', profile, proposed: !!i.proposed, length: pacing.length, minutes: pacing.minutes });
+        return { profile, length: pacing.length, minutes: pacing.minutes, took: pacing.took };
       },
     },
     {
       name: 'playtest.compare', kind: 'read',
-      about: 'Play the game twice, as it is and as the pending proposals would leave it (of one round, or all), and say which milestones moved and which checks of the concepts break. Do this before telling the person a proposal is good. About twenty seconds.',
+      about: 'Play the game twice, as it is and as the pending proposals would leave it (of one round, or all), and say which milestones moved, and by how much. Do this before telling the person what a proposal does. About twenty seconds.',
       input: { round: 'string?', profile: 'string?' },
       async run(c, i) {
         const profile = i.profile ?? 'eager';
@@ -426,18 +424,10 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
           runJob<Pacing>({ game: id, records: records.all(), do: 'pacing', profile }),
           runJob<Pacing>({ game: id, records: after.set, do: 'pacing', profile }),
         ]);
-        const all = concepts.list();
-        const was = evaluate(all, a).filter((k) => !k.ok), now = evaluate(all, b).filter((k) => !k.ok);
-        const broke = now.filter((k) => !was.some((w) => w.concept === k.concept && w.milestone === k.milestone));
-        const mended = was.filter((k) => !now.some((w) => w.concept === k.concept && w.milestone === k.milestone));
-        const moved = compare(a, b);
         const out = {
           profile, round: round ?? 'all pending', changes: after.changes.map((p) => p.path),
           length: { before: a.length, after: b.length },
-          moved,
-          broke: broke.map((k) => ({ concept: k.conceptName, says: k.says, why: k.why })),
-          mended: mended.map((k) => ({ concept: k.conceptName, says: k.says })),
-          stillFailing: now.length - broke.length,
+          moved: compare(a, b),
         };
         events.add({ type: 'playtest', by: c.by, kind: 'compare', ...out });
         return out;
@@ -445,7 +435,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'playtest.milestones', kind: 'read',
-      about: 'The milestones a playthrough reports, each with a few words: what a concept\'s checks can be about.',
+      about: 'The milestones a playthrough reports, each with a few words: so that the names in a playtest mean something.',
       run: () => game.milestones(),
     },
 

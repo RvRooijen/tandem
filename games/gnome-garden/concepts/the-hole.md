@@ -17,25 +17,6 @@
     "upgrades/*",
     "flowers/*",
     "gnomes/digger"
-  ],
-  "checks": [
-    {
-      "milestone": "pebble",
-      "min": 12.9,
-      "max": 20,
-      "why": "the first tooth"
-    },
-    {
-      "milestone": "notPebbles",
-      "min": 19,
-      "max": 36,
-      "why": "they aren't pebbles"
-    },
-    {
-      "milestone": "depth20",
-      "min": 64,
-      "max": 118
-    }
   ]
 }
 ---

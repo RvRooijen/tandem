@@ -58,7 +58,7 @@ export function createRunner(host: Host) {
       try {
         if (kind === 'concept') {
           const c = host.concepts.get(rest);
-          if (c) out.push(`Concept "${c.name}" (${c.id}, ${c.firmness})${c.checks.length ? `, ${c.checks.length} checks` : ''}:\n${c.text || '(no description yet)'}`);
+          if (c) out.push(`Concept "${c.name}" (${c.id}, ${c.firmness}):\n${c.text || '(no description yet)'}`);
         } else if (kind === 'record') {
           const r = host.records.get(rest);
           if (r) out.push(`Record ${rest}: ${JSON.stringify(r)}`);

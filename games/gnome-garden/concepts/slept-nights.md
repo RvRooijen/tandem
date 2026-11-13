@@ -18,24 +18,6 @@
     "beats/restless",
     "beats/awake",
     "abilities/nap"
-  ],
-  "checks": [
-    {
-      "milestone": "doorstep",
-      "min": 4.9,
-      "max": 8,
-      "why": "the first morning with flowers on the step"
-    },
-    {
-      "milestone": "restless",
-      "min": 27.9,
-      "max": 34
-    },
-    {
-      "milestone": "awake",
-      "min": 64.9,
-      "max": 80
-    }
   ]
 }
 ---

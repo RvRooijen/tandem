@@ -11,8 +11,7 @@
     "drawing:garden-visitor",
     "drawing:garden-cottage",
     "drawing:garden-icons"
-  ],
-  "checks": []
+  ]
 }
 ---
 

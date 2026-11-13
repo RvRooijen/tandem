@@ -161,16 +161,13 @@ test('concepts: add one, work on it, and hand it to the agent', async () => {
 
   click(all('.segments button').find((b) => b.textContent === 'worked')!);
   type($('textarea.words'), 'A rose that only opens after dark.');
-  const pick = $('select[aria-label^="A milestone"]') as HTMLSelectElement;
-  assert.ok(pick.options.length > 40, 'the milestones of the game are on offer');
-  pick.value = 'seed:rose';
-  pick.dispatchEvent(new w.Event('change'));
-  type($('.check input[aria-label=max]'), '45');
+  assert.ok(!all('#t-body h3').some((x) => /promise/i.test(x.textContent!)), 'a concept has no timings to fill in');
+  type($('textarea[aria-label="What makes it real"]'), 'flowers/rose\nabilities/nap');
   click(button('Save'));
   await until(() => host.concepts.get('night-roses')?.firmness === 'worked', 'the concept to be saved');
   const c = host.concepts.get('night-roses')!;
   assert.equal(c.text, 'A rose that only opens after dark.');
-  assert.deepEqual(c.checks, [{ milestone: 'seed:rose', max: 45 }]);
+  assert.deepEqual(c.realised, ['flowers/rose', 'abilities/nap']);
 
   click(button('Talk about this'));
   assert.equal($('.t-tab.on').textContent, 'Chat');

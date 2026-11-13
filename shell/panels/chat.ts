@@ -113,25 +113,17 @@ export function chatPanel(): Panel {
     if (ev.kind === 'compare') {
       const len = ev.length as { before?: number; after?: number };
       const moved = ev.moved as { milestone: string; before?: number; after?: number; change?: number }[];
-      const broke = ev.broke as { concept: string; says: string }[];
-      const mended = ev.mended as { concept: string; says: string }[];
       return h('div.card.test', {},
         h('div.head', {}, h('b', {}, 'Played twice'), h('span.state', {}, `${ev.profile} player`)),
         h('div.field', {}, h('span.k', {}, 'whole game'), h('span.was', {}, mins(len.before)), h('span.arrow', {}, '→'), h('span.now', {}, mins(len.after))),
         moved.length ? moved.slice(0, 12).map((m) => h('div.field', {}, h('span.k', {}, m.milestone), h('span.was', {}, mins(m.before)), h('span.arrow', {}, '→'), h('span.now', {}, mins(m.after)),
           m.change !== undefined && h('span.pct', { data: { dir: m.change < 0 ? 'down' : 'up' } }, `${m.change > 0 ? '+' : ''}${Math.round(m.change)}%`)))
           : h('div.note', {}, 'Nothing moved by more than a few percent.'),
-        moved.length > 12 && h('div.note', {}, `and ${moved.length - 12} more`),
-        broke.map((b) => h('div.fail', {}, h('b', {}, b.concept), ': ', b.says)),
-        mended.map((b) => h('div.pass', {}, h('b', {}, b.concept), ' holds again: ', b.says)),
-        !broke.length && h('div.pass', {}, 'No promise breaks.'));
+        moved.length > 12 && h('div.note', {}, `and ${moved.length - 12} more`));
     }
-    const failed = ev.failed as { concept: string; says: string }[];
     return h('div.card.test', {},
       h('div.head', {}, h('b', {}, 'Playtest'), h('span.state', {}, `${ev.profile} player${ev.proposed ? ', as proposed' : ''}`)),
       h('div.field', {}, h('span.k', {}, 'whole game'), h('span.now', {}, mins(ev.length as number | undefined))),
-      failed.map((f) => h('div.fail', {}, h('b', {}, f.concept), ': ', f.says)),
-      !failed.length && h('div.pass', {}, `${ev.checks} checks, all hold.`),
       h<'button'>('button.link', { onclick: () => app.open('playtest') }, 'Every milestone'));
   }
 

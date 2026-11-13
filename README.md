@@ -26,7 +26,7 @@ line. `npm start -- --host` puts the page on the network if you want that.
 
 - **Everything is a command.** `core/commands.ts` is the only door. A button in the page, the agent's command line, the bot and the tests call the same named commands; the only difference is who is asking. `test/shell.test.ts` checks that the page uses nothing else.
 - **The person's change is made; the agent's is proposed.** An agent's write to content or a concept becomes a proposal. Everything proposed while answering one message is one round, played, accepted or rejected as one.
-- **Concepts** (`games/<game>/concepts/*.md`) are a name and a description in the person's words, with a firmness (loose, worked, playable, fixed) that says how much freedom the agent has, and checks: milestones that must land inside a window of minutes.
+- **Concepts** (`games/<game>/concepts/*.md`) are a name and a description in the person's words, with links to each other, what makes them real, and a firmness (loose, worked, playable, fixed) that says how much freedom the agent has. A concept holds words, not numbers to be met: a playtest reports timings, it never judges them.
 - **Content is records** (`games/<game>/content/<kind>/<id>.json`): every number and line the game is tuned with. The game reads them; nothing is tuned in code.
 - **The agent has senses**: `game.state` (words), `game.look` / `game.lookAt` (pictures), `ecs.*` (entities and systems), `playtest.run` / `playtest.compare` (a bot plays the whole game in ten seconds, as it is and as proposed), `art.list` / `art.look` (the drawings).
 
@@ -36,7 +36,7 @@ line. `npm start -- --host` puts the page on the network if you want that.
                  the HTTP server, the command line, the agent runner and what the agent is told,
                  art (the drawings, and pixeldraw's workers)
     ecs/         the inspector: entities, archetypes, systems, as commands
-    playtest/    pacing runs, comparing two of them, holding concepts' checks against one
+    playtest/    pacing runs, and comparing two of them
     shell/       the phone page: the game, and over it a sheet with Chat, Concepts, Content, Art, Inspect, Playtest
     games/<id>/  module.ts (what the engine needs from a game), page.ts (the game in a page),
                  src/, art/, content/, concepts/, and data/ (not in git: event log, proposals, pictures)
@@ -52,14 +52,14 @@ Works, and is tested:
 
 - the command layer, permissions (person / agent / proposal), the event log, SSE
 - records with a proposal overlay; proposals per round; accept and reject
-- concepts with firmness, links, what makes them real, and checks
+- concepts with firmness, links and what makes them real
 - worlds: a mirror of the one being played, sandboxes the agent can play and poke in
 - the ECS inspector, in the page (live, on the world being played) and for the agent
-- playtests: a run, a before/after comparison of a proposal, checks, a look at any minute
+- playtests: a run, a before/after comparison of a proposal, a look at any minute
 - the agent: headless `claude -p` whose only hands are the command line; it answers in the chat, proposes, plays its proposals, takes pictures, points at the garden
 - art: the game's drawings listed and drawn as sheets; bringing them in from pixeldraw (`art.import`, run for real once)
 - the shell: the game plays underneath; chat with proposal, picture and playtest cards; concepts; content; art; inspector with pick-in-the-garden; playtest
-- Gnome Garden on it, with its numbers as records and eight concepts whose promises a playtest holds
+- Gnome Garden on it, with its numbers as records and eight concepts
 
 Not there yet:
 

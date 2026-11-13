@@ -4,12 +4,9 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-/** loose: an invitation to explore. worked: talked through, still words. playable: made real. fixed: a promise, with checks. */
+/** loose: an invitation to explore. worked: talked through, still words. playable: made real. fixed: settled, not to be changed unasked. */
 export type Firmness = 'loose' | 'worked' | 'playable' | 'fixed';
 export const FIRMNESS: Firmness[] = ['loose', 'worked', 'playable', 'fixed'];
-
-/** A promise that can be checked: a milestone that must land inside a window, in minutes after the first owner moves in. */
-export interface Check { milestone: string; min?: number; max?: number; why?: string; /** Which player it is a promise to; the eager one if not said. */ profile?: string }
 
 export interface Concept {
   id: string;
@@ -19,7 +16,6 @@ export interface Concept {
   links: { to: string; kind: string }[];
   /** What makes it real: record paths, drawings, tests. */
   realised: string[];
-  checks: Check[];
   /** The person's words, and under them whatever was worked out. */
   text: string;
 }
@@ -39,14 +35,14 @@ function parse(id: string, raw: string): Concept {
   const head = m ? JSON.parse(m[1]) : {};
   return {
     id, name: head.name ?? id, firmness: FIRMNESS.includes(head.firmness) ? head.firmness : 'loose',
-    links: head.links ?? [], realised: head.realised ?? [], checks: head.checks ?? [],
+    links: head.links ?? [], realised: head.realised ?? [],
     text: (m ? m[2] : raw).trim(),
   };
 }
 
 // The head is JSON between the dashes: easy for a program to write, readable enough for a person.
 const format = (c: Concept) =>
-  `---\n${JSON.stringify({ name: c.name, firmness: c.firmness, links: c.links, realised: c.realised, checks: c.checks }, null, 2)}\n---\n\n${c.text.trim()}\n`;
+  `---\n${JSON.stringify({ name: c.name, firmness: c.firmness, links: c.links, realised: c.realised }, null, 2)}\n---\n\n${c.text.trim()}\n`;
 
 export function createConcepts(dir: string): Concepts {
   mkdirSync(dir, { recursive: true });

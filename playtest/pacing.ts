@@ -1,7 +1,7 @@
 // Playtesting without a player: a bot of rules plays the game through and
 // writes down when things happened. Two runs side by side say what a change
-// did to the pacing; a concept's checks say whether a promise still holds.
-import type { Check, Concept } from '../core/concepts.ts';
+// did to the pacing. It reports; it does not judge: what the timing should be
+// is the person's to say, in words.
 import type { GameModule } from '../core/game.ts';
 
 export interface Pacing {
@@ -30,25 +30,6 @@ export function runPacing(game: GameModule, profile = 'eager', owners = 1, maxHo
     later: run.owners.slice(1).map((o) => (o.length !== undefined ? mins(o.length) : undefined)),
     took: Math.round((Date.now() - t0) / 100) / 10,
   };
-}
-
-export interface CheckResult extends Check { concept: string; conceptName: string; at?: number; ok: boolean; says: string }
-
-/** Hold every concept's checks against a run. Only checks for the run's profile count (a check without one is for the eager player). */
-export function evaluate(concepts: Concept[], pacing: Pacing): CheckResult[] {
-  const out: CheckResult[] = [];
-  for (const c of concepts)
-    for (const check of c.checks) {
-      if ((check.profile ?? 'eager') !== pacing.profile) continue;
-      const at = pacing.minutes[check.milestone];
-      let ok = true, says = '';
-      if (at === undefined) { ok = false; says = `${check.milestone} never happened`; }
-      else if (check.min !== undefined && at < check.min) { ok = false; says = `${check.milestone} came at ${at} min, before ${check.min}`; }
-      else if (check.max !== undefined && at > check.max) { ok = false; says = `${check.milestone} came at ${at} min, after ${check.max}`; }
-      else says = `${check.milestone} at ${at} min`;
-      out.push({ ...check, concept: c.id, conceptName: c.name, at, ok, says });
-    }
-  return out;
 }
 
 export interface Moved { milestone: string; before?: number; after?: number; change?: number }

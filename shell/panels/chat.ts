@@ -34,7 +34,7 @@ export function chatPanel(): Panel {
   const newBtn = h<'button'>('button.icon.new-chat', { 'aria-label': 'New conversation', title: 'New conversation', onclick: () => {
     if (confirm('Start a new conversation? The chat is cleared and the agent forgets what was said. Pending proposals stay.')) void app.act('chat.new');
   } }, '↺');
-  const EMPTY = () => h('div.empty', {}, h('b', {}, 'Nothing said yet.'), h('p', {}, 'Talk about the game while you play it. Hang a concept, a record or something in the garden on a message from the other tabs.'));
+  const EMPTY = () => h('div.empty', {}, h('b', {}, 'Nothing said yet.'), h('p', {}, 'Talk about the game while you play it. Hang a concept, a record or something in the game on a message from the other tabs.'));
   let body: HTMLElement | undefined;
 
   const nearBottom = () => !body || body.scrollHeight - body.scrollTop - body.clientHeight < 80;
@@ -156,7 +156,7 @@ export function chatPanel(): Panel {
       case 'playtest':
         return playtestCard(ev);
       case 'stage.point':
-        return h('div.sys.tap', { onclick: () => { app.close(); app.point(Number(ev.x), Number(ev.y), String(ev.text ?? '')); } }, '◎ pointed at the garden', ev.text ? `: ${ev.text}` : '');
+        return h('div.sys.tap', { onclick: () => { app.close(); app.point(Number(ev.x), Number(ev.y), String(ev.text ?? '')); } }, '◎ pointed at the game', ev.text ? `: ${ev.text}` : '');
       case 'stage.open':
         return h('div.sys.tap', { onclick: () => app.open(String(ev.tab), ev.id ? String(ev.id) : undefined) }, `↗ opened ${ev.tab}${ev.id ? ` · ${ev.id}` : ''}`);
       case 'record.changed':

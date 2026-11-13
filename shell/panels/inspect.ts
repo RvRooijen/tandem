@@ -1,6 +1,6 @@
 // The ECS side of the world being played: what entities there are and what
 // they are made of, one entity with every value (live), and the systems that
-// run over them. With "pick" on, a finger on the garden asks what is there
+// run over them. With "pick" on, a finger on the game asks what is there
 // instead of playing.
 import type { EntityView } from '../../ecs/inspect.ts';
 import { run } from '../api.ts';
@@ -42,7 +42,7 @@ export function inspectPanel(): Panel {
     h('div.line', {}, h('b', {}, `#${e.id}`), h('span.count', {}, Object.keys(e.components).join(' + '))),
     h('p', {}, Object.entries(e.components).flatMap(([c, row]) => Object.entries(row).slice(0, 3).map(([k, v]) => `${c}.${k} ${typeof v === 'number' ? num(v) : v}`)).slice(0, 5).join(' · ')));
 
-  const pickBtn = () => h<'button'>(`button${picking ? '.on' : ''}`, { onclick: (ev: MouseEvent) => { setPick(!picking); (ev.currentTarget as HTMLElement).classList.toggle('on', picking); if (picking) app.toast('Touch something in the garden.'); } }, '◎ Pick in the garden');
+  const pickBtn = () => h<'button'>(`button${picking ? '.on' : ''}`, { onclick: (ev: MouseEvent) => { setPick(!picking); (ev.currentTarget as HTMLElement).classList.toggle('on', picking); if (picking) app.toast('Touch something in the game.'); } }, '◎ Pick in the game');
 
   async function home() {
     stop();

@@ -82,7 +82,7 @@ export function createRunner(host: Host) {
         } else if (kind === 'drawing') {
           out.push(`Drawing ${rest}: one of the game's drawings, made in pixeldraw. See it with art.look.`);
         } else if (kind === 'point') {
-          out.push(`A point in the garden: ${rest} (world units)`);
+          out.push(`A point in the game's world: ${rest} (world units)`);
         } else out.push(ref);
       } catch { out.push(ref); }
     }

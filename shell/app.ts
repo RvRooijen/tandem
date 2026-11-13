@@ -1,6 +1,6 @@
 // The engine's layer over the game: a round button, a sheet that slides up
 // over the lower part of the screen with the tools in it, a ring for pointing
-// at the garden. The game underneath keeps running and stays in view, so it
+// at the game. The game underneath keeps running and stays in view, so it
 // can be played and talked about at once.
 import type { Event } from '../core/events.ts';
 import type { GameModule, GamePage, RecordSet } from '../core/game.ts';

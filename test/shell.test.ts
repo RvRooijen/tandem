@@ -261,7 +261,7 @@ test('inspect: the entities of the world being played, one of them live, and a f
   await until(() => $('.comp'), 'the entity again');
 
   // Pick: the next finger on the garden asks what is there.
-  click(button(/Pick in the garden/));
+  click(button(/Pick in the game/));
   assert.ok(app.page.intercept, 'the stage hands its fingers over');
   const picked = (app.page.world.game as { s: { stats: { tapped: number } } }).s.stats.tapped;
   const down = new w.Event('pointerdown', { bubbles: true }) as Event & { clientX: number; clientY: number; pointerId: number };

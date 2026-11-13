@@ -4,11 +4,11 @@
    text selection off for the whole page; this turns it back on where words
    are typed or read. */
 #tandem {
-  --t-bg: #1a1730;
-  --t-raise: #272346;
-  --t-line: #3d3768;
+  --t-bg: #17161c;
+  --t-raise: #26263c;
+  --t-line: #34323f;
   --t-ink: #ecebf2;
-  --t-soft: #a9a4cc;
+  --t-soft: #9c9aae;
   --t-accent: #f2b84b;
   --t-accent-ink: #20170a;
   --t-good: #7ad08a;
@@ -101,7 +101,7 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 #tandem .t-chip.ref button { border: 0; background: none; color: var(--t-soft); padding: 0 0 0 4px; font-size: 12px; min-width: 22px; min-height: 22px; }
 
 #tandem .item { padding: 11px 12px; border-radius: 12px; background: var(--t-raise); margin-bottom: 8px; cursor: pointer; }
-#tandem .item:active { background: #322d59; }
+#tandem .item:active { background: #30304a; }
 #tandem .item .line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 #tandem .item b { word-break: break-word; }
 #tandem .item p { color: var(--t-soft); font-size: 13px; margin-top: 3px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
@@ -112,13 +112,13 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 /* ---- chat */
 .chat { display: flex; flex-direction: column; gap: 10px; }
 .msg { max-width: 88%; padding: 9px 12px; border-radius: 14px; position: relative; word-break: break-word; }
-.msg.me { align-self: flex-end; background: #4a3f8f; border-bottom-right-radius: 4px; }
+.msg.me { align-self: flex-end; background: #3a3320; border-bottom-right-radius: 4px; }
 .msg.agent { align-self: flex-start; background: var(--t-raise); border-bottom-left-radius: 4px; }
 .msg.error { color: var(--t-bad); }
 .msg time { display: block; font-size: 11px; color: var(--t-soft); margin-top: 3px; }
 .msg .refs, #t-foot .refs { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
-.prose pre { font-family: var(--t-mono); font-size: 12px; background: #120f24; padding: 8px; border-radius: 8px; overflow-x: auto; white-space: pre; margin: 6px 0; }
-.prose code { font-family: var(--t-mono); font-size: 13px; background: #120f24; padding: 1px 5px; border-radius: 5px; }
+.prose pre { font-family: var(--t-mono); font-size: 12px; background: #101014; padding: 8px; border-radius: 8px; overflow-x: auto; white-space: pre; margin: 6px 0; }
+.prose code { font-family: var(--t-mono); font-size: 13px; background: #101014; padding: 1px 5px; border-radius: 5px; }
 .card { background: var(--t-raise); border: 1px solid var(--t-line); border-radius: 14px; padding: 11px 12px; }
 .card .t-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
 .card .state { font-size: 12px; color: var(--t-soft); }

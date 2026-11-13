@@ -1,0 +1,130 @@
+// What tandem has to say while the tools are shut: a speech bubble over the
+// project's page, by the round button. Something the agent says shows for a
+// moment and goes; something that is waiting for the person (a proposal, a
+// drawing to approve, the offer to read a new project) stays, with the two
+// answers on it, until it is answered. Opening the tools puts the bubbles away:
+// everything in them is in the chat.
+import type { Event } from '../core/events.ts';
+import { clear, h } from './dom.ts';
+
+/** Something that is waiting for an answer. */
+interface Waiting {
+  title: string;
+  text: string;
+  /** Where the whole of it is: a tab, and what to open there. */
+  open: [tab: string, id?: string];
+  yes: { label: string; run(): void };
+  no: { label: string; run(): void };
+}
+
+export interface BubbleHost {
+  act<T>(name: string, input?: Record<string, unknown>): Promise<T | undefined>;
+  open(tab: string, id?: string): void;
+}
+
+const short = (s: string, max = 170) => { const t = s.replace(/\s+/g, ' ').trim(); return t.length > max ? `${t.slice(0, max - 1)}…` : t; };
+
+export function createBubbles(el: HTMLElement, app: BubbleHost) {
+  const waiting = new Map<string, Waiting>();
+  const said: { text: string; error: boolean; until: number }[] = [];
+  /** The proposals of each open round, to say what the round is about. */
+  const rounds = new Map<string, Map<string, Event>>();
+  let shut = true, timer = 0;
+
+  function paint() {
+    clearTimeout(timer);
+    const now = Date.now();
+    while (said.length && said[0].until <= now) said.shift();
+    el.hidden = !shut || (!waiting.size && !said.length);
+    if (el.hidden) return void clear(el);
+    const list = [...waiting];
+    clear(el,
+      list.slice(-3).map(([key, w]) => h('div.bubble.waits', { data: { key } },
+        h('div.say', { onclick: () => app.open(...w.open) }, h('b', {}, w.title), w.text && h('p', {}, w.text)),
+        h('div.answers', {},
+          h<'button'>('button.primary', { onclick: () => w.yes.run() }, w.yes.label),
+          h<'button'>('button', { onclick: () => w.no.run() }, w.no.label)))),
+      list.length > 3 && h('div.bubble.more', { onclick: () => app.open('chat') }, `and ${list.length - 3} more waiting`),
+      said.slice(-2).map((s) => h(`div.bubble.says${s.error ? '.error' : ''}`, { onclick: () => app.open('chat') }, h('p', {}, s.text))));
+    if (said.length) timer = window.setTimeout(paint, Math.max(200, said[0].until - now));
+  }
+
+  /** What a round of proposals is, in a line, and what the two answers do. */
+  function proposal(round: string) {
+    const changes = [...(rounds.get(round)?.values() ?? [])];
+    if (!changes.length) return void waiting.delete(round);
+    const first = changes[0];
+    const title = changes.some((c) => c.kind === 'code')
+      ? `A change to the project · ${(first.files as unknown[] | undefined)?.length ?? 0} ${(first.files as unknown[] | undefined)?.length === 1 ? 'file' : 'files'}`
+      : changes.length > 1 ? `A proposal · ${changes.length} changes`
+        : `A proposal · ${first.kind} ${first.path}${first.before ? '' : ', new'}`;
+    waiting.set(round, {
+      title, text: short(String(changes.at(-1)!.note ?? '')), open: ['chat'],
+      yes: { label: 'Approve', run: () => void app.act('proposals.decide', { round, accept: true }) },
+      no: { label: 'Decline', run: () => void app.act('proposals.decide', { round, accept: false }) },
+    });
+  }
+
+  return {
+    /** The tools were opened or shut. */
+    shut(now: boolean) { shut = now; paint(); },
+
+    /** Everything that happens passes here; `live` is false for what is read back from before the page was opened. */
+    feed(ev: Event, live: boolean) {
+      switch (ev.type) {
+        case 'message':
+          if (ev.by === 'me') waiting.delete('welcome');
+          if (ev.by === 'engine' && ev.kind === 'init') waiting.delete('welcome');
+          // What the agent says is shown for a while: longer for more words.
+          if (String(ev.by).startsWith('agent') && live && shut) {
+            const text = short(String(ev.text ?? ''), 220);
+            said.push({ text, error: !!ev.error, until: Date.now() + 6000 + text.length * 45 });
+          }
+          break;
+        case 'welcome':
+          if (ev.existing) waiting.set('welcome', {
+            title: `${ev.name} is new to tandem`, text: 'Shall I read the project and write down what it is made of, and how it is run?', open: ['chat'],
+            yes: { label: 'Yes, read it', run: () => void app.act('project.init') },
+            no: { label: 'Not now', run: () => { waiting.delete('welcome'); paint(); } },
+          });
+          break;
+        case 'proposal': {
+          // A drawing worker's round is answered when its round is done (art.round), not as it is being drawn.
+          if (ev.worker) break;
+          const round = String(ev.round);
+          if (!rounds.has(round)) rounds.set(round, new Map());
+          rounds.get(round)!.set(String(ev.id), ev);
+          proposal(round);
+          break;
+        }
+        case 'proposal.decided':
+          rounds.delete(String(ev.round));
+          waiting.delete(String(ev.round));
+          break;
+        case 'art.round': {
+          const id = String(ev.worker);
+          if (ev.state !== 'waiting') {
+            waiting.delete(id);
+            if (live && shut && ev.state === 'failed') said.push({ text: `The worker on ${ev.name} failed.`, error: true, until: Date.now() + 9000 });
+            break;
+          }
+          const sil = ev.phase === 'silhouette';
+          waiting.set(id, {
+            title: sil ? `${ev.name}: a silhouette to approve` : `${ev.name}: a drawing to accept`, text: short(String(ev.text ?? '')), open: ['art', `worker:${id}`],
+            // A silhouette that is approved is not in the project yet: the worker goes on with colour.
+            yes: { label: 'Approve', run: () => void (sil ? app.act('art.approve', { worker: id }) : app.act('proposals.decide', { round: id, accept: true })) },
+            no: { label: 'Decline', run: () => void app.act('art.close', { worker: id }) },
+          });
+          break;
+        }
+        case 'art.status':
+          // It is drawing again (feedback, or the silhouette was approved), or it is gone: nothing to answer now.
+          if (ev.state === 'running' || ev.state === 'closed') waiting.delete(String(ev.worker));
+          break;
+        default:
+          return;
+      }
+      paint();
+    },
+  };
+}

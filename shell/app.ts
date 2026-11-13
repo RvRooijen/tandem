@@ -5,6 +5,7 @@
 import type { Event } from '../core/events.ts';
 import type { AgentStatus } from '../core/runner.ts';
 import { run, type Info } from './api.ts';
+import { createBubbles } from './bubbles.ts';
 import { clear, h } from './dom.ts';
 import type { Stage } from './stage.ts';
 
@@ -64,7 +65,8 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
   const banner = h('div#t-copy', { hidden: true }, h('span', {}, 'The working copy: what the agent made, not yet the project'), h<'button'>('button', { onclick: () => app.playProject() }, 'Back to the project'));
   const toastEl = h('div#t-toast', { hidden: true });
   const zoomEl = h('div#t-zoom', { hidden: true, onclick: () => { zoomEl.hidden = true; } }, h<'img'>('img'));
-  root.append(fab, banner, ring, sheet, toastEl, zoomEl);
+  const bubbleEl = h('div#t-bubbles', { hidden: true });
+  root.append(fab, bubbleEl, banner, ring, sheet, toastEl, zoomEl);
 
   let shown: string | null = null, last = 'chat';
   let ringTimer = 0, toastTimer = 0;
@@ -103,6 +105,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       body.scrollTop = 0;
       panel.show(body, foot, id);
       paintBadges();
+      bubbles.shut(false);
     },
 
     close() {
@@ -110,6 +113,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       shown = null;
       sheet.classList.add('shut');
       fab.classList.remove('open');
+      bubbles.shut(true);
     },
 
     attach(ref) {
@@ -200,8 +204,9 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
         return;
       }
       // What is only told, not kept (what a worker is doing right now), goes to the panels and nowhere else.
-      if (ev.n === 0) { for (const p of panels) p.event?.(ev, true); return; }
+      if (ev.n === 0) { bubbles.feed(ev, true); for (const p of panels) p.event?.(ev, true); return; }
       app.events.push(ev);
+      bubbles.feed(ev, live);
       if (live) {
         // What the agent shows, it shows on the stage itself.
         if (ev.type === 'stage.point') app.point(Number(ev.x), Number(ev.y), String(ev.text ?? ''));
@@ -217,6 +222,8 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       if (ev.type === 'welcome' && app.events.length === 1 && !shown) setTimeout(() => { if (!shown && app.events.at(-1)?.type === 'welcome') app.open('chat'); }, 400);
     },
   };
+  // What tandem says while the tools are shut.
+  const bubbles = createBubbles(bubbleEl, app);
   for (const p of panels) p.init(app);
   return app;
 }

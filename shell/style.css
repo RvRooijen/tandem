@@ -50,6 +50,21 @@ body { overflow: hidden; -webkit-tap-highlight-color: transparent; }
 body.t-offline #t-fab { border-color: var(--t-bad); }
 body.t-offline #t-fab .mark { background: var(--t-bad); }
 
+/* ---- what tandem says while the tools are shut */
+#t-bubbles { position: fixed; z-index: 22; right: max(8px, calc(50vw - 252px)); top: calc(88px + env(safe-area-inset-top)); display: flex; flex-direction: column; align-items: flex-end; gap: 7px; width: min(84vw, 340px); pointer-events: none; }
+.bubble { pointer-events: auto; max-width: 100%; background: var(--t-bg); color: var(--t-ink); border: 1px solid var(--t-line); border-radius: 14px 4px 14px 14px; padding: 9px 12px; font-size: 13.5px; line-height: 1.4; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); cursor: pointer; animation: t-bubble 0.18s ease-out; }
+@keyframes t-bubble { from { opacity: 0; transform: translateY(-6px); } }
+.bubble p { word-break: break-word; }
+.bubble.says.error { color: var(--t-bad); }
+.bubble.waits { border-color: var(--t-accent); cursor: default; }
+.bubble.waits .say { cursor: pointer; }
+.bubble.waits b { display: block; margin-bottom: 2px; }
+.bubble.waits p { color: var(--t-soft); font-size: 13px; }
+.bubble .answers { display: flex; gap: 8px; margin-top: 9px; }
+.bubble .answers button { flex: 1; min-height: 40px; border-radius: 10px; border: 1px solid var(--t-line); background: var(--t-raise); font-weight: 600; }
+.bubble.more { font-size: 12px; color: var(--t-soft); }
+@media (prefers-reduced-motion: reduce) { .bubble { animation: none; } }
+
 /* ---- the sheet */
 #t-sheet {
   position: fixed; z-index: 25; left: 0; right: 0; bottom: 0; margin: 0 auto; max-width: 520px;

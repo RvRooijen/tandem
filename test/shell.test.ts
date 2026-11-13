@@ -460,6 +460,65 @@ test('a new conversation clears the chat and keeps what is still to be decided',
   assert.equal(all('button', all('.msg.welcome')[1]).length, 0);
 });
 
+test('with the tools shut, tandem speaks in a bubble: what it says goes again, what waits for an answer stays', async () => {
+  await until(() => !app.agent.busy, 'the agent to be done');
+  // (Whatever the tests before left undecided is decided, so the bubbles here are this test's.)
+  for (const round of new Set((await host.run('proposals.list', { status: 'pending' }, 'me') as { round: string }[]).map((p) => p.round))) await host.run('proposals.decide', { round, accept: false }, 'me');
+  app.close();
+  await until(() => all('.bubble').length === 0, 'no bubbles');
+  assert.ok($('#t-bubbles').hidden);
+
+  // Something the agent says: a bubble that leads to the chat (and goes by itself after a while).
+  await host.run('chat.send', { text: 'The roses come too late, I think.' }, AGENT);
+  await until(() => $('.bubble.says'), 'what it said');
+  assert.equal($('.bubble.says').textContent, 'The roses come too late, I think.');
+  assert.equal(all('.bubble button').length, 0);
+  click($('.bubble.says'));
+  assert.equal($('.t-tab.on').textContent, 'Chat');
+  assert.ok($('#t-bubbles').hidden, 'with the tools open there are no bubbles: it is all in the chat');
+  app.close();
+
+  // Something it proposes: a bubble that stays, with the two answers on it.
+  await host.run('concepts.create', { name: 'Later roses', text: 'Roses come later.' }, AGENT, 'r970');
+  await until(() => $('.bubble.waits'), 'the proposal');
+  assert.match($('.bubble.waits b').textContent!, /A proposal · concept later-roses, new/);
+  assert.deepEqual(all('.bubble.waits button').map((b) => b.textContent), ['Approve', 'Decline']);
+  tab('Concepts');
+  assert.ok($('#t-bubbles').hidden);
+  app.close();
+  assert.ok($('.bubble.waits'), 'still there when the tools are shut again: it waits for an answer');
+  click(button('Approve', $('.bubble.waits')));
+  await until(() => host.concepts.get('later-roses'), 'the concept to be accepted');
+  await until(() => !$('.bubble.waits'), 'the bubble to go');
+
+  await host.run('concepts.update', { id: 'later-roses', text: 'Roses come much later.' }, AGENT, 'r971');
+  await until(() => $('.bubble.waits'), 'another proposal');
+  assert.match($('.bubble.waits b').textContent!, /A proposal · concept later-roses$/);
+  click(button('Decline', $('.bubble.waits')));
+  await until(() => !$('.bubble.waits'), 'the bubble to go');
+  assert.equal(host.concepts.get('later-roses')!.text, 'Roses come later.', 'declined: nothing changed');
+
+  // A change to the project says how many files; a drawing worker's round says what it waits for.
+  host.events.add({ type: 'proposal', by: 'agent:main', round: 'code', id: 'pc9', kind: 'code', path: 'working copy', files: [{ path: 'a.ts' }, { path: 'b.ts' }], note: 'Seasons.' });
+  await until(() => /A change to the project · 2 files/.test($('.bubble.waits b')?.textContent ?? ''), 'the change');
+  host.events.add({ type: 'proposal.decided', by: 'me', round: 'code', status: 'rejected', count: 1, paths: ['code:working copy'] });
+  await until(() => !$('.bubble.waits'), 'it to be gone when decided elsewhere');
+  host.events.add({ type: 'art.round', by: 'agent:w1', worker: 'w1', name: 'gnome', state: 'waiting', phase: 'silhouette', text: 'The silhouette is ready.' });
+  await until(() => /gnome: a silhouette to approve/.test($('.bubble.waits b')?.textContent ?? ''), 'the silhouette');
+  const before = ran.filter((n) => n === 'art.approve').length;
+  click(button('Approve', $('.bubble.waits')));
+  await until(() => ran.filter((n) => n === 'art.approve').length === before + 1, 'approving a silhouette to be what Approve does there');
+  host.events.cast({ type: 'art.status', worker: 'w1', name: 'gnome', state: 'running', phase: 'color', doing: 'draws gnome' });
+  await until(() => !$('.bubble.waits'), 'the bubble to go once it draws again');
+
+  // The offer to read a project that is new to tandem waits too, and can be put off.
+  host.events.add({ type: 'welcome', by: 'engine', existing: true, files: 3, name: 'Fixture' });
+  await until(() => /Fixture is new to tandem/.test($('.bubble.waits b')?.textContent ?? ''), 'the offer');
+  click(button('Not now', $('.bubble.waits')));
+  assert.ok(!$('.bubble.waits'));
+  host.events.add({ type: 'chat.new', by: 'me' });
+});
+
 test('projects: the folders that could be one are listed, and another is chosen from the page', async () => {
   // Next to the project there is another one, and a folder that is not a repository yet.
   const beside = join(dir, '..');

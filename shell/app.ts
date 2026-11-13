@@ -268,6 +268,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     feed(ev, live) {
       if (ev.type === 'agent.status') {
         app.agent = ev as unknown as AgentStatus;
+        bubbles.agent(app.agent.busy);
         paintBadges();
         for (const p of panels) p.agent?.();
         return;

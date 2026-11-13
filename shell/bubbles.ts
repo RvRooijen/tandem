@@ -38,14 +38,23 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
   /** The proposals of each open round, to say what the round is about. */
   const rounds = new Map<string, Map<string, Event>>();
   let shut = true, timer = 0;
+  /** While the agent is at work its proposals are not shown one by one as they come: the round is shown when it is done. */
+  let busy = false;
+  const held = new Set<string>();
+  /** What the bubbles last showed: painted again only when that changed, so a bubble does not pop up anew for nothing. */
+  let showing = '';
 
   function paint() {
     clearTimeout(timer);
     const now = Date.now();
     while (said.length && said[0].until <= now) said.shift();
     el.hidden = !shut || (!waiting.size && !said.length);
-    if (el.hidden) return void clear(el);
+    if (el.hidden) { showing = ''; return void clear(el); }
     const list = [...waiting];
+    if (said.length) timer = window.setTimeout(paint, Math.max(200, said[0].until - now));
+    const now_ = JSON.stringify([list.map(([key, w]) => [key, w.title, w.text, w.yes.label]), said.slice(-2).map((x) => x.text)]);
+    if (now_ === showing) return;
+    showing = now_;
     clear(el,
       // One thing waiting is said in full, with its two answers. Several are one bubble, a line each: what it is,
       // and its own two answers beside it.
@@ -62,13 +71,14 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
             h<'button'>('button.primary', { onclick: () => w.yes.run() }, w.yes.label),
             h<'button'>('button', { onclick: () => w.no.run() }, w.no.label))))),
       said.slice(-2).map((s) => h(`div.bubble.says${s.error ? '.error' : ''}`, { onclick: () => app.open('chat') }, h('p', {}, s.text))));
-    if (said.length) timer = window.setTimeout(paint, Math.max(200, said[0].until - now));
   }
 
   /** What a round of proposals is, in a line, and what the two answers do. */
   function proposal(round: string) {
     const changes = [...(rounds.get(round)?.values() ?? [])];
     if (!changes.length) return void waiting.delete(round);
+    // The agent is still at it: what it has proposed so far waits for the rest, and is asked about once.
+    if (busy && !waiting.has(round)) return void held.add(round);
     const first = changes[0];
     const title = changes.some((c) => c.kind === 'code')
       ? `A change to the project · ${(first.files as unknown[] | undefined)?.length ?? 0} ${(first.files as unknown[] | undefined)?.length === 1 ? 'file' : 'files'}`
@@ -83,6 +93,16 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
   }
 
   return {
+    /** The agent started or stopped working. Done, what it proposed meanwhile is asked about. */
+    agent(now: boolean) {
+      if (busy === now) return;
+      busy = now;
+      if (busy) return;
+      for (const round of held) proposal(round);
+      held.clear();
+      paint();
+    },
+
     /** The tools were opened or shut. */
     shut(now: boolean) { shut = now; paint(); },
 

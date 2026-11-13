@@ -406,13 +406,14 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'concepts.create', kind: 'write', agent: 'proposes',
-      about: 'A new concept: a name and a description in plain words. It starts as an idea unless said otherwise. The agent\'s becomes a proposal.',
-      input: { name: 'string', text: 'string?', stage: 'string?' },
+      about: 'A new concept: a name and a description in plain words, and if known its stage, its links ([{to, kind}], kind is part-of, leads-to or clashes-with; to may be a concept proposed in the same round) and what makes it real (realised: paths, drawings, tests). It starts as an idea unless said otherwise. The agent\'s becomes a proposal.',
+      input: { name: 'string', text: 'string?', stage: 'string?', links: 'json?', realised: 'json?' },
       run(c, i) {
         const cid = concepts.slug(i.name);
         if (concepts.get(cid)) throw new CommandError('exists', `there already is a concept ${cid}`);
+        for (const k of ['links', 'realised'] as const) checkList(i[k], k);
         const stage = STAGES.includes(i.stage) ? i.stage : 'idea';
-        const fresh: Concept = { id: cid, name: i.name, stage, links: [], realised: [], text: i.text ?? '' };
+        const fresh: Concept = { id: cid, name: i.name, stage, links: i.links ?? [], realised: i.realised ?? [], text: i.text ?? '' };
         if (isAgent(c.by)) {
           const round = c.round ?? 'loose';
           const { id: _id, ...after } = fresh;
@@ -430,9 +431,21 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       about: 'Change a concept: its name, text, stage (idea, design, build, playtest), links ([{to, kind}], kind is part-of, leads-to or clashes-with), realised (record paths, drawings, tests). The agent\'s becomes a proposal.',
       input: { id: 'string', name: 'string?', text: 'string?', stage: 'string?', links: 'json?', realised: 'json?', note: 'string?' },
       run(c, i) {
+        if (i.stage !== undefined && !STAGES.includes(i.stage)) throw new CommandError('input', `stage is one of ${STAGES.join(', ')}`);
+        // A concept that is itself still a proposal is worked on further as that proposal: its links and what makes it
+        // real do not have to wait until the person has accepted it.
+        const coming = concepts.get(i.id) ? undefined : proposals.list({ status: 'pending' }).find((p) => p.kind === 'concept' && p.path === i.id && !p.before);
+        if (coming && isAgent(c.by)) {
+          for (const k of ['links', 'realised'] as const) checkList(i[k], k);
+          const more: Record<string, unknown> = {};
+          for (const k of ['name', 'text', 'stage', 'links', 'realised'] as const) if (i[k] !== undefined && !same(i[k], coming.after[k])) more[k] = i[k];
+          if (!Object.keys(more).length) return { changed: false };
+          const p = proposals.add({ round: coming.round, by: c.by, kind: 'concept', path: i.id, after: more as RecordValue, note: coming.note });
+          events.add({ type: 'proposal', by: c.by, round: p.round, id: p.id, kind: 'concept', path: i.id, after: p.after, note: p.note });
+          return { proposed: p.id, round: p.round, says: 'added to the proposal of this new concept' };
+        }
         const now = concepts.get(i.id);
         if (!now) throw new CommandError('missing', `there is no concept ${i.id}; see concepts.list`);
-        if (i.stage !== undefined && !STAGES.includes(i.stage)) throw new CommandError('input', `stage is one of ${STAGES.join(', ')}`);
         locks.guard(`concept:${i.id}`, c.by);
         for (const k of ['links', 'realised'] as const) checkList(i[k], k);
         const after: Record<string, unknown> = {};

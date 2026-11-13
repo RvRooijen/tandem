@@ -101,6 +101,25 @@ test('the person changes a concept at once; the agent proposes, and the person d
   await me('concepts.remove', { id: 'roses' });
 });
 
+test('a concept that is still a proposal is worked on further as that proposal: its links do not wait for the person', async () => {
+  const made = await agent('concepts.create', { name: 'Hedges', text: 'Hedges keep the wind out.', stage: 'playtest', realised: ['src/hedge.js'] }, 'r40');
+  await agent('concepts.create', { name: 'Gates', links: [{ to: 'hedges', kind: 'part-of' }] }, 'r40');
+  // Later, even in another round, more is added to the one that is not accepted yet.
+  const more = await agent('concepts.update', { id: 'hedges', links: [{ to: 'gates', kind: 'leads-to' }], text: 'Hedges keep the wind out, and the gnomes in.' }, 'r41');
+  assert.deepEqual([more.proposed, more.round], [made.proposed, 'r40'], 'the same proposal, in the round it was made in');
+  assert.deepEqual(await agent('concepts.update', { id: 'hedges', stage: 'playtest' }, 'r41'), { changed: false });
+  const pending = await me('proposals.list', { status: 'pending' });
+  assert.equal(pending.length, 2);
+  assert.deepEqual(pending.find((p: any) => p.path === 'hedges').after,
+    { name: 'Hedges', stage: 'playtest', links: [{ to: 'gates', kind: 'leads-to' }], realised: ['src/hedge.js'], text: 'Hedges keep the wind out, and the gnomes in.' });
+  await refused(agent('concepts.update', { id: 'nothing-like-it', text: 'x' }, 'r41'), 'missing');
+  await me('proposals.decide', { round: 'r40', accept: true });
+  const hedges = await me('concepts.get', { id: 'hedges' });
+  assert.deepEqual([hedges.stage, hedges.links, hedges.realised], ['playtest', [{ to: 'gates', kind: 'leads-to' }], ['src/hedge.js']]);
+  assert.deepEqual((await me('concepts.get', { id: 'gates' })).links, [{ to: 'hedges', kind: 'part-of' }]);
+  for (const id of ['hedges', 'gates']) await me('concepts.remove', { id });
+});
+
 test('concepts: the person writes them, the agent proposes, and nothing in one is a timing', async () => {
   const made = await me('concepts.create', { name: 'The Slow Burn', text: 'It starts as a seed packet and takes hours to turn.' });
   assert.equal(made.id, 'the-slow-burn');

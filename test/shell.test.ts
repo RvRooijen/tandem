@@ -671,6 +671,22 @@ test('with the tools shut, tandem speaks in a bubble: what it says goes again, w
   await until(() => !$('.bubble.waits'), 'the bubble to go');
   assert.equal(host.concepts.get('later-roses')!.text, 'Roses come later.', 'declined: nothing changed');
 
+  // While the agent is at work, what it proposes does not pop up piece by piece: it is asked about once, when it is done.
+  const status = (busy: boolean) => host.events.cast({ type: 'agent.status', busy, doing: busy ? 'reads the project' : '', text: '', waiting: 0, session: true, off: false, context: 0, limit: 0 });
+  status(true);
+  for (const name of ['Heather', 'Gorse', 'Broom']) await host.run('concepts.create', { name }, AGENT, 'r974');
+  await until(() => app.events.filter((e) => e.type === 'proposal' && e.round === 'r974').length === 3, 'the three to arrive');
+  assert.ok(!$('.bubble.waits'), 'nothing is asked while it is still at it');
+  status(false);
+  await until(() => /A proposal · 3 changes/.test($('.bubble.waits b')?.textContent ?? ''), 'the round, once');
+  // A bubble that has nothing new to say is left as it is, not put up again.
+  const standing = $('.bubble.waits');
+  host.events.add({ type: 'concept.changed', by: 'me', id: 'night-roses', what: 'updated', fields: [] });
+  await new Promise((r) => setTimeout(r, 150));
+  assert.equal($('.bubble.waits'), standing);
+  click(button('Decline', $('.bubble.waits')));
+  await until(() => !$('.bubble.waits'), 'the bubble to go');
+
   // A round of several that is decided piece by piece keeps waiting for what is left of it.
   for (const name of ['Moss', 'Ferns']) await host.run('concepts.create', { name }, AGENT, 'r972');
   await until(() => /A proposal · 2 changes/.test($('.bubble.waits b')?.textContent ?? ''), 'the two');

@@ -21,6 +21,8 @@ export interface Proposal {
   after: RecordValue;
   /** Why, in the agent's words. */
   note: string;
+  /** What only the person can say about it: questions the agent has, each answered in a field on the card. */
+  questions?: string[];
   status: 'pending' | 'accepted' | 'rejected';
   ts: number;
 }
@@ -45,6 +47,7 @@ export function createProposals(dir: string): Proposals {
       if (earlier) {
         earlier.after = { ...earlier.after, ...p.after };
         earlier.note = p.note;
+        if (p.questions) earlier.questions = p.questions;
         write(earlier);
         return earlier;
       }

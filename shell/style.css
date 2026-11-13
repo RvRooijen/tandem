@@ -190,6 +190,14 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 .change .path.concept .was.new { color: var(--t-soft); font-size: 12px; font-style: italic; }
 .ctext { font-size: 14.5px; line-height: 1.5; margin: 0 0 7px; overflow-wrap: anywhere; }
 .ctext.old { color: var(--t-soft); font-size: 13.5px; }
+/* What the agent asks: each question with a field under it; answered, with what was said. */
+.questions { margin: 8px 0 2px; padding: 9px 10px 4px; border-radius: 10px; background: var(--t-bg); border: 1px solid var(--t-line); }
+.questions .q { margin-bottom: 9px; }
+.questions .qtext { font-size: 14px; font-weight: 600; line-height: 1.4; margin: 0 0 5px; }
+#tandem .questions textarea { width: 100%; min-height: 54px; font-size: 14.5px; }
+.questions .qanswer { font-size: 14px; color: var(--t-soft); margin: 0; padding-left: 10px; border-left: 2px solid var(--t-line); overflow-wrap: anywhere; white-space: pre-wrap; }
+.questions .t-row { margin: 2px 0 6px; }
+.card.ask { border-color: #4c3d70; }
 details.cwas { margin: 2px 0 8px; }
 details.cwas summary { color: var(--t-soft); font-size: 12.5px; cursor: pointer; padding: 4px 0; }
 .cline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; padding: 3px 0; }

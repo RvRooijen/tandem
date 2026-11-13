@@ -122,6 +122,39 @@ test('a concept that is still a proposal is worked on further as that proposal: 
   for (const id of ['hedges', 'gates']) await me('concepts.remove', { id });
 });
 
+test('the agent asks what only the person can say, and their answers come back as a message', async () => {
+  await refused(agent('concepts.create', { name: 'Ponds', questions: 'is it deep?' }, 'r45'), 'input');
+  await refused(agent('concepts.create', { name: 'Ponds', questions: ['1', '2', '3', '4', '5', '6'] }, 'r45'), 'input');
+  // With a concept it proposes: the questions go with the proposal, not into the concept.
+  const made = await agent('concepts.create', { name: 'Ponds', text: 'A pond in the corner.', questions: ['Do frogs live in it?', ' Is it deep? '] }, 'r45');
+  const ev = host.events.since(0).filter((e) => e.type === 'proposal').at(-1)!;
+  assert.deepEqual(ev.questions, ['Do frogs live in it?', 'Is it deep?']);
+  assert.equal((ev.after as any).questions, undefined);
+  await refused(me('chat.answer', { to: made.proposed, answers: ['', ' '] }), 'input');
+  await refused(me('chat.answer', { to: 'nothing', answers: ['x'] }), 'missing');
+  await refused(agent('chat.answer', { to: made.proposed, answers: ['yes'] }, 'r45'), 'permission');
+  const sent = await me('chat.answer', { to: made.proposed, answers: ['Yes, three of them.'] });
+  assert.deepEqual([sent.type, sent.by, sent.kind], ['message', 'me', 'answers']);
+  assert.equal(sent.text, 'My answers to your questions about the concept Ponds:\n- Do frogs live in it?\n  Yes, three of them.');
+  assert.equal(sent.refs, undefined, 'a concept that is not there yet is not pointed at');
+  assert.deepEqual(host.events.since(0).filter((e) => e.type === 'answered').at(-1)!.answers, ['Yes, three of them.', '']);
+  // Worked into the proposal, the answered question is taken away.
+  await agent('concepts.update', { id: 'ponds', text: 'A pond in the corner, with three frogs.', questions: ['Is it deep?'] }, 'r46');
+  const again = host.events.since(0).filter((e) => e.type === 'proposal').at(-1)!;
+  assert.deepEqual([again.id, again.questions, (again.after as any).text], [made.proposed, ['Is it deep?'], 'A pond in the corner, with three frogs.']);
+  await agent('concepts.update', { id: 'ponds', questions: [] }, 'r46');
+  assert.equal(host.events.since(0).filter((e) => e.type === 'proposal').at(-1)!.questions, undefined);
+  await me('proposals.decide', { round: 'r45', accept: false });
+
+  // And questions on their own, about something that is there.
+  await refused(agent('chat.ask', { questions: [] }, 'r47'), 'input');
+  const asked = await agent('chat.ask', { questions: ['Which season does it start in?'], about: 'drawing:garden-flowers' }, 'r47');
+  const q = host.events.since(0).filter((e) => e.type === 'questions').at(-1)!;
+  assert.deepEqual([q.id, q.questions, q.about, q.round], [asked.asked, ['Which season does it start in?'], 'drawing:garden-flowers', 'r47']);
+  const reply = await me('chat.answer', { to: asked.asked, answers: ['Spring.'] });
+  assert.deepEqual([reply.text, reply.refs], ['My answers to your questions:\n- Which season does it start in?\n  Spring.', ['drawing:garden-flowers']]);
+});
+
 test('concepts: the person writes them, the agent proposes, and nothing in one is a timing', async () => {
   const made = await me('concepts.create', { name: 'The Slow Burn', text: 'It starts as a seed packet and takes hours to turn.' });
   assert.equal(made.id, 'the-slow-burn');

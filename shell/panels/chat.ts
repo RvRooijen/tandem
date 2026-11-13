@@ -15,6 +15,8 @@ interface Change {
   phase?: string; isNew?: boolean; pictures?: { before?: string; after?: string; looks?: { look: string; before?: string; after?: string }[] };
   /** Decided on its own or with the rest of its round; not set while it waits. */
   status?: 'accepted' | 'rejected';
+  /** What the agent asks the person about it: each answered in a field on the card. */
+  questions?: string[];
 }
 /** A round is 'decided' when its pieces went different ways: some taken, some refused. */
 interface Round {
@@ -43,6 +45,10 @@ export function refChip(app: App, ref: string, onRemove?: () => void): HTMLEleme
 export function chatPanel(): Panel {
   let app!: App;
   const rounds = new Map<string, Round>();
+  /** Questions the agent asked, by what they came with (a proposal, or a card of their own): what was answered, and what is being typed. */
+  const answered = new Map<string, string[]>();
+  const drafts = new Map<string, string[]>();
+  const asks = new Map<string, { questions: string[]; about?: string; el: HTMLElement }>();
   const list = h('div.chat');
   const status = h('div.agent-status', { hidden: true });
   const refsEl = h('div.refs');
@@ -208,6 +214,35 @@ export function chatPanel(): Panel {
       h('span.now', {}, short(c.after![k], k === 'text' ? 200 : 40))));
   }
 
+  /** The agent's questions, each with a field for the answer; once answered, with what was said. */
+  function questionFields(to: string, questions: string[]): HTMLElement {
+    const done = answered.get(to);
+    if (done) return h('div.questions.done', {}, questions.map((q, n) => h('div.q', {}, h('p.qtext', {}, q), h('p.qanswer', {}, done[n] || '(not answered)'))));
+    const draft = drafts.get(to) ?? questions.map(() => '');
+    drafts.set(to, draft);
+    const send = async () => {
+      if (!draft.some((d) => d.trim())) return app.toast('Answer at least one.');
+      await app.act('chat.answer', { to, answers: draft });
+    };
+    return h('div.questions', {},
+      questions.map((q, n) => {
+        const area = h<'textarea'>('textarea', { rows: 2, placeholder: 'Your answer', 'aria-label': `Answer: ${q}`, oninput: () => { draft[n] = area.value; } });
+        area.value = draft[n] ?? '';
+        return h('div.q', {}, h('p.qtext', {}, q), area);
+      }),
+      h('div.t-row', {}, h<'button'>('button.primary', { onclick: () => void send() }, questions.length === 1 ? 'Send answer' : 'Send answers')));
+  }
+
+  /** Questions that came on their own: a card of their own in the conversation. */
+  function askCard(id: string): HTMLElement {
+    const a = asks.get(id)!;
+    clear(a.el,
+      h('div.t-head', {}, h('b', {}, a.questions.length === 1 ? 'A question for you' : 'Questions for you'), answered.has(id) && h('span.state', {}, 'answered')),
+      a.about && h('div.refs', {}, refChip(app, a.about)),
+      questionFields(id, a.questions));
+    return a.el;
+  }
+
   /** Text as it was written, in full: its paragraphs, and what is marked in it. */
   const whole = (text: unknown, cls: string) => h(`div.${cls}`, {}, prose(String(text ?? '').trim()));
   const LINKS: Record<string, string> = { 'part-of': 'part of', 'leads-to': 'leads to', 'clashes-with': 'clashes with' };
@@ -323,7 +358,9 @@ export function chatPanel(): Panel {
             h<'button'>('button.yes', { 'aria-label': `Accept ${c.path}`, onclick: () => decide(true, c) }, '✓'),
             h<'button'>('button.no', { 'aria-label': `Reject ${c.path}`, onclick: () => decide(false, c) }, '✕'))),
         c.kind === 'drawing' ? pictures(c) : c.kind === 'code' ? codeFiles(c, r) : c.kind === 'setup' ? setupLines(c) : c.kind === 'concept' ? conceptLines(c) : fieldLines(c),
-        c.note && c.note !== 'a new concept' && h('div.note', {}, c.note))),
+        c.note && c.note !== 'a new concept' && h('div.note', {}, c.note),
+        // What the agent needs to hear about this piece is asked with it, while it is still to be decided or was taken.
+        c.questions?.length && c.status !== 'rejected' ? questionFields(c.id, c.questions) : null)),
       touched.size > 0 && h('div.touches', {}, 'touches ', [...touched].map(([id, t]) => h('span.t-chip.stage', { data: { stage: t.stage }, onclick: () => app.open('concepts', id) }, `${t.name} · ${t.stage}`))),
       r.status === 'pending' && h('div.t-row', {},
         coded && app.info.page && h<'button'>('button', { onclick: () => void app.playCopy() }, 'Play the copy'),
@@ -441,6 +478,23 @@ export function chatPanel(): Panel {
         r.status = ways.has('pending') ? 'pending' : ways.size === 1 ? [...ways][0] as Round['status'] : 'decided';
         roundCard(r);
       }
+      return;
+    }
+    if (ev.type === 'answered') {
+      // What was typed is what was said now: the fields make way for it, wherever the questions stand.
+      const to = String(ev.to);
+      answered.set(to, (ev.answers as unknown[]).map(String));
+      drafts.delete(to);
+      if (asks.has(to)) askCard(to);
+      for (const r of rounds.values()) if (r.changes.some((c) => c.id === to)) roundCard(r);
+      return;
+    }
+    if (ev.type === 'questions') {
+      const id = String(ev.id);
+      asks.set(id, { questions: (ev.questions as unknown[]).map(String), about: typeof ev.about === 'string' ? ev.about : undefined, el: h('div.card.ask') });
+      const stick = nearBottom();
+      list.append(askCard(id));
+      if (stick) toBottom();
       return;
     }
     const el = card(ev);

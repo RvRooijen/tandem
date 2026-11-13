@@ -282,6 +282,14 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     return { id: c.id, name: c.name, stage: c.stage, locked: locks.has(`concept:${c.id}`), summary: c.text.split('\n').find((l) => l.trim())?.slice(0, 140) ?? '', links: c.links, realised: c.realised };
   }
 
+  /** Questions for the person: a few, each short enough to answer in a field. */
+  const asQuestions = (v: unknown): string[] | undefined => {
+    if (v === undefined) return undefined;
+    if (!Array.isArray(v) || v.some((q) => typeof q !== 'string')) throw new CommandError('input', 'questions is a list of questions, each a sentence');
+    const list = (v as string[]).map((q) => q.trim()).filter(Boolean);
+    if (list.length > 5) throw new CommandError('input', 'at most five questions at a time: ask what changes what you would do');
+    return list;
+  };
   const checkList = (v: unknown, what: string) => {
     if (v !== undefined && !Array.isArray(v)) throw new CommandError('input', `${what} is a list`);
   };
@@ -306,6 +314,39 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         // Only what was really put there with chat.attach goes along: a message cannot point the agent at any file.
         const files = ((i.files ?? []) as { name?: unknown }[]).map((f) => attached(String(f?.name ?? ''))).filter(Boolean);
         return events.add({ type: 'message', by: c.by, text: i.text, ...(i.refs?.length && { refs: i.refs }), ...(files.length && { files }), ...(c.round && { round: c.round }) });
+      },
+    },
+    {
+      name: 'chat.ask', kind: 'write', agent: 'free',
+      about: 'Ask the person questions they answer in fields, in the chat: questions is a list (five at most), each a sentence. about is what they are about ("concept:<id>", "drawing:<name>"), if one thing. For questions about a concept you are proposing, give them with the concept instead (questions on concepts.create and concepts.update). Their answers come back as a message.',
+      input: { questions: 'json', about: 'string?' },
+      run(c, i) {
+        const questions = asQuestions(i.questions) ?? [];
+        if (!questions.length) throw new CommandError('input', 'ask at least one question');
+        const id = `q${Date.now().toString(36)}${events.last()}`;
+        events.add({ type: 'questions', by: c.by, id, questions, ...(i.about?.trim() && { about: i.about.trim() }), ...(c.round && { round: c.round }) });
+        return { asked: id, says: 'the person answers in the chat; their answers come as a message' };
+      },
+    },
+    {
+      name: 'chat.answer', kind: 'write',
+      about: 'The person\'s answers to questions the agent asked: to is what was asked (the id of the questions, or of the proposal they came with), answers a list in the order of the questions; one left empty is not answered. They go to the agent as a message.',
+      input: { to: 'string', answers: 'json' },
+      run(c, i) {
+        if (!Array.isArray(i.answers)) throw new CommandError('input', 'answers is a list, in the order of the questions');
+        const asked = events.since(0).filter((e) => e.type === 'questions').find((e) => e.id === i.to);
+        const proposal = asked ? undefined : proposals.list().find((p) => p.id === i.to);
+        const questions = (asked?.questions as string[] | undefined) ?? proposal?.questions;
+        if (!questions?.length) throw new CommandError('missing', `nothing was asked as ${i.to}`);
+        const answers = questions.map((_q, n) => String(i.answers[n] ?? '').trim());
+        if (!answers.some(Boolean)) throw new CommandError('input', 'nothing was answered');
+        const about = proposal ? `${proposal.kind}:${proposal.path}` : typeof asked?.about === 'string' ? asked.about : undefined;
+        const what = proposal ? ` about the ${proposal.kind} ${String((proposal.after as { name?: string }).name ?? proposal.path)}` : '';
+        events.add({ type: 'answered', by: c.by, to: i.to, answers });
+        const text = `My answers to your questions${what}:\n${questions.map((q, n) => (answers[n] ? `- ${q}\n  ${answers[n]}` : '')).filter(Boolean).join('\n')}`;
+        // A concept that is still a proposal is not there to be pointed at; what it is called is in the words.
+        const refs = about && !(proposal && proposal.status === 'pending' && !proposal.before) ? [about] : [];
+        return events.add({ type: 'message', by: c.by, kind: 'answers', text, ...(refs.length && { refs }) });
       },
     },
     {
@@ -476,9 +517,10 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'concepts.create', kind: 'write', agent: 'proposes',
-      about: 'A new concept: a name and a description in plain words, and if known its stage, its links ([{to, kind}], kind is part-of, leads-to or clashes-with; to may be a concept proposed in the same round) and what makes it real (realised: paths, drawings, tests). It starts as an idea unless said otherwise. The agent\'s becomes a proposal.',
-      input: { name: 'string', text: 'string?', stage: 'string?', links: 'json?', realised: 'json?' },
+      about: 'A new concept: a name and a description in plain words, and if known its stage, its links ([{to, kind}], kind is part-of, leads-to or clashes-with; to may be a concept proposed in the same round) and what makes it real (realised: paths, drawings, tests). questions is a list of what only the person can say about it: each gets a field on the card for their answer. It starts as an idea unless said otherwise. The agent\'s becomes a proposal.',
+      input: { name: 'string', text: 'string?', stage: 'string?', links: 'json?', realised: 'json?', questions: 'json?' },
       run(c, i) {
+        const questions = asQuestions(i.questions);
         const cid = concepts.slug(i.name);
         if (concepts.get(cid)) throw new CommandError('exists', `there already is a concept ${cid}`);
         for (const k of ['links', 'realised'] as const) checkList(i[k], k);
@@ -487,8 +529,8 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         if (isAgent(c.by)) {
           const round = c.round ?? 'loose';
           const { id: _id, ...after } = fresh;
-          const p = proposals.add({ round, by: c.by, kind: 'concept', path: cid, after: after as unknown as RecordValue, note: 'a new concept' });
-          events.add({ type: 'proposal', by: c.by, round, id: p.id, kind: 'concept', path: cid, after: p.after, note: p.note });
+          const p = proposals.add({ round, by: c.by, kind: 'concept', path: cid, after: after as unknown as RecordValue, note: 'a new concept', ...(questions && { questions }) });
+          events.add({ type: 'proposal', by: c.by, round, id: p.id, kind: 'concept', path: cid, after: p.after, note: p.note, ...(p.questions?.length && { questions: p.questions }) });
           return { proposed: p.id, id: cid, round };
         }
         concepts.save(fresh);
@@ -498,9 +540,10 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'concepts.update', kind: 'write', agent: 'proposes',
-      about: 'Change a concept: its name, text, stage (idea, design, build, playtest), links ([{to, kind}], kind is part-of, leads-to or clashes-with), realised (record paths, drawings, tests). The agent\'s becomes a proposal.',
-      input: { id: 'string', name: 'string?', text: 'string?', stage: 'string?', links: 'json?', realised: 'json?', note: 'string?' },
+      about: 'Change a concept: its name, text, stage (idea, design, build, playtest), links ([{to, kind}], kind is part-of, leads-to or clashes-with), realised (record paths, drawings, tests). questions is a list of what only the person can say about the change: each gets a field on the card for their answer (an empty list takes the questions of a pending proposal away). The agent\'s becomes a proposal.',
+      input: { id: 'string', name: 'string?', text: 'string?', stage: 'string?', links: 'json?', realised: 'json?', note: 'string?', questions: 'json?' },
       run(c, i) {
+        const questions = asQuestions(i.questions);
         if (i.stage !== undefined && !STAGES.includes(i.stage)) throw new CommandError('input', `stage is one of ${STAGES.join(', ')}`);
         // A concept that is itself still a proposal is worked on further as that proposal: its links and what makes it
         // real do not have to wait until the person has accepted it.
@@ -509,9 +552,9 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
           for (const k of ['links', 'realised'] as const) checkList(i[k], k);
           const more: Record<string, unknown> = {};
           for (const k of ['name', 'text', 'stage', 'links', 'realised'] as const) if (i[k] !== undefined && !same(i[k], coming.after[k])) more[k] = i[k];
-          if (!Object.keys(more).length) return { changed: false };
-          const p = proposals.add({ round: coming.round, by: c.by, kind: 'concept', path: i.id, after: more as RecordValue, note: coming.note });
-          events.add({ type: 'proposal', by: c.by, round: p.round, id: p.id, kind: 'concept', path: i.id, after: p.after, note: p.note });
+          if (!Object.keys(more).length && !questions) return { changed: false };
+          const p = proposals.add({ round: coming.round, by: c.by, kind: 'concept', path: i.id, after: more as RecordValue, note: coming.note, ...(questions && { questions }) });
+          events.add({ type: 'proposal', by: c.by, round: p.round, id: p.id, kind: 'concept', path: i.id, after: p.after, note: p.note, ...(p.questions?.length && { questions: p.questions }) });
           return { proposed: p.id, round: p.round, says: 'added to the proposal of this new concept' };
         }
         const now = concepts.get(i.id);
@@ -525,8 +568,8 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         if (isAgent(c.by)) {
           const round = c.round ?? 'loose';
           const before = Object.fromEntries(Object.keys(after).map((k) => [k, now[k as keyof Concept]]));
-          const p = proposals.add({ round, by: c.by, kind: 'concept', path: i.id, before: before as RecordValue, after: after as RecordValue, note: i.note ?? '' });
-          events.add({ type: 'proposal', by: c.by, round, id: p.id, kind: 'concept', path: i.id, before: p.before, after: p.after, note: p.note, touches: [{ id: now.id, name: now.name, stage: now.stage }] });
+          const p = proposals.add({ round, by: c.by, kind: 'concept', path: i.id, before: before as RecordValue, after: after as RecordValue, note: i.note ?? '', ...(questions && { questions }) });
+          events.add({ type: 'proposal', by: c.by, round, id: p.id, kind: 'concept', path: i.id, before: p.before, after: p.after, note: p.note, ...(p.questions?.length && { questions: p.questions }), touches: [{ id: now.id, name: now.name, stage: now.stage }] });
           return { proposed: p.id, round };
         }
         concepts.save({ ...now, ...(after as Partial<Concept>) });

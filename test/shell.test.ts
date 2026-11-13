@@ -225,6 +225,45 @@ test('chat: a round of several is one card, decided as one or piece by piece', a
   for (const id of ['poppies', 'clover']) await host.run('concepts.remove', { id }, 'me');
 });
 
+test('chat: what the agent asks has a field for the answer, on the concept it is about or on a card of its own', async () => {
+  await host.run('concepts.create', { name: 'Wells', text: 'A well by the gate.', questions: ['Is there water in it?', 'Who dug it?'] }, AGENT, 'r960');
+  await until(() => all('.card.prop').some((c) => $('.path[data-id=wells]', c)), 'the proposal');
+  const card = all('.card.prop').find((c) => $('.path[data-id=wells]', c))!;
+  assert.deepEqual(all('.questions .qtext', card).map((q) => q.textContent), ['Is there water in it?', 'Who dug it?']);
+  const fields = () => all('.questions textarea', card) as HTMLTextAreaElement[];
+  assert.equal(fields().length, 2);
+  type(fields()[0], 'Yes, cold and clear.');
+  // What is being typed is kept when the card is drawn again (the agent adds to its proposal meanwhile).
+  await host.run('concepts.update', { id: 'wells', stage: 'design' }, AGENT, 'r960');
+  await until(() => $('.path .t-chip.stage', card)?.textContent === 'design', 'the card to follow');
+  assert.equal(fields()[0].value, 'Yes, cold and clear.');
+  const before = host.events.last();
+  click(button('Send answers', card));
+  await until(() => $('.questions.done', card), 'the answers to stand where the fields were');
+  assert.deepEqual(all('.questions .qanswer', card).map((a) => a.textContent), ['Yes, cold and clear.', '(not answered)']);
+  assert.equal(all('.questions textarea', card).length, 0);
+  const sent = host.events.since(before).find((e) => e.type === 'message' && e.by === 'me')!;
+  assert.match(String(sent.text), /about the concept Wells:\n- Is there water in it\?\n  Yes, cold and clear\.$/);
+  await until(() => !app.agent.busy && host.events.since(before).some((e) => e.type === 'message' && e.by === 'agent'), 'the agent to have heard it');
+  await until(() => !app.agent.busy, 'the agent to be done');
+  click(button('Reject', card));
+  await until(() => card.dataset.status === 'rejected', 'the round to be put away');
+  assert.equal($('.questions', card), null, 'what was asked about a thing that was refused goes with it');
+
+  // Questions that come on their own are a card of their own.
+  await host.run('chat.ask', { questions: ['Which gate?'], about: 'drawing:gnome' }, AGENT, 'r961');
+  await until(() => $('.card.ask'), 'the question');
+  const ask = all('.card.ask').at(-1)!;
+  assert.match(ask.textContent!, /A question for you.*drawing gnome.*Which gate\?/);
+  type($('textarea', ask), 'The north one.');
+  click(button('Send answer', ask));
+  await until(() => /answered/.test($('.t-head', ask).textContent!) && $('.qanswer', ask)?.textContent === 'The north one.', 'it to say what was answered');
+  await until(() => !app.agent.busy, 'the agent to be done');
+  await new Promise((r) => setTimeout(r, 200));
+  await until(() => !app.agent.busy, 'the agent to be done');
+  for (const round of new Set((await host.run('proposals.list', { status: 'pending' }, 'me') as { round: string }[]).map((p) => p.round))) await host.run('proposals.decide', { round, accept: false }, 'me');
+});
+
 test('chat: @ points at a concept or a drawing, and a photo or a file goes along with a message', async () => {
   await until(() => !app.agent.busy, 'the agent to be done');
   await host.run('concepts.create', { name: 'Garden gate' }, 'me');

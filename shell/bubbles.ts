@@ -139,6 +139,10 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
           proposal(round);
           break;
         }
+        case 'questions':
+          // The agent needs something said: that waits like a proposal does, and is answered in the chat.
+          if (live && shut) said.push({ text: `The agent has ${(ev.questions as unknown[]).length === 1 ? 'a question' : 'questions'} for you: ${short(String((ev.questions as unknown[])[0]), 120)}`, error: false, until: Date.now() + 12000 });
+          break;
         case 'proposal.decided': {
           // Decided piece by piece, the round keeps waiting for what is left of it.
           const round = String(ev.round), open = rounds.get(round);

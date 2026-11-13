@@ -12,7 +12,7 @@
     "tandem": "node core/cli.ts",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --no-warnings --test --test-force-exit \"test/**/*.test.ts\"",
+    "test": "node --no-warnings --test --test-force-exit \"test/**/*.test.ts\" \"games/*/test/**/*.test.ts\"",
     "game": "vite --config games/gnome-garden/vite.config.ts",
     "game:build": "vite build --config games/gnome-garden/vite.config.ts"
   },

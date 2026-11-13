@@ -124,6 +124,22 @@ test('a message from the person is answered by the agent, whose only hands are c
   await until(() => !s.runner!.status().busy);
   assert.equal(s.runner!.status().context, 64_100);
 
+  // A conversation that goes on after tandem gained a command is told so, once: it does not read its list again.
+  assert.doesNotMatch(String(host.events.since(n2).find((e) => e.by === 'agent')!.text), /New:/);
+  assert.ok(JSON.parse(readFileSync(join(dir, '.tandem/data/agent.json'), 'utf8')).commands.includes('concepts.create'), 'what it was told of is kept, for after a restart');
+  host.registry.add({ name: 'page.wave', kind: 'write', agent: 'free', about: 'Wave at the person. From their own screen.', run: () => ({ waved: true }) });
+  host.registry.add({ name: 'page.secret', kind: 'write', about: 'Only the person does this.', run: () => ({}) });
+  const g1 = host.events.last();
+  await post('chat.send', { text: 'now you can' });
+  await until(() => host.events.since(g1).some((e) => e.type === 'message' && e.by === 'agent'));
+  assert.match(String(host.events.since(g1).find((e) => e.by === 'agent')!.text), /New: page\.wave \(Wave at the person\.\)\.$/, 'what it may now do itself, in a line');
+  await until(() => !s.runner!.status().busy);
+  const g2 = host.events.last();
+  await post('chat.send', { text: 'and once more' });
+  await until(() => host.events.since(g2).some((e) => e.type === 'message' && e.by === 'agent'));
+  assert.doesNotMatch(String(host.events.since(g2).find((e) => e.by === 'agent')!.text), /New:/);
+  await until(() => !s.runner!.status().busy);
+
   // A new conversation: the agent does not carry the old one on.
   await post('chat.new');
   assert.equal((await post('agent.status')).result.session, false);

@@ -44,10 +44,13 @@ export function createRunner(host: Host) {
   let session: string | undefined;
   // The context of the last request the agent made: what the next message starts from.
   let context = 0;
+  /** The commands this conversation was last told of: what tandem gained since is said at the next message. */
+  let told: string[] | undefined;
   try {
     const kept = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
     session = kept.session;
     context = session ? Number(kept.context) || 0 : 0;
+    if (session && Array.isArray(kept.commands)) told = kept.commands.map(String);
   } catch { /* start a new conversation */ }
   const off = process.env.TANDEM_AGENT === 'off';
   const queue: Event[] = [];
@@ -65,8 +68,21 @@ export function createRunner(host: Host) {
   const beat = setInterval(() => { if (busy) cast(true); }, 5000);
   beat.unref?.();
 
-  const keep = () => writeFileSync(file, JSON.stringify({ session, context: session ? context : 0 }, null, 2));
-  const forget = () => { session = undefined; context = 0; keep(); };
+  const keep = () => writeFileSync(file, JSON.stringify({ session, context: session ? context : 0, ...(session && told && { commands: told }) }, null, 2));
+  const forget = () => { session = undefined; context = 0; told = undefined; keep(); };
+
+  /**
+   * A conversation that goes on after tandem itself was changed does not look at its list of commands again: what
+   * it could not do a moment ago it goes on believing it cannot. So what is new since it was last told is said
+   * with the message.
+   */
+  function gained(): string {
+    const list = host.registry.list().filter((c) => c.agent !== 'no');
+    const fresh = session && told ? list.filter((c) => !told!.includes(c.name)) : [];
+    told = list.map((c) => c.name);
+    if (!fresh.length) return '';
+    return ` Tandem itself was changed since your last turn, and you can now do what you could not before: ${fresh.map((c) => `${c.name} (${c.about.split(/(?<=[.:])\s/)[0]})`).join('; ')}. They are in your list of commands; if something you were stopped at is now possible this way, do it this way.`;
+  }
 
   function intro(): string {
     const list = host.registry.list().map((c) => {
@@ -134,7 +150,7 @@ export function createRunner(host: Host) {
     const shared = Array.isArray(ev.files) && ev.files.length
       ? `\n\n[The person shared ${ev.files.length === 1 ? 'a file' : 'files'} with this message; Read ${ev.files.length === 1 ? 'it' : 'them'} before you answer:]\n${(ev.files as { path: string; label: string; image: boolean }[]).map((f) => `- ${f.path} (${f.image ? 'a picture' : 'a file'}, "${f.label}")`).join('\n')}`
       : '';
-    const prompt = `${from}${ev.text}${expand(ev.refs)}${shared}\n\n[This is round ${round}.${where}${copy}]`;
+    const prompt = `${from}${ev.text}${expand(ev.refs)}${shared}\n\n[This is round ${round}.${where}${copy}${gained()}]`;
     const may = tools(host);
     const args = [
       '-p', prompt, '--append-system-prompt', intro(),

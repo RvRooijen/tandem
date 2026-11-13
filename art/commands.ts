@@ -9,6 +9,7 @@ import { CommandError, isAgent, type CommandDef } from '../core/commands.ts';
 import type { EventLog } from '../core/events.ts';
 import type { Locks } from '../core/locks.ts';
 import type { Proposal, Proposals } from '../core/proposals.ts';
+import { createPictures, type Pictures } from './pictures.ts';
 import { describeDrawing } from './sprites.ts';
 import { parseArt } from './src/parse.js';
 import { createWorkers } from './workers.ts';
@@ -29,7 +30,8 @@ export interface ArtOptions {
 
 export function createArt(o: ArtOptions) {
   const spaces = createWorkspaces(o.gameDir, join(o.dataDir, 'art-work'));
-  const workers = createWorkers({ spaces, events: o.events, proposals: o.proposals, newLookFile: o.newLookFile });
+  const pictureOf = createPictures(spaces, o.newLookFile);
+  const workers = createWorkers({ spaces, events: o.events, proposals: o.proposals, pictures: pictureOf });
   const artFile = (name: string) => join(o.gameDir, 'art', `${name}.txt`);
   const depthFile = (name: string) => join(o.gameDir, 'depth', `${name}.txt`);
   const has = (name: string) => validName(name) && existsSync(artFile(name));
@@ -147,11 +149,8 @@ export function createArt(o: ArtOptions) {
         const after = { text: i.text, ...(i.depth !== undefined && { depth: i.depth }) };
         if (isAgent(c.by)) {
           const round = c.round ?? 'loose';
-          const pictures: { before?: string; after?: string } = {};
-          try {
-            pictures.after = (await picture(i.name, after)).url;
-            if (was) pictures.before = (await picture(i.name, undefined)).url;
-          } catch (e) { throw new CommandError('input', `that does not render: ${e instanceof Error ? e.message : e}`); }
+          let pictures: Pictures;
+          try { pictures = await pictureOf.of(i.name, was, after); } catch (e) { throw new CommandError('input', `that does not render: ${e instanceof Error ? e.message : e}`); }
           const p = o.proposals.add({ round, by: c.by, kind: 'drawing', path: i.name, before: was, after, note: i.note ?? '' });
           o.events.add({ type: 'proposal', by: c.by, round, id: p.id, kind: 'drawing', path: i.name, phase: 'color', pictures, note: p.note, isNew: !was });
           return { proposed: p.id, round, picture: pictures.after };

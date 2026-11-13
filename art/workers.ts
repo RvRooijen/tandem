@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EventLog } from '../core/events.ts';
 import type { Proposals } from '../core/proposals.ts';
+import type { PictureMaker, Pictures } from './pictures.ts';
 import type { Workspaces } from './workspace.ts';
 
 const GUIDE = fileURLToPath(new URL('./GUIDE.md', import.meta.url));
@@ -55,8 +56,7 @@ export interface WorkersOptions {
   spaces: Workspaces;
   events: EventLog;
   proposals: Proposals;
-  /** A new file for a picture, and the address the page gets it from. */
-  newLookFile(): { file: string; url: string };
+  pictures: PictureMaker;
 }
 
 export function createWorkers(o: WorkersOptions) {
@@ -84,18 +84,9 @@ export function createWorkers(o: WorkersOptions) {
   async function propose(w: Worker) {
     for (const c of spaces.changes(w.id)) {
       if (!w.names.includes(c.name)) continue;
-      const pictures: { before?: string; after?: string; depth?: string } = {};
+      let pictures: Pictures = {};
       try {
-        const after = o.newLookFile();
-        copyFileSync(await spaces.render(w.id, `art/${c.name}.txt`), after.file);
-        pictures.after = after.url;
-        if (c.before.text !== undefined) {
-          // The drawing as it was, rendered in a workspace of its own.
-          spaces.ensure('_before', true);
-          const before = o.newLookFile();
-          copyFileSync(await spaces.render('_before', `art/${c.name}.txt`), before.file);
-          pictures.before = before.url;
-        }
+        pictures = await o.pictures.of(c.name, c.before.text !== undefined ? c.before : undefined, c.after);
       } catch (e) {
         w.said = `${w.said}\n(It could not be rendered: ${e instanceof Error ? e.message : e})`.trim();
       }
@@ -204,6 +195,16 @@ export function createWorkers(o: WorkersOptions) {
       events.add({ type: 'art.round', by: `agent:${w.id}`, worker: w.id, name: w.names[0], state: w.state, phase: w.phase, text: w.state === 'failed' ? `The worker failed: ${w.doing}` : w.said });
     });
   }
+
+  // What a waiting worker proposes is pictured again when the engine starts: the pictures are the engine's, and a
+  // newer engine may show more (every look of a drawing, not only the first).
+  setTimeout(async () => {
+    for (const id of spaces.list()) {
+      const w = get(id);
+      if (w?.state !== 'waiting' || !proposals.list({ status: 'pending', round: id }).length) continue;
+      try { await propose(w); } catch { /* it keeps the pictures it had */ }
+    }
+  }, 500).unref?.();
 
   return {
     get,

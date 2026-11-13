@@ -253,11 +253,12 @@ test('art: the drawings are listed, one is looked at and locked, and a worker\'s
   click(button('Ask a worker'));
   await until(() => $('canvas.live'), 'the worker, watched');
   assert.equal($('#t-body .bar b').textContent, 'gnome');
-  // Two rows (stand, walk), the widest two frames of 32 across, a pixel between.
-  await until(() => ($('canvas.live') as HTMLCanvasElement).width === 67 && ($('canvas.live') as HTMLCanvasElement).height === 67, 'the drawing, live', 20000);
+  // Every look of it: three looks, each two rows (stand, walk), the widest two frames of 32 across, a pixel between.
+  await until(() => ($('canvas.live') as HTMLCanvasElement).width === 67 && ($('canvas.live') as HTMLCanvasElement).height === 199, 'the drawing, live', 20000);
+  assert.equal($('.t-hint.looks').textContent, 'Every look, top to bottom: cozy · odd · hollow');
   await until(() => all('.worker-rest button').some((b) => b.textContent === 'Accept'), 'its round', 20000);
   assert.deepEqual(all('.worker-rest button').map((b) => b.textContent), ['Send feedback', 'Accept', 'Reject']);
-  assert.deepEqual(all('.pictures figcaption').map((f) => f.textContent), ['as it is', 'as proposed']);
+  assert.deepEqual(all('.pictures figcaption').map((f) => f.textContent), ['cozy, as it is', 'cozy, as proposed', 'odd, as it is', 'odd, as proposed', 'hollow, as it is', 'hollow, as proposed']);
   assert.match($('.worker-rest .said').textContent!, /Changed gnome\. Render ok/);
   assert.match($('.worker-rest').textContent!, /Asked.*a taller hat/);
   assert.equal($('#t-body .bar .t-chip').textContent, 'to accept');

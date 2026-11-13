@@ -201,6 +201,7 @@ figure.card.look figcaption { padding: 6px 10px; font-size: 12px; color: var(--t
 /* ---- art */
 .stage-live { display: grid; place-items: center; background: #101014; border-radius: 12px; padding: 10px; min-height: 120px; overflow: auto; margin-bottom: 10px; }
 canvas.live { image-rendering: pixelated; display: block; }
+#tandem .t-hint.looks:empty { display: none; }
 .worker-rest .working { padding: 6px 2px 10px; }
 .worker-rest .working button { min-height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--t-line); background: var(--t-raise); margin-left: auto; }
 .worker-rest .said { background: var(--t-raise); border-radius: 12px; padding: 9px 12px; margin: 8px 0; font-size: 14px; }

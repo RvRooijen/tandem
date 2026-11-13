@@ -21,7 +21,7 @@ interface Seen {
   said: string;
   /** What it was asked and told, in order. */
   asked: string[];
-  pictures?: { before?: string; after?: string };
+  pictures?: { before?: string; after?: string; looks?: { look: string; before?: string; after?: string }[] };
   isNew?: boolean;
   /** Its round was accepted or rejected: it is done. */
   decided?: string;
@@ -36,7 +36,14 @@ export function artPanel(): Panel {
   const seen = new Map<string, Seen>();
   const workersEl = h('div.workers');
   /** The parts of the worker view that change while it is open. */
-  let live: { id: string; canvas: HTMLCanvasElement; rest: HTMLElement } | undefined;
+  let live: { id: string; canvas: HTMLCanvasElement; rest: HTMLElement; looks: HTMLElement } | undefined;
+
+  /** Draw a worker's drawing as it is now, and say which looks are which. */
+  function drawLive(text: string) {
+    if (!live) return;
+    const looks = drawArt(live.canvas, text);
+    if (looks) live.looks.textContent = looks.length > 1 ? `Every look, top to bottom: ${looks.join(' · ')}` : '';
+  }
 
   const know = (id: string, name = ''): Seen => {
     let w = seen.get(id);
@@ -129,7 +136,10 @@ export function artPanel(): Panel {
       !w.decided && w.state === 'failed' && h('div.fail', {}, `It failed: ${w.doing}`),
       !w.decided && w.state === 'stopped' && h('p.t-hint', {}, 'It was stopped. Feedback sets it going again where it was.'),
       w.said && w.state !== 'failed' && h('div.said', {}, prose(w.said)),
-      w.state !== 'running' && w.pictures?.after && h('div.pictures', {}, pic(w.pictures.before, 'as it is'), pic(w.pictures.after, w.phase === 'silhouette' ? 'the silhouette' : w.isNew ? 'new' : 'as proposed')),
+      // A drawing with looks is compared look by look: the change may be in any of them.
+      w.state !== 'running' && w.pictures?.after && (w.pictures.looks?.length
+        ? w.pictures.looks.map((l) => h('div.pictures', {}, pic(l.before, `${l.look}, as it is`), pic(l.after, l.before ? `${l.look}, as proposed` : `${l.look}, new`), !l.after && h('div.note', {}, `${l.look} would be gone`)))
+        : h('div.pictures', {}, pic(w.pictures.before, 'as it is'), pic(w.pictures.after, w.phase === 'silhouette' ? 'the silhouette' : w.isNew ? 'new' : 'as proposed'))),
       !w.decided && w.state !== 'running' && [
         box,
         h('div.t-row', {},
@@ -148,17 +158,19 @@ export function artPanel(): Panel {
     const w = know(id);
     const canvas = h<'canvas'>('canvas.live', { 'aria-label': `${w.name || 'the drawing'}, as the worker has it` });
     const rest = h('div.worker-rest');
-    live = { id, canvas, rest };
+    const looks = h('p.t-hint.looks');
+    live = { id, canvas, rest, looks };
     clear(body,
       h('div.bar', {}, h<'button'>('button.link', { onclick: () => void list() }, '‹ Art'), h('b', {}, w.name || 'a worker'), h('span.grow'), h('span.t-chip', {}, w.decided ?? stateWords(w))),
       h('div.stage-live', {}, canvas),
+      looks,
       rest);
     paintWorker(w, rest);
     // What it has drawn so far; from here on its typing comes in by itself.
-    if (w.draft) drawArt(canvas, w.draft);
+    if (w.draft) drawLive(w.draft);
     else if (!w.decided && w.name) {
       const got = await app.act<{ text: string }>('art.get', { name: w.name, worker: id });
-      if (got?.text && live?.id === id && !w.draft) drawArt(canvas, got.text);
+      if (got?.text && live?.id === id && !w.draft) drawLive(got.text);
     }
   }
 
@@ -213,7 +225,7 @@ export function artPanel(): Panel {
           const w = know(String(ev.worker));
           if (ev.depth) break;                    // the depth map is not what is being watched
           w.draft = String(ev.text);
-          if (live?.id === w.id) drawArt(live.canvas, w.draft);
+          if (live?.id === w.id) drawLive(w.draft);
           break;
         }
         case 'art.round': {

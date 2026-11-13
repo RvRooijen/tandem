@@ -9,7 +9,7 @@ interface Change {
   id: string; kind: string; path: string; before?: Record<string, unknown>; after?: Record<string, unknown>; note: string;
   touches?: { id: string; name: string; stage: string }[];
   /** A drawing: what it looks like. */
-  phase?: string; isNew?: boolean; pictures?: { before?: string; after?: string };
+  phase?: string; isNew?: boolean; pictures?: { before?: string; after?: string; looks?: { look: string; before?: string; after?: string }[] };
 }
 interface Round { round: string; by: string; changes: Change[]; status: 'pending' | 'accepted' | 'rejected'; el?: HTMLElement }
 
@@ -102,6 +102,8 @@ export function chatPanel(): Panel {
   /** A drawing is shown, not spelled out: as it was and as it would be. */
   function pictures(c: Change): HTMLElement {
     const pic = (url: string | undefined, label: string) => url && h('figure', { onclick: () => app.zoom(url) }, h<'img'>('img', { src: url, alt: `${c.path}, ${label}`, loading: 'lazy' }), h('figcaption', {}, label));
+    if (c.pictures?.looks?.length)
+      return h('div', {}, c.pictures.looks.map((l) => h('div.pictures', {}, pic(l.before, `${l.look}, as it is`), pic(l.after, l.before ? `${l.look}, as proposed` : `${l.look}, new`))));
     return h('div.pictures', {}, pic(c.pictures?.before, 'as it is'), pic(c.pictures?.after, c.phase === 'silhouette' ? 'the silhouette' : c.isNew ? 'new' : 'as proposed'), !c.pictures?.after && h('div.note', {}, 'No picture could be made of it.'));
   }
 

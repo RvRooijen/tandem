@@ -134,6 +134,30 @@ test('feedback on a drawing there is: a round, more feedback, and a rejection th
   assert.deepEqual(await me('art.workers'), []);
 });
 
+test('a drawing with looks is pictured look by look, so a change in one of them shows', async () => {
+  // The gnome has three looks. A proposal that changes one colour of one of them:
+  const gnome = (await me('art.get', { name: 'gnome' })).text as string;
+  const line = gnome.split('\n').find((l) => l.startsWith('@recolor hollow'))!;
+  const changed = gnome.replace(line, `${line.replace(/(\S)=#[0-9a-f]{6}/, '$1=#ff00ff')}`);
+  assert.notEqual(changed, gnome);
+  await agent('art.set', { name: 'gnome', text: changed, note: 'hollow, but pinker' }, 'r30');
+  const p = host.events.since(0).at(-1)!;
+  const pics = p.pictures as { before: string; after: string; looks: { look: string; before?: string; after?: string }[] };
+  assert.deepEqual(pics.looks.map((l) => l.look), ['cozy', 'odd', 'hollow']);
+  const bytes = (url: string) => readFileSync(join(dir, 'data/looks', url.split('/').pop()!));
+  assert.ok(pics.looks.every((l) => l.before && l.after));
+  assert.ok(bytes(pics.looks[0].before!).equals(bytes(pics.looks[0].after!)), 'cozy is as it was');
+  assert.ok(bytes(pics.looks[1].before!).equals(bytes(pics.looks[1].after!)), 'and so is odd');
+  assert.ok(!bytes(pics.looks[2].before!).equals(bytes(pics.looks[2].after!)), 'hollow is where the change is, and it shows');
+  assert.ok(bytes(pics.before).equals(bytes(pics.after)), 'which the plain picture alone would have hidden');
+
+  // A look that is new has no before.
+  await agent('art.set', { name: 'gnome', text: gnome.replace(line, `${line}\n@recolor frosty s=#ffffff`) }, 'r30');
+  const again = host.events.since(0).at(-1)!.pictures as typeof pics;
+  assert.deepEqual(again.looks.map((l) => [l.look, !!l.before, !!l.after]), [['cozy', true, true], ['odd', true, true], ['hollow', true, true], ['frosty', false, true]]);
+  await me('proposals.decide', { round: 'r30', accept: false });
+});
+
 test('a worker that fails says so, and a worker can be stopped', async () => {
   const w = (await me('art.ask', { name: 'gnome', message: 'make it fail' })).worker as string;
   await until(() => rounds(w).length === 1, 'the failure');

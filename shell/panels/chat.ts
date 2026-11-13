@@ -14,6 +14,7 @@ export function refChip(app: App, ref: string, onRemove?: () => void): HTMLEleme
     if (kind === 'concept') app.open('concepts', rest);
     else if (kind === 'record') app.open('content', rest);
     else if (kind === 'entity') app.open('inspect', rest);
+    else if (kind === 'drawing') app.open('art', rest);
     else if (kind === 'point') { const [x, y] = rest.split(',').map(Number); app.point(x, y); }
   };
   return h('span.chip.ref', { data: { kind } },
@@ -153,6 +154,12 @@ export function chatPanel(): Panel {
         return h('div.sys.tap', { onclick: () => app.open(String(ev.tab), ev.id ? String(ev.id) : undefined) }, `↗ opened ${ev.tab}${ev.id ? ` · ${ev.id}` : ''}`);
       case 'record.changed':
         return h('div.sys.tap', { onclick: () => app.open('content', String(ev.path)) }, `✎ ${ev.path} changed: ${Object.entries(ev.after as object).map(([k, v]) => `${k} ${short(v, 24)}`).join(', ')}`);
+      case 'art.asked':
+        return h('div.sys.tap', { onclick: () => app.open('art') }, `✎ ${ev.by === 'me' ? 'you' : 'the agent'} asked a pixeldraw worker (${ev.worker}) about ${ev.name}: ${String(ev.message).slice(0, 120)}`);
+      case 'art.accepted':
+        return h('div.sys.tap', { onclick: () => app.open('art') }, `✓ worker ${ev.worker} accepted in pixeldraw`);
+      case 'art.imported':
+        return h('div.sys', {}, `✓ ${ev.drawings} drawings brought into the game`);
       case 'concept.changed':
         return h('div.sys.tap', { onclick: () => ev.what !== 'removed' && app.open('concepts', String(ev.id)) }, `✎ concept ${ev.id} ${ev.what}`);
       default:

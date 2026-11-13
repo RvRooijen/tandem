@@ -65,6 +65,8 @@ export function createRunner(host: Host) {
         } else if (kind === 'entity') {
           const e = entityView(host.world(), host.game, Number(rest));
           out.push(e ? `Entity ${rest} in the world being played: ${JSON.stringify(e.components)}` : `Entity ${rest} (no longer there)`);
+        } else if (kind === 'drawing') {
+          out.push(`Drawing ${rest}: one of the game's drawings, made in pixeldraw. See it with art.look.`);
         } else if (kind === 'point') {
           out.push(`A point in the garden: ${rest} (world units)`);
         } else out.push(ref);

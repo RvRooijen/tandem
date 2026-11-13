@@ -102,7 +102,7 @@ test('the game runs in the page and the tools lie over it, shut', async () => {
   assert.ok($('#drawer'), 'with its own drawer');
   assert.ok($('#t-fab'));
   assert.ok($('#t-sheet').classList.contains('shut'));
-  assert.deepEqual(all('.t-tab').map((t) => t.textContent), ['Chat', 'Concepts', 'Content', 'Inspect', 'Playtest']);
+  assert.deepEqual(all('.t-tab').map((t) => t.textContent), ['Chat', 'Concepts', 'Content', 'Art', 'Inspect', 'Playtest']);
   const clock = (app.page.world.game as { s: { clock: number } }).s.clock;
   await until(() => (app.page.world.game as { s: { clock: number } }).s.clock > clock, 'the game to move');
   // The page shares its world with the host, where the agent can read it.
@@ -215,6 +215,24 @@ test('content: a record is changed by hand, and the game in the page follows', a
   assert.deepEqual(app.refs.splice(0), ['record:flowers/tulip']);
 });
 
+test('art: the drawings are listed, one is looked at, and it can be handed to the agent', async () => {
+  tab('Art');
+  await until(() => all('#t-body .item').length === 7, 'the drawings');
+  assert.match(all('#t-body .item')[0].textContent!, /gnome.*32×32/);
+  assert.ok(button('Bring drawings into the game') && button('Ask a worker'));
+  click(all('#t-body .item')[0]);
+  await until(() => $('.sheet img'), 'the sheet', 15000);
+  assert.match(($('.sheet img') as HTMLImageElement).src, /\/api\/file\/looks\/look-/);
+  assert.match($('.sheet .hint').textContent!, /stand · walk/);
+  click(all('.chips .chip').find((c) => c.textContent === 'walk ×2')!);
+  await until(() => /walk 1 · walk 2/.test($('.sheet .hint')?.textContent ?? ''), 'the walk', 15000);
+  // Asking for a change needs words.
+  click(button('Ask a worker'));
+  assert.equal($('#t-toast').textContent, 'Say what should change.');
+  click(button('Talk about this'));
+  assert.deepEqual(app.refs.splice(0), ['drawing:gnome']);
+});
+
 test('inspect: the entities of the world being played, one of them live, and a finger that asks instead of plays', async () => {
   tab('Inspect');
   await until(() => all('#t-body h3').some((x) => /entities/.test(x.textContent!)), 'the summary');
@@ -226,9 +244,11 @@ test('inspect: the entities of the world being played, one of them live, and a f
   await until(() => /4 with/.test($('#t-body .bar b')?.textContent ?? ''), 'the flowers');
   click($('#t-body .item'));
   await until(() => $('.comp'), 'one flower');
+  // The values on the screen follow the running game: set the flower back and watch it show.
   const growth = all('.kv').find((k) => $('.k', k).textContent === 'growth')!;
-  const was = $('.v', growth).textContent;
-  await until(() => $('.v', growth).textContent !== was, 'the value to move as the flower grows');
+  const id = Number($('#t-body .bar b').textContent!.match(/#(\d+)/)![1]);
+  await app.act('ecs.set', { id, component: 'Flower', field: 'growth', value: 0.25 });
+  await until(() => Number($('.v', growth).textContent) >= 0.25 && Number($('.v', growth).textContent) < 0.6, 'the value on the screen to follow the game');
 
   // Touch a value to change it in the running game.
   const kind = all('.kv').find((k) => $('.k', k).textContent === 'kind')!;

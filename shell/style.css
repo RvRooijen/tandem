@@ -193,6 +193,12 @@ figure.card.look figcaption { padding: 6px 10px; font-size: 12px; color: var(--t
 .look-at { align-items: center; }
 .look-at span { color: var(--t-soft); }
 
+/* ---- art */
+.sheet img { display: block; width: 100%; image-rendering: pixelated; border-radius: 10px; cursor: zoom-in; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+#tandem .chip.tap { cursor: pointer; min-height: 32px; padding: 3px 12px; color: var(--t-ink); }
+pre.workers { font-family: var(--t-mono); font-size: 12px; color: var(--t-soft); background: var(--t-raise); border-radius: 10px; padding: 10px; white-space: pre-wrap; word-break: break-word; margin-bottom: 8px; }
+
 /* ---- over the stage */
 #t-banner {
   position: fixed; z-index: 24; left: 50%; transform: translateX(-50%); top: calc(34px + env(safe-area-inset-top));

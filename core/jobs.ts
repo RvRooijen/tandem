@@ -16,7 +16,9 @@ export function runJob<T>(spec: JobSpec, timeoutMs = 10 * 60_000): Promise<T> {
     child.on('close', (code) => {
       clearTimeout(timer);
       const m = out.match(/@@result (.*)\n?$/);
+      const said = out.match(/@@error (.*)\n?$/);
       if (code === 0 && m) resolve(JSON.parse(m[1]) as T);
+      else if (said) reject(new Error(JSON.parse(said[1])));
       else reject(new Error(`the ${spec.do} job failed: ${(err || out).trim().split('\n').slice(-3).join(' ') || `exit ${code}`}`));
     });
     child.stdin.end(JSON.stringify(spec));

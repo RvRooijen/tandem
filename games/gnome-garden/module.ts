@@ -1,7 +1,7 @@
 // Gnome Garden as a module of the engine: its components, its content as
 // records, how to make a world, draw it, and let a bot play it.
 import type { CommandDef } from '../../core/commands.ts';
-import type { GameModule, World } from '../../core/game.ts';
+import type { GameModule, Picture, World } from '../../core/game.ts';
 import { Critter, Flower, Gnome, Move, Pos, Spark, Visitor } from './src/sim/components.ts';
 import { ABILITIES, BEATS, FLOWERS, GNOMES, UPGRADES, type RoleId } from './src/sim/content.ts';
 import { totalGnomes } from './src/sim/economy.ts';
@@ -10,6 +10,8 @@ import { applyRecords, exportRecords } from './src/sim/records.ts';
 import { newState } from './src/sim/state.ts';
 import { WORLD_H, WORLD_W } from './src/sim/world.ts';
 import { ZOOM, createScene, type Scene } from './src/render/scene.ts';
+import { ALPHABET, ART } from './src/render/art.gen.ts';
+import { hex } from './src/render/fb.ts';
 import { fmt, fmtTime } from './src/util.ts';
 import { PROFILES, playthrough } from './tools/bot.ts';
 
@@ -50,6 +52,19 @@ function wrap(g: Game): World {
 
 const gameOf = (w: World) => w.game as Game;
 
+/** One frame of a drawing as a picture. */
+function drawingFrame(name: string, text: string): Picture {
+  const s = ART[name];
+  const colors = s.pal.map(hex);
+  const px = new Uint32Array(s.w * s.h);
+  for (let i = 0; i < px.length; i++) {
+    const at = i * s.cpp;
+    if (text[at] === '.') continue;
+    px[i] = colors[s.cpp === 1 ? ALPHABET.indexOf(text[at]) : ALPHABET.indexOf(text[at]) * ALPHABET.length + ALPHABET.indexOf(text[at + 1])];
+  }
+  return { w: s.w, h: s.h, px };
+}
+
 export const game: GameModule = {
   id: 'gnome-garden',
   name: 'Gnome Garden',
@@ -74,6 +89,24 @@ export const game: GameModule = {
     return { w, h, px: scene.fb.px };
   },
   profiles: Object.keys(PROFILES),
+  art: {
+    list: () => Object.entries(ART).map(([name, s]) => ({
+      name, w: s.w, h: s.h,
+      looks: Object.fromEntries(Object.entries(s.looks).map(([look, anims]) => [look, Object.fromEntries(Object.entries(anims).map(([a, f]) => [a, f.length]))])),
+    })),
+    frames(name, look, anim) {
+      const s = ART[name];
+      if (!s) throw new Error(`there is no drawing called ${name}; there are: ${Object.keys(ART).join(', ')}`);
+      const anims = s.looks[look ?? Object.keys(s.looks)[0]];
+      if (!anims) throw new Error(`${name} has no look called ${look}; it has: ${Object.keys(s.looks).join(', ')}`);
+      if (anim) {
+        if (!anims[anim]) throw new Error(`${name} has no animation called ${anim}; it has: ${Object.keys(anims).join(', ')}`);
+        return anims[anim].map((f, i) => ({ label: `${anim} ${i + 1}`, pic: drawingFrame(name, f) }));
+      }
+      // The last frame says most: a flower in bloom, not its sprout.
+      return Object.entries(anims).map(([a, f]) => ({ label: a, pic: drawingFrame(name, f[f.length - 1]) }));
+    },
+  },
   playthrough(world, profile, opts) {
     const g = gameOf(world);
     const until = opts.untilSeconds;

@@ -4,6 +4,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { artCommands } from './art.ts';
 import { CommandError, createRegistry, isAgent, type By, type CommandDef, type Registry } from './commands.ts';
 import { FIRMNESS, createConcepts, type Concept, type Concepts } from './concepts.ts';
 import { createEventLog, type EventLog } from './events.ts';
@@ -147,7 +148,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     // ---- talking
     {
       name: 'chat.send', kind: 'write', agent: 'free',
-      about: 'Say something in the conversation. refs is a list of things it is about: "concept:<id>", "record:<path>", "entity:<id>", "point:<x>,<y>".',
+      about: 'Say something in the conversation. refs is a list of things it is about: "concept:<id>", "record:<path>", "entity:<id>", "drawing:<name>", "point:<x>,<y>".',
       input: { text: 'string', refs: 'json?' },
       run(c, i) {
         checkList(i.refs, 'refs');
@@ -457,7 +458,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'stage.open', kind: 'write', agent: 'free',
-      about: 'Open something on the person\'s screen: tab is chat, concepts, content, inspect or playtest; id is the concept, record path or entity to open there.',
+      about: 'Open something on the person\'s screen: tab is chat, concepts, content, art, inspect or playtest; id is the concept, record path, drawing or entity to open there.',
       input: { tab: 'string', id: 'string?' },
       run: (c, i) => { events.add({ type: 'stage.open', by: c.by, tab: i.tab, id: i.id ?? '' }); return { shown: true }; },
     },
@@ -467,7 +468,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   const guarded = (defs: CommandDef[]): CommandDef[] => defs.map((d) => d.kind !== 'write' || d.name.startsWith('ecs.') ? d : {
     ...d, run: (c, i) => { sandboxOnly(i.room, c.by); return d.run(c, i); },
   });
-  registry.add(...core, ...guarded(game.commands(world)), ...ecsCommands(world, game, sandboxOnly));
+  registry.add(...core, ...guarded(game.commands(world)), ...ecsCommands(world, game, sandboxOnly), ...artCommands({ game: id, root: ROOT, events, newLookFile }));
 
   return {
     game, registry, events, records, proposals, concepts,

@@ -4,7 +4,7 @@ A small game engine made for one person and an AI to build games together. The
 game is ECS (archetype-ecs) with art from pixeldraw; the engine is everything
 around it: one set of commands that the person's screen and the agent both
 use, concepts as the layer the person works in, and four senses for the agent
-(words, pictures, the ECS, time).
+(words, pictures, the ECS, time), with art as work it can hand to a pixeldraw worker.
 
 The first game on it is Gnome Garden (`games/gnome-garden`).
 
@@ -28,15 +28,16 @@ line. `npm start -- --host` puts the page on the network if you want that.
 - **The person's change is made; the agent's is proposed.** An agent's write to content or a concept becomes a proposal. Everything proposed while answering one message is one round, played, accepted or rejected as one.
 - **Concepts** (`games/<game>/concepts/*.md`) are a name and a description in the person's words, with a firmness (loose, worked, playable, fixed) that says how much freedom the agent has, and checks: milestones that must land inside a window of minutes.
 - **Content is records** (`games/<game>/content/<kind>/<id>.json`): every number and line the game is tuned with. The game reads them; nothing is tuned in code.
-- **The agent has senses**: `game.state` (words), `game.look` / `game.lookAt` (pictures), `ecs.*` (entities and systems), `playtest.run` / `playtest.compare` (a bot plays the whole game in ten seconds, as it is and as proposed).
+- **The agent has senses**: `game.state` (words), `game.look` / `game.lookAt` (pictures), `ecs.*` (entities and systems), `playtest.run` / `playtest.compare` (a bot plays the whole game in ten seconds, as it is and as proposed), `art.list` / `art.look` (the drawings).
 
 ## Layout
 
     core/        commands, events, records, proposals, concepts, the host that ties them to a game,
-                 the HTTP server, the command line, the agent runner and what the agent is told
+                 the HTTP server, the command line, the agent runner and what the agent is told,
+                 art (the drawings, and pixeldraw's workers)
     ecs/         the inspector: entities, archetypes, systems, as commands
     playtest/    pacing runs, comparing two of them, holding concepts' checks against one
-    shell/       the phone page: the game, and over it a sheet with Chat, Concepts, Content, Inspect, Playtest
+    shell/       the phone page: the game, and over it a sheet with Chat, Concepts, Content, Art, Inspect, Playtest
     games/<id>/  module.ts (what the engine needs from a game), page.ts (the game in a page),
                  src/, art/, content/, concepts/, and data/ (not in git: event log, proposals, pictures)
     test/        core, server and runner (with a stand-in for claude), playtests, the shell in jsdom
@@ -56,14 +57,15 @@ Works, and is tested:
 - the ECS inspector, in the page (live, on the world being played) and for the agent
 - playtests: a run, a before/after comparison of a proposal, checks, a look at any minute
 - the agent: headless `claude -p` whose only hands are the command line; it answers in the chat, proposes, plays its proposals, takes pictures, points at the garden
-- the shell: the game plays underneath; chat with proposal, picture and playtest cards; concepts; content; inspector with pick-in-the-garden; playtest
+- art: the game's drawings listed and drawn as sheets; bringing them in from pixeldraw (`art.import`, run for real once)
+- the shell: the game plays underneath; chat with proposal, picture and playtest cards; concepts; content; art; inspector with pick-in-the-garden; playtest
 - Gnome Garden on it, with its numbers as records and eight concepts whose promises a playtest holds
 
 Not there yet:
 
 - **Nobody has looked at the shell on a real screen.** It is driven in jsdom and it builds, but its looks are unseen.
 - **Live shared world.** The page plays its own world and shares a snapshot every five seconds; the agent reads a mirror (right state, not the exact place of every entity) and plays in sandboxes. Syncing one world live with archetype-ecs-net, the way testp does, is not built.
-- **Art.** pixeldraw is not wired in: no commands to list drawings, start a worker or bring a drawing into the game. Concepts can name drawings, nothing more.
+- **Art, the round trip.** Asking a pixeldraw worker (`art.ask`), telling, approving and accepting it are thin calls to pixeldraw's own `scripts/api.js`. Only `art.workers` and `art.import` have been run against the real pixeldraw; no worker has been started from here yet. pixeldraw's viewer and worker have to be running (ports 5173), and watching a worker draw still happens there. A new drawing also needs code before the game shows it.
 - **Code.** The agent cannot change code, only content and concepts. A new kind of thing (a new flower with its own sprite, a new rule) still needs a coding session.
 - **New records.** A record can be changed, not added: the game only reads the ones it knows.
 - **One game at a time**, chosen with `TANDEM_GAME`. There is no second game yet to prove the seams.

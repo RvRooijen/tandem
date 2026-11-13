@@ -179,6 +179,30 @@ test('a look is a picture on disk and the same thing in words', async () => {
   assert.equal(ev.caption, 'six minutes in');
 });
 
+test('art: the drawings the game is made of can be listed and looked at', async () => {
+  const drawings = await agent('art.list');
+  assert.deepEqual(drawings.map((d: any) => d.name), ['gnome', 'garden-flowers', 'garden-visitor', 'garden-props', 'garden-critters', 'garden-icons', 'garden-cottage']);
+  const gnome = drawings[0];
+  assert.deepEqual([gnome.w, gnome.h], [32, 32]);
+  assert.deepEqual(gnome.looks.cozy, { stand: 1, walk: 2 });
+
+  const before = host.events.last();
+  const sheet = await agent('art.look', { name: 'gnome', look: 'hollow', anim: 'walk' });
+  assert.deepEqual(sheet.frames, ['walk 1', 'walk 2']);
+  const png = readFileSync(sheet.file);
+  assert.equal(png.subarray(1, 4).toString(), 'PNG');
+  assert.equal(png.readUInt32BE(16), 2 * 34 * sheet.scale, 'two frames side by side, each with a margin');
+  assert.equal(host.events.since(before)[0].caption, 'drawing gnome, walk');
+  assert.deepEqual((await agent('art.look', { name: 'garden-flowers' })).frames.slice(0, 3), ['daisy', 'tulip', 'sunflower']);
+
+  await assert.rejects(agent('art.look', { name: 'unicorn' }), (e) => e instanceof CommandError && /no drawing called unicorn; there are: gnome/.test(e.message));
+  await assert.rejects(agent('art.look', { name: 'gnome', anim: 'fly' }), (e) => e instanceof CommandError && /it has: stand, walk/.test(e.message));
+  // Accepting a drawing and bringing it into the game are the person's.
+  await refused(agent('art.accept', { worker: 'w1' }), 'permission');
+  await refused(agent('art.import'), 'permission');
+  await refused(me('art.ask', { name: 'Not A Name', message: 'x' }), 'input');
+});
+
 test('the conversation and the stage are events like everything else', async () => {
   const before = host.events.last();
   await me('chat.send', { text: 'what about the tulips?', refs: ['record:flowers/tulip'] });

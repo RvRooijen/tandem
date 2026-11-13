@@ -9,7 +9,7 @@ import { inflateSync } from 'node:zlib';
 
 const SHEETS = ['gnome', 'garden-flowers', 'garden-visitor', 'garden-props', 'garden-critters', 'garden-icons', 'garden-cottage'];
 const root = resolve(import.meta.dirname, '..');
-const pixeldraw = resolve(root, '../pixeldraw');
+const pixeldraw = process.env.PIXELDRAW ?? resolve(root, '../../../pixeldraw');
 const dir = resolve(root, 'art');
 mkdirSync(dir, { recursive: true });
 

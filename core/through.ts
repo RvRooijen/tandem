@@ -13,8 +13,12 @@ const SCRIPT = '/__tandem/page.js';
 const TAG = `<script src="${SCRIPT}"></script>`;
 const script = () => readFileSync(fileURLToPath(new URL('../bridge/page.js', import.meta.url)));
 
-/** The inner port a page is started on, for the port it is shown at. */
-export const innerPort = (port: number) => port + 2000;
+/**
+ * The inner port a page is started on, for the port it is shown at. The project's page and the working copy's are
+ * a hundred ports apart: a page that needs more than one port (a server beside it, a database) counts up from its
+ * own, and the two must never meet.
+ */
+export const innerPort = (port: number, copy = false) => port + 2000 + (copy ? 99 : 0);
 
 /** One line more in a page of HTML: before the end of its head, or of its body, or after everything. */
 export function withTandem(html: string): string {

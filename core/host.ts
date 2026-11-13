@@ -89,7 +89,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   const candidate = opts.code === undefined && process.env.TANDEM_CODE !== 'off'
     ? createCode({ root: project.root, paths: ['.tandem/concepts', '.tandem/locks.json', '.tandem/.gitignore', '.tandem/tandem.json', '.tandem/page.sh', 'art', 'depth'] }) : undefined;
   const code = opts.code ?? (candidate?.usable() ? candidate : undefined);
-  const preview = code && project.pageCommand(0) ? createPreview(() => project.at(code.work)) : undefined;
+  const preview = code && project.pageCommand(0) ? createPreview(() => project.at(code.work), join(dataDir, 'copy-page.log')) : undefined;
   if (preview) onStop.push(() => preview.stop());
   /** The one round the working copy's change set is: there is one copy, so one change set at a time. */
   const CODE = 'code';
@@ -170,7 +170,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     if (i.copy) {
       if (!preview) throw new CommandError('unsupported', 'there is no working copy with a page here');
       try { await preview.url(); } catch (e) { throw new CommandError('failed', e instanceof Error ? e.message : String(e)); }
-      port = innerPort(COPY_PORT);
+      port = innerPort(COPY_PORT, true);
     }
     const who = i.as?.trim() || 'visitor';
     const jar = visitors.get(who) ?? new Map<string, string>();

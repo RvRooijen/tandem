@@ -6,7 +6,7 @@ import { createServer, type Server } from 'node:http';
 import { connect, type AddressInfo } from 'node:net';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
-import { startThrough, withTandem } from '../core/through.ts';
+import { innerPort, startThrough, withTandem } from '../core/through.ts';
 
 const PAGE = '<!doctype html><html><head><title>A page</title></head><body><h1>Lots</h1></body></html>';
 const inner: Server = createServer((req, res) => {
@@ -44,6 +44,12 @@ test('a page of HTML gets tandem\'s line, once; everything else passes as it is'
   assert.equal(await (await fetch(`${at}/__tandem/page.js`)).text(), readFileSync(new URL('../bridge/page.js', import.meta.url), 'utf8'));
   assert.equal(withTandem(html), html, 'never twice');
   assert.equal(withTandem('<p>bare</p>'), '<p>bare</p><script src="/__tandem/page.js"></script>');
+});
+
+test('the project\'s page and the working copy\'s are started far enough apart for each to count up from its own port', () => {
+  // (A page that needs a server beside it, or a database, takes the ports after its own: the two must not meet.)
+  assert.deepEqual([innerPort(5210), innerPort(5211, true)], [7210, 7310]);
+  assert.ok(innerPort(5211, true) - innerPort(5210) >= 100);
 });
 
 test('a live connection is passed on both ways', async () => {

@@ -31,9 +31,6 @@ export interface RunLog {
   seconds: number;
 }
 
-/** A drawing the game uses: its size and, per look, its animations with how many frames each has. */
-export interface Drawing { name: string; w: number; h: number; looks: Record<string, Record<string, number>> }
-
 export interface GameModule {
   id: string;
   name: string;
@@ -54,11 +51,6 @@ export interface GameModule {
   /** Let a rule-driven player play. profile is one of `profiles`. */
   playthrough(world: World, profile: string, opts: { owners?: number; maxHours?: number; seed?: number; untilSeconds?: number }): RunLog;
   profiles: string[];
-  /** The drawings the game is made of, and their frames as pictures: one animation of one look, or one telling frame of every animation. */
-  art?: {
-    list(): Drawing[];
-    frames(name: string, look?: string, anim?: string): { label: string; pic: Picture }[];
-  };
   /** The game's own commands: what a player can do, and whatever else it wants to offer. */
   commands(world: (room?: string) => World): CommandDef[];
 }

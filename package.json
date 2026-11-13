@@ -12,7 +12,8 @@
     "tandem": "node core/cli.ts",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --no-warnings --test --test-force-exit \"test/**/*.test.ts\" \"games/*/test/**/*.test.ts\"",
+    "art": "node --no-warnings games/gnome-garden/tools/import-art.ts",
+    "test": "node --no-warnings --test --test-force-exit \"test/**/*.test.ts\" \"games/*/test/**/*.test.ts\" \"art/test/*.test.js\"",
     "game": "vite --config games/gnome-garden/vite.config.ts",
     "game:build": "vite build --config games/gnome-garden/vite.config.ts"
   },

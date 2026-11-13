@@ -1,0 +1,1225 @@
+// the round buttons of the gnome garden: one frame each
+// water (watering can) | bell | away (an eye, shut) | sing (a pair of notes)
+e = #8f98a3
+E = #5f6772
+i = #62b0e0
+I = #2f6fa8
+y = #f9d650
+Y = #c98f22
+l = #fff3b0
+k = #2b1e26
+v = #9a72d6
+V = #5f3f9a
+w = #fcf7ec
+// shop icons, in the colors of the gnome and the flowers
+// hat felt, blood
+h = #f47a66
+r = #ea5a4b
+R = #cb362e
+D = #962334
+// skin, nose and lips
+s = #f5c7a0
+S = #dc9f78
+n = #ef9a85
+N = #cf6f60
+// white things: beard, tooth, bone, pebble, paper
+j = #ffffff
+W = #dbd2c2
+u = #b9ae9c
+U = #8a7f70
+// leaves, hedge, enamel
+a = #a4dc6a
+g = #6fb646
+G = #3f7f32
+// straw and wood, leather, earth
+T = #ecc88e
+t = #d2a063
+m = #a8744a
+p = #8a5e40
+o = #6a4630
+O = #432a1b
+// bright metal
+f = #c3cad2
+// night
+C = #274678
+// breath
+q = #e3d6f7
+Q = #bda5ea
+// pillow, unlit glass, moon flower
+b = #d7e8f5
+B = #9dbfe0
+// tulip pink
+x = #fbb8cf
+X = #f590b3
+
+@size 16 16
+
+=== water
+--- 300
+.
+.
+.
+..........EE....
+...eeeeee..EE...
+..eeeeeeEE..E...
+.e.eeeeeEE..E.i.
+e..eeeeeEEEE..i.
+e..eeeeeEE...i.i
+.e.eeeeeEE......
+..eeeeeeEE....i.
+...eeeeEEE......
+....EEEEE.......
+.
+.
+.
+
+=== bell
+--- 300
+.
+.
+.......kk.......
+.......yy.......
+......yyyY......
+.....ylyyYY.....
+.....ylyyYY.....
+....yylyyYYY....
+....yyyyyYYY....
+...yyyyyyYYYY...
+..yyyyyyyYYYYY..
+..YYYYYYYYYYYY..
+.......kk.......
+.......kk.......
+.
+.
+
+=== away
+--- 300
+.
+.
+.
+.
+.
+.k............k.
+..kk........kk..
+....kkkkkkkk....
+...k..k..k..k...
+..k...k..k...k..
+......k..k......
+.
+.
+.
+.
+.
+
+=== sing
+--- 300
+.
+.
+......vvvvvvv...
+......vVVVVVv...
+......v.....v...
+......v.....v...
+......v.....v...
+......v.....v...
+...vvvv..vvvv...
+..vvVVv.vvVVv...
+..vVVVv.vVVVv...
+...vvv...vvv....
+.
+.
+.
+.
+
+=== gloves
+--- 300
+// fingers
+@rect 3 3 2 5 t
+@rect 6 2 2 6 t
+@rect 9 3 2 5 t
+@rect 12 5 2 3 t
+// palm
+@rect 3 7 11 5 t
+// cuff
+@rect 4 12 9 1 g
+@rect 3 13 11 2 g
+// thumb, folded over the palm
+@px 0 6 tt
+@px 0 7 ttt
+@px 0 8 tttt
+@px 1 9 tttt
+@px 3 10 tt
+// cuff hem
+@rect 3 14 11 1 G
+// light on the fingertips and thumb, shade on the right of each finger and under the thumb
+@px 3 3 T
+@px 6 2 T
+@px 9 3 T
+@px 12 5 T
+@px 0 6 TT
+@px 2 7 T
+@rect 4 4 1 3 m
+@rect 7 3 1 4 m
+@rect 10 4 1 3 m
+@rect 13 6 1 5 m
+@rect 5 11 9 1 m
+@px 1 9 mmmm
+@px 3 10 mm
+// cuff: lit rib, dark end
+@px 4 12 aaaaaaaa
+@px 13 13 G
+// the creases between the fingers run into the palm; ribs of the knit cuff
+@px 5 7 m__m__m
+@px 5 13 a__a__a
+
+=== can
+--- 300
+// handle, behind
+@px 10 3 GGG
+@px 9 4 G___G
+@px 9 5 G____G
+@line 14 6 14 8 G
+@px 13 9 G
+// body
+@rect 6 6 7 8 g
+// spout
+@line 6 12 2 6 g 2
+// rose
+@px 0 3 yyyy
+@px 0 4 yyyy
+@px 1 5 yyy
+// mouth of the can, underside of the rose
+@px 7 6 GGGGG
+@px 1 5 YYY
+// shade on the right and under, a glint down the left, light along the spout and handle
+@rect 11 7 2 7 G
+@px 6 13 GGGGG
+@rect 7 7 1 4 a
+@px 2 6 a
+@px 2 7 a
+@px 3 8 a
+@px 3 9 a
+@px 4 10 a
+@px 10 3 ggg
+@px 0 3 ll
+@px 3 3 Y
+@px 3 4 Y
+// holes in the rose, the hoop round the body
+@px 0 4 Y_Y
+@px 8 10 aaa
+
+=== compost
+--- 300
+// heap
+@px 5 10 oooooooo
+@px 3 11 ooooooooooo
+@px 2 12 ooooooooooooo
+@px 1 13 oooooooooooooo
+@rect 0 14 16 1 o
+// fork: grip, handle, tines
+@rect 8 0 4 2 m
+@rect 9 2 2 5 m
+@px 7 7 eeeeee
+@px 7 8 e_ee_e
+@px 7 9 e_ee_e
+// crest, dry on top
+@px 5 10 pppppppp
+@px 3 11 pppppp
+// heap: lit crest, dark right flank and foot
+@px 5 10 mmm
+@px 3 11 mm
+@px 12 11 OO
+@px 12 12 OOO
+@px 11 13 OOOO
+@px 6 14 OOOOOOOOOO
+// fork: lit side of the handle and grip, bright bar, dark side of the tines
+@rect 9 2 1 5 t
+@px 8 0 ttt
+@px 11 0 p
+@px 11 1 p
+@px 7 7 fffff
+@px 10 8 E_E
+@px 10 9 E_E
+// kitchen scraps in the heap: leaves, an eggshell, a worm
+@px 5 12 g
+@px 9 12 g
+@px 8 13 W
+@px 3 13 nn
+
+=== basket
+--- 300
+// inside
+@rect 2 7 12 1 O
+// body
+@rect 2 9 12 3 t
+@rect 3 12 10 3 t
+// handle
+@px 5 1 mmmmmm
+@px 3 2 mmm____mmm
+@px 2 3 mm________mm
+@rect 2 4 2 3 m
+@rect 12 4 2 3 m
+// rim
+@px 1 7 t____________t
+@rect 1 8 14 1 t
+// rim band, foot band
+@rect 1 8 14 1 T
+@rect 3 14 10 1 m
+// handle: lit on top and left, dark on the right
+@px 5 1 tttt
+@px 3 2 tt
+@px 2 3 t
+@rect 2 4 1 3 t
+@px 12 2 p
+@px 13 3 p
+@rect 13 4 1 3 p
+// body: lit left, shaded right
+@rect 2 9 1 3 T
+@px 3 12 T
+@rect 12 9 2 3 m
+@rect 11 12 2 2 m
+@px 14 7 m
+@px 14 8 t
+// the weave: canes going over and under
+@px 3 10 m_m_m_m_m
+@px 4 12 m_m_m_m
+
+=== boots
+--- 300
+// far boot: shaft, foot, sole, cuff
+@rect 11 3 4 6 o
+@rect 10 8 5 4 o
+@rect 10 12 6 1 O
+@rect 10 1 6 2 p
+// near boot: shaft, foot, sole, cuff
+@rect 5 5 5 5 p
+@rect 1 10 9 3 p
+@px 2 9 ppp
+@rect 1 13 10 1 O
+@rect 4 3 7 2 m
+// far boot: lit cuff top, dark right side
+@px 10 1 mmmmm
+@px 15 1 o
+@px 15 2 o
+@rect 14 3 1 9 O
+// near boot: lit cuff, lit front of the shaft and toe cap, dark back and underside
+@px 4 3 tttttt
+@px 10 3 p
+@px 10 4 p
+@rect 5 5 1 4 m
+@rect 9 5 1 7 o
+@px 2 9 mm
+@px 1 10 mm
+@rect 1 12 9 1 o
+// the seam where the shaft is sewn to the foot
+@px 6 9 ooo
+
+=== hoe
+--- 300
+// handle
+@line 2 14 11 3 m 2
+// blade, hooked down at the top end; the neck is darker iron
+@px 10 1 EEEe
+@px 11 2 EEee
+@px 13 3 ee
+@rect 13 4 3 3 e
+@px 14 7 ee
+// handle: lit upper edge, dark lower edge
+@px 11 3 t
+@px 10 4 t_p
+@px 9 5 t_p
+@px 9 6 t
+@px 8 7 t_p
+@px 7 8 t_p
+@px 6 9 t_p
+@px 5 10 t_p
+@px 4 11 t_p
+@px 4 12 t
+@px 3 13 t_p
+@px 2 14 t_p
+@px 2 15 t
+// blade: bright face on the left, dark right edge and foot
+@px 13 3 f
+@rect 13 4 1 3 f
+@rect 15 4 1 3 E
+@px 14 7 EE
+// the ferrule that holds the blade, earth still on it
+@px 11 3 EE
+@px 14 6 o
+
+=== porch
+--- 300
+// wall plate
+@rect 1 2 2 9 E
+// arm, brace
+@rect 3 3 8 1 E
+@line 3 7 6 4 E
+@px 10 4 E
+// lantern: cap, base
+@px 9 5 EEE
+@px 8 6 EEEEE
+@px 7 7 EEEEEEE
+@rect 7 12 7 1 E
+@px 9 13 EEE
+// glass, unlit
+@rect 8 8 5 4 B
+// mullion
+@rect 10 8 1 4 E
+// iron: lit left edges, dark right side of the cap and base
+@rect 1 2 1 9 e
+@px 9 5 e
+@px 8 6 e
+@px 7 7 e
+@px 11 5 k
+@px 12 6 k
+@px 12 7 kk
+@px 7 12 e
+@px 12 12 kk
+@px 11 13 k
+// glass: a dull glint, dark low on the right
+@px 8 8 b
+@px 8 9 b
+@px 12 10 e
+@px 11 11 ee
+// screws in the wall plate
+@px 2 3 k
+@px 2 9 k
+
+=== thumb
+--- 300
+// sleeve
+@rect 1 8 3 6 I
+// fist
+@rect 4 7 10 7 s
+@px 13 7 .
+@px 13 13 .
+// thumb
+@px 6 1 ggg
+@rect 5 2 4 2 g
+@rect 5 4 3 4 g
+// thumb: lit left, dark right
+@px 6 1 a
+@rect 5 2 1 5 a
+@px 8 2 G
+@px 8 3 G
+@rect 7 4 1 4 G
+// fist: shade on the right and under
+@rect 13 8 1 5 S
+@px 4 13 SSSSSSSSS
+// sleeve: lit top
+@px 1 8 iii
+// creases between the curled fingers, the pale cuff of the sleeve
+@px 9 9 SSSS
+@px 9 11 SSSS
+@rect 3 8 1 6 b
+
+=== sign
+--- 300
+// post
+@rect 7 9 2 6 p
+// board
+@rect 1 2 14 7 t
+// tuft
+@px 5 14 gg__gg
+// board: lit top edge, dark right and lower edge
+@rect 1 2 13 1 T
+@rect 14 2 1 7 m
+@rect 1 8 13 1 m
+// post: lit left, the board's shadow on it
+@rect 7 10 1 5 m
+@px 7 9 oo
+@px 5 14 a
+@px 9 14 a
+// painted on it: a line of words, a heart
+@px 3 3 oo_ooo_oo_o
+@px 6 5 r_r
+@px 6 6 rrr
+@px 7 7 r
+
+=== shovel
+--- 300
+// shaft
+@rect 7 3 2 5 m
+// grip
+@rect 5 0 6 3 m
+@px 7 1 ..
+// blade
+@rect 4 8 8 4 e
+@px 5 12 eeeeee
+@px 6 13 eeee
+@px 7 14 ee
+// collar
+@rect 7 7 2 2 E
+// grip and shaft: lit top and left, dark right
+@px 5 0 ttttt
+@rect 10 0 1 3 p
+@rect 7 3 1 4 t
+// blade: bright tread and left face, dark right edge
+@px 4 8 fff__fff
+@rect 5 9 2 3 f
+@px 6 12 f
+@rect 11 9 1 3 E
+@px 10 12 E
+@px 9 13 E
+@px 8 14 E
+// rivets of the socket, the honed tip
+@px 7 9 EE
+@px 7 14 f
+
+=== sieve
+--- 300
+// mesh, the bottom
+@rect 2 5 12 5 f
+// inner wall at the back
+@px 5 3 mmmmmm
+@px 3 4 mmmmmmmmmm
+@px 2 5 mm________mm
+// rim
+@px 5 2 tttttt
+@px 3 3 tt______tt
+@px 2 4 t__________t
+@rect 1 5 1 4 t
+@rect 14 5 1 4 t
+// front of the hoop
+@px 1 9 tttt______tttt
+@rect 1 10 14 1 t
+@px 2 11 tttttttttttt
+@px 3 12 tttttttttt
+@px 5 13 tttttt
+// shadow of the back wall on the mesh, lower edge of the hoop
+@px 4 5 eeeeeeee
+@px 2 11 m__________m
+@px 3 12 mmmmmmmmmm
+@px 5 13 mmmmmm
+// rim: lit on the top left; the inner wall is dark on the left, where the light can't reach
+@px 5 2 TTTT
+@px 3 3 TT
+@px 2 4 T
+@rect 1 5 1 3 T
+@px 5 3 ppp
+@px 3 4 pp
+@px 2 5 pp
+// front of the hoop: lit on the left, dark at the right end
+@px 1 9 TT
+@px 1 10 TTTTTT
+@px 14 9 m
+@px 13 10 mm
+@px 13 11 p
+// the wires of the mesh, the lap where the hoop is nailed shut
+@px 2 6 e_e_e_e_e_e
+@px 3 7 e_e_e_e_e_e
+@px 2 8 e_e_e_e_e_e
+@px 5 9 e_e_e
+@rect 8 10 1 2 p
+
+=== steps
+--- 300
+// three slabs, down to the right and toward us
+@rect 1 3 5 11 u
+@rect 6 6 5 8 u
+@rect 11 9 4 5 u
+// treads
+@rect 1 3 5 2 W
+@rect 6 6 5 2 W
+@rect 11 9 4 2 W
+// lit front edge of each tread, the shadow each step throws on the next, darker toward the bottom
+@px 1 3 wwww
+@px 6 6 wwww
+@px 11 9 www
+@px 6 7 u
+@px 11 10 u
+@rect 1 12 14 2 U
+@rect 11 11 4 1 U
+// moss in the damp corners, a crack in the oldest slab
+@px 5 5 g
+@px 10 8 g
+@px 3 8 U
+@px 2 9 U
+
+=== roots
+--- 300
+// roots
+@px 4 8 t__t___t
+@px 3 9 t___t____t
+@px 2 10 t___tt_____t
+@px 5 11 t__tt
+@px 4 12 t___t_t
+@px 3 13 t____t__t
+@px 3 14 t____t___t
+// bed
+@rect 1 4 14 4 o
+// flower
+@rect 6 0 3 3 x
+@px 7 3 g
+// grass on the bed, heart of the flower
+@rect 1 4 14 1 g
+@px 7 1 y
+// lit grass and soil on the left, dark underside and right end of the bed
+@px 1 4 aaaaa
+@px 1 5 ppp
+@rect 1 7 14 1 O
+@rect 14 5 1 2 O
+// flower: shade on the right
+@px 8 1 X
+@px 7 2 XX
+// root tips, thinner and darker
+@px 2 10 m
+@px 13 10 m
+@px 3 14 m
+@px 8 14 m
+@px 12 14 m
+// a pebble and a worm in the soil
+@px 4 6 u
+@px 10 6 nn
+
+=== charm
+--- 300
+// string
+@line 1 0 7 6 p
+@line 14 0 8 6 p
+// tooth
+@rect 5 7 6 4 W
+@px 5 11 WW__WW
+@px 5 12 WW__WW
+@px 5 13 W____W
+// binding
+@px 6 7 pppp
+// string: the left length catches the light
+@line 1 0 6 5 m
+@px 9 7 o
+// tooth: light on the left, shade down the right and inside the roots
+@px 5 8 www
+@px 5 9 ww
+@px 5 10 w
+@px 5 11 w
+@rect 10 8 1 6 u
+@px 6 11 u
+@px 6 12 u
+// the roots are still red where it came out
+@px 5 13 R____D
+
+=== names
+--- 300
+// cover
+@rect 0 5 16 8 R
+@px 1 13 RRRRRRRRRRRRRR
+// gutter
+@rect 7 5 2 7 W
+// pages
+@px 2 3 wwww____wwww
+@px 1 4 wwwwww__wwwwww
+@rect 1 5 6 7 w
+@rect 9 5 6 7 w
+// edge of the page block, edge of the cover, ribbon
+@rect 1 11 6 1 W
+@rect 9 11 6 1 W
+@px 1 13 DDDDDDDDDDDDDD
+@rect 12 11 1 4 y
+// pages: the curl of the top edge, the dip into the gutter
+@px 2 3 WWWW____WWWW
+@px 1 4 W____W__W____W
+@rect 6 5 1 6 W
+@rect 7 5 1 7 u
+// cover: dark on the right
+@rect 15 5 1 8 D
+// names, line under line; the last one struck out in red
+@px 2 6 uu_u
+@px 2 8 u_uu
+@px 2 10 uuu
+@px 10 6 uu_uu
+@px 10 8 uuu_u
+@px 10 10 RRRR
+
+=== hum
+--- 300
+// mouth: upper lip, the closed line, lower lip
+@px 1 9 NNN__NNN
+@px 1 10 NNNNNNNNN
+@px 0 11 DDDDDDDDDDD
+@px 1 12 nnnnnnnnn
+@px 3 13 nnnnn
+// note
+@rect 13 0 1 6 v
+@px 14 0 v
+@px 14 1 vv
+@px 15 2 v
+@px 11 5 vv
+@px 10 6 vvvv
+@px 10 7 vvv
+// lips: light on the bow and the lower lip, shade low on the right
+@px 1 9 nn
+@px 6 9 n
+@px 3 12 ss
+@px 9 12 N
+@px 6 13 NN
+// note: darker inside the head and at the end of the flag
+@px 11 6 VV
+@px 11 7 V
+@px 15 2 V
+// the hum, drifting from the lips up to the note
+@px 11 10 Q
+@px 12 9 Q
+
+=== pretend
+--- 300
+// face
+@rect 3 6 10 4 s
+// hat
+@px 7 0 rr
+@px 6 1 rrrr
+@px 5 2 rrrrrr
+@px 4 3 rrrrrrrr
+@px 3 4 rrrrrrrrrr
+@rect 1 5 14 1 R
+// beard, wider than the face
+@px 3 9 wwwwwwwwww
+@rect 1 10 14 2 w
+@px 2 12 wwwwwwwwwwww
+@px 3 13 wwwwwwwwww
+@px 5 14 wwwwww
+@px 7 15 ww
+// nose
+@rect 7 8 2 3 n
+// cheeks
+@px 3 8 nn
+@px 11 8 nn
+// hat: light down the left, shade on the right
+@px 7 0 h
+@px 6 1 h
+@px 5 2 hh
+@px 4 3 hh
+@px 3 4 hhh
+@px 9 1 R
+@px 9 2 RR
+@px 9 3 RRR
+@px 10 4 RRR
+@px 1 5 r
+@px 9 5 DDDDDD
+// the brim's shadow on the face
+@rect 3 6 10 1 S
+// beard: shade along the right and the lower edge
+@px 1 10 W____________W
+@px 1 11 W___________Wu
+@px 2 12 W_________Wu
+@px 3 13 WW_____WWu
+@px 5 14 uWWWWu
+@px 7 15 uu
+// nose: shade under
+@px 7 10 NN
+// one eye open, one eye shut
+@rect 4 6 2 2 k
+@px 4 6 w
+@px 9 7 kkk
+// strands of the beard, the part under the nose
+@px 4 11 W
+@px 4 12 W
+@px 10 11 W
+@px 10 12 W
+@px 7 11 WW
+@px 7 13 W
+
+=== chorus
+--- 300
+// middle note
+@rect 10 1 1 6 v
+@px 11 1 v
+@px 11 2 vv
+@px 12 3 v
+@px 8 6 vv
+@px 7 7 vvvv
+@px 7 8 vvv
+// left note
+@rect 3 6 1 6 v
+@px 4 6 v
+@px 4 7 vv
+@px 5 8 v
+@px 1 11 vv
+@px 0 12 vvvv
+@px 0 13 vvv
+// right note
+@rect 13 8 1 6 v
+@px 14 8 v
+@px 14 9 vv
+@px 15 10 v
+@px 11 13 vv
+@px 10 14 vvvv
+@px 10 15 vvv
+// heads, darker inside
+@px 8 7 VV
+@px 8 8 V
+@px 1 12 VV
+@px 1 13 V
+@px 11 14 VV
+@px 11 15 V
+// dark ends of the flags
+@px 5 8 V
+@px 12 3 V
+@px 15 10 V
+
+=== evening
+--- 300
+// sky
+@rect 2 1 12 12 C
+@rect 1 2 14 10 C
+// dusk low in the sky
+@rect 1 7 14 3 V
+// moon
+@circle 10 7 3 l
+// hedge
+@rect 0 10 16 5 G
+@px 1 9 GGG__GGGG__GGG
+// lit tops of the hedge
+@px 1 9 ggg__gggg__ggg
+// hedge: moonlit leaves on top, lit dabs lower down
+@px 1 9 a
+@px 6 9 a
+@px 12 9 a
+@px 0 10 gg___g____gg____
+@px 3 11 g____g_____g
+// first stars, the seas of the moon
+@px 3 2 l
+@px 6 4 l
+@px 13 3 l
+@px 11 6 y
+@px 9 8 y
+
+=== moonbloom
+--- 300
+// moon
+@px 12 0 yyy
+@px 11 1 yy
+@px 11 2 y
+@px 11 3 yy
+@px 12 4 yyy
+// stem
+@rect 6 11 1 5 G
+// leaves
+@px 7 13 ggg
+@px 3 14 ggg
+// bloom
+@circle 6 7 4 b
+@px 3 4 .
+@px 9 4 .
+@px 3 10 .
+@px 9 10 .
+// heart
+@rect 5 6 3 3 y
+// dark side of the moon, of the heart
+@px 12 4 YYY
+@px 11 3 Y
+@px 7 8 Y
+// petals: moonlight on the top and left, shade on the right and lower petal, a crease where they meet
+@px 4 3 jj
+@px 4 4 j
+@px 2 5 jj
+@px 2 6 j
+@rect 10 5 1 5 B
+@px 4 11 BBBBB
+@px 8 10 B
+@px 4 5 B___B
+@px 4 9 B___B
+// lit side of the moon, of the leaves
+@px 12 0 l
+@px 11 1 l
+@px 7 13 a
+@px 3 14 a
+// a star by the moon, the vein of the left petal
+@px 14 7 y
+@px 3 7 B
+
+=== marrow
+--- 300
+// shaft
+@line 4 11 11 4 W 3
+// knobs
+@rect 10 1 3 3 W
+@rect 12 3 3 3 W
+@rect 1 9 3 3 W
+@rect 3 11 3 3 W
+// crack
+@px 6 6 .
+@px 7 7 .
+@px 7 8 .
+@px 8 9 .
+// marrow in the break
+@px 6 8 R
+@px 8 7 R
+// far half: light along the upper left, shade along the lower right
+@px 10 1 ww
+@px 10 2 w
+@px 10 3 w
+@px 9 4 ww
+@px 8 5 ww
+@px 7 6 ww
+@px 12 1 u
+@px 12 2 u
+@px 14 3 u
+@px 14 4 u
+@px 12 5 uuu
+@px 11 6 u
+@px 10 7 u
+@px 9 8 u
+// near half
+@px 5 8 w
+@px 1 9 wwww
+@px 1 10 w
+@px 7 10 u
+@px 1 11 uu__uu
+@px 5 12 u
+@px 3 13 uuu
+// hairline cracks running from the break, a drop of marrow
+@px 9 6 u
+@px 4 10 u
+@px 8 10 R
+
+=== gate
+--- 300
+// night in the opening, darker toward the ground
+@rect 3 4 10 10 C
+@rect 3 9 10 5 k
+// posts
+@rect 1 3 2 12 p
+@rect 13 3 2 12 p
+@px 1 2 pp
+@px 13 2 pp
+// gate leaf on the left post, swung open toward us: boards, each lower than the last
+@rect 3 5 2 8 t
+@rect 5 6 2 8 t
+@rect 7 7 1 8 t
+// the gap between the boards, the lit near edge
+@rect 4 5 1 8 m
+@rect 6 6 1 8 m
+@rect 7 7 1 8 T
+// posts: lit left, dark right
+@rect 1 2 1 13 m
+@rect 14 2 1 13 o
+// hinges on the gate, the latch it left behind, two stars
+@px 3 7 k
+@px 3 11 k
+@px 13 8 e
+@px 10 5 l
+@px 12 7 l
+
+=== feed
+--- 300
+// stem
+@rect 7 12 2 4 G
+// leaves
+@px 9 14 gg
+@px 5 13 gg
+// bloom, a cup open to the drop
+@px 4 6 xx_xx_xx
+@rect 4 7 8 3 x
+@px 5 10 xxxxxx
+@px 6 11 xxxx
+// drop
+@px 7 0 RR
+@px 7 1 RR
+@px 6 2 RRRR
+@px 6 3 RRRR
+@px 7 4 RR
+// sepals
+@px 7 11 gg
+// drop: a glint, dark low on the right
+@px 6 2 h
+@px 9 3 D
+@px 8 4 D
+// cup: shade on the right petal and under, a crease below each notch
+@px 10 6 XX
+@rect 11 7 1 3 X
+@px 5 10 XXXXXX
+@px 6 11 X__X
+@px 6 7 X__X
+// stem and leaves: lit left
+@rect 7 12 1 4 g
+@px 5 13 a
+// the dark throat of the cup, a last small drop on its way down
+@px 7 7 DD
+@px 8 5 R
+
+=== deeper
+--- 300
+// rim of the hole
+@px 3 10 oooooooooo
+@rect 1 11 14 3 o
+@px 3 14 oooooooooo
+// the dark
+@px 5 10 kkkkkk
+@rect 3 11 10 1 k
+@rect 2 12 12 1 k
+@px 4 13 kkkkkkkk
+// arrow
+@rect 6 0 4 6 r
+@px 3 6 rrrrrrrrrr
+@px 4 7 rrrrrrrr
+@px 5 8 rrrrrr
+@px 6 9 rrrr
+@px 7 10 rr
+// far edge of the rim, lit
+@px 3 10 pp______pp
+@px 1 11 pp__________pp
+// arrow: lit left, dark right
+@rect 6 0 1 6 h
+@px 3 6 hhh
+@px 4 7 h
+@rect 9 0 1 6 R
+@px 11 6 RR
+@px 10 7 RR
+@px 10 8 R
+@px 9 9 R
+@px 8 10 R
+// hole: the wall the light still reaches, the dark foot of the rim
+@px 11 11 OO
+@px 12 12 O
+@px 3 14 OOOOOOOOOO
+// a pebble on the rim, a root end sticking out of the wall
+@px 3 13 u
+@px 4 12 m
+
+=== plot
+--- 300
+// dug earth
+@px 4 5 oooooooo
+@px 3 6 oooooooooo
+@rect 2 7 12 6 o
+@rect 1 9 14 3 o
+// furrows
+@px 4 7 OOOOOOOO
+@px 3 9 OOOOOOOOOO
+@px 3 11 OOOOOOOOOO
+// lit ridge above each furrow, dark right side and foot
+@px 4 5 pppppp
+@px 3 6 ppppppp
+@px 2 8 ppppppppp
+@px 1 10 pppppppppp
+@px 13 8 O
+@px 14 10 O
+@px 6 12 OOOOOOOO
+// the spade broke it into clods: gaps between them, crumbs on top
+@px 7 5 O
+@px 7 6 O
+@px 5 8 O____O
+@px 4 10 O___O___O
+@px 6 7 o___o
+@px 4 9 o____o
+@px 7 11 o___o
+@px 5 5 m
+@px 9 6 m
+@px 3 8 m
+@px 6 10 m
+// grass at the edge of the patch
+@px 0 11 g
+@px 1 12 g
+@px 15 11 g
+@px 14 12 g
+
+=== unearth
+--- 300
+// the dark under the brim
+@rect 3 11 10 1 k
+// earth pushed aside, behind
+@px 0 11 ooo__________ooo
+@px 0 8 o
+@px 15 7 o
+// hat
+@px 9 0 rr
+@px 8 1 rr
+@px 7 2 rrr
+@px 7 3 rrrr
+@px 6 4 rrrrr
+@px 6 5 rrrrrr
+@px 5 6 rrrrrrr
+@px 5 7 rrrrrrrr
+@px 4 8 rrrrrrrrr
+@px 3 9 rrrrrrrrrrr
+// brim
+@px 1 10 RRRRRRRRRRRRRR
+// ground in front
+@rect 0 12 16 3 o
+// the lawn it breaks through
+@rect 0 12 16 1 g
+// hat: light down the left, shade on the right
+@px 8 1 h
+@px 7 2 h
+@px 7 3 h
+@px 6 4 hh
+@px 6 5 hh
+@px 5 6 hh
+@px 5 7 hhh
+@px 4 8 hhh
+@px 3 9 hhhh
+@px 10 0 R
+@px 10 3 R
+@px 10 4 R
+@px 10 5 RR
+@px 10 6 RR
+@px 10 7 RRR
+@px 10 8 RRR
+@px 11 9 RRR
+@px 1 10 rrr
+@px 9 10 DDDDDD
+// ground: lit grass, dark foot
+@px 0 12 a___aa___a
+@rect 0 14 16 1 O
+// cracks in the turf around it, crumbs thrown up, two eyes in the dark under the brim
+@px 2 13 OO
+@px 12 13 OO
+@px 2 8 p
+@px 14 5 p
+@px 6 11 l__l
+
+=== nap
+--- 300
+// pillow
+@rect 1 10 12 5 b
+@px 1 9 b__________b
+@px 1 15 b__________b
+// z z z
+@px 2 6 iii
+@px 3 7 i
+@px 2 8 iii
+@px 6 3 IIII
+@px 8 4 I
+@px 7 5 I
+@px 6 6 IIII
+@px 11 0 IIIII
+@px 14 1 I
+@px 13 2 I
+@px 12 3 I
+@px 11 4 IIIII
+// hem, tufts
+@rect 1 14 12 1 B
+@px 1 9 B__________B
+@px 1 15 B__________B
+// pillow: light on the top left, shade on the right, the dent of a head
+@px 2 10 jjjj
+@px 2 11 j
+@rect 12 10 1 4 B
+@px 5 12 BBB
+=== tooth
+--- 300
+// roots
+@rect 3 9 4 2 W
+@rect 9 9 4 2 W
+@px 4 11 WWW__WWW
+@px 4 12 WW____WW
+@px 4 13 WW____WW
+@px 5 14 W____W
+// crown
+@rect 3 2 10 7 W
+@px 3 2 .
+@px 12 2 .
+@px 7 2 ..
+// light on the crown
+@rect 4 3 5 4 w
+// light rounds off toward the right, a gleam, shade down the right and inside the roots
+@px 4 2 ww
+@px 7 6 WW
+@px 8 5 W
+@px 5 3 jj
+@px 5 4 j
+@rect 12 3 1 8 u
+@rect 11 8 1 6 u
+@px 10 14 u
+@rect 6 9 1 3 u
+@rect 5 12 1 3 u
+@px 7 8 uu
+// the tips of the roots, pink from the gum
+@px 5 14 n____n
+
+=== pebble
+--- 300
+@ellipse 8 9 6 4 W
+// light
+@ellipse 7 8 3 2 w
+// a gleam, shade under and to the right
+@px 6 7 jj
+@px 13 10 uu
+@px 11 11 uuu
+@px 8 12 uuuuu
+@px 6 13 uuuuu
+// flecks in the stone
+@px 10 10 u
+@px 4 10 w
+
+=== whisper
+--- 300
+// the small puff, behind
+@px 8 11 QQ
+@px 7 12 QQQQ
+@px 7 13 QQ
+// wisp
+@px 10 5 QQQQQ
+@px 7 6 QQQQQQQ
+@px 5 7 QQQQQQQQ
+@px 3 8 QQQQQQQ
+@px 2 9 QQQQQ
+@px 1 10 QQQQ
+@px 1 11 QQQ
+@px 2 12 QQ
+// the curl
+@px 10 1 QQQ
+@px 9 2 QQ_QQ
+@px 9 3 Q__QQQ
+@px 12 4 QQQ
+// pale core of the wisp
+@px 11 5 qqq
+@px 8 6 qqqqq
+@px 6 7 qqqqq
+@px 4 8 qqqq
+@px 3 9 qq
+// deeper purple under the wisp and inside the curl
+@px 13 6 v
+@px 12 7 v
+@px 8 8 vv
+@px 5 9 vv
+@px 4 10 v
+@px 3 11 v
+@px 3 12 v
+@px 9 3 v
+@px 7 13 vv
+// the last of the breath, thinning out behind
+@px 0 13 Q
+
+=== hat
+--- 300
+// tip, bent back
+@px 9 2 rr
+@px 8 3 rr
+// cone
+@px 7 4 rrr
+@px 7 5 rrrr
+@px 6 6 rrrrr
+@px 6 7 rrrrrr
+@px 5 8 rrrrrrr
+@px 5 9 rrrrrrrr
+@px 4 10 rrrrrrrrr
+@px 4 11 rrrrrrrrrr
+@px 3 12 rrrrrrrrrrr
+// brim
+@rect 2 13 13 1 R
+// light down the left, shade on the right, the fold under the tip
+@px 7 4 h
+@px 7 5 h
+@px 6 6 hh
+@px 6 7 hh
+@px 5 8 hh
+@px 5 9 hhh
+@px 4 10 hhh
+@px 4 11 hhh
+@px 3 12 hhhh
+@px 10 2 R
+@px 9 4 R
+@px 10 5 R
+@px 10 6 R
+@px 10 7 RR
+@px 10 8 RR
+@px 11 9 RR
+@px 10 10 RRR
+@px 11 11 RRR
+@px 11 12 RRR
+@px 2 13 rr
+@px 9 13 DDDDDD
+// stitches of the felt seam
+@px 8 6 R
+@px 8 8 R
+@px 8 10 R

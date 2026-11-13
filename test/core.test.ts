@@ -142,7 +142,7 @@ test('a lock keeps the agent off a thing, even when it is asked to change it', a
   assert.equal((await me('proposals.list', { status: 'pending' })).length, pending, 'nothing was proposed');
   assert.match(await agent('records.set', { path: 'flowers/rose', value: { value: 1 } }).catch((e: Error) => e.message), /even if they ask you to/);
   assert.equal((await agent('concepts.list')).find((c: any) => c.id === 'the-slow-burn').locked, true);
-  assert.equal((await agent('art.list'))[0].locked, true);
+  assert.equal((await agent('art.list')).find((d: any) => d.name === 'gnome').locked, true);
 
   // What is next to it is not locked, and the person is never locked out.
   assert.ok((await agent('records.set', { path: 'flowers/tulip', value: { grow: 5 } }, 'r7')).proposed);
@@ -219,28 +219,61 @@ test('a look is a picture on disk and the same thing in words', async () => {
   assert.equal(ev.caption, 'six minutes in');
 });
 
-test('art: the drawings the game is made of can be listed and looked at', async () => {
+test('art: a drawing is a thing of the engine: listed, read, looked at, changed and proposed on', async () => {
   const drawings = await agent('art.list');
-  assert.deepEqual(drawings.map((d: any) => d.name), ['gnome', 'garden-flowers', 'garden-visitor', 'garden-props', 'garden-critters', 'garden-icons', 'garden-cottage']);
-  const gnome = drawings[0];
-  assert.deepEqual([gnome.w, gnome.h], [32, 32]);
-  assert.deepEqual(gnome.looks.cozy, { stand: 1, walk: 2 });
+  assert.deepEqual(drawings.map((d: any) => d.name), ['garden-cottage', 'garden-critters', 'garden-flowers', 'garden-icons', 'garden-props', 'garden-visitor', 'gnome']);
+  const gnome = drawings.at(-1);
+  assert.deepEqual([gnome.w, gnome.h, gnome.depth, gnome.locked], [32, 32, true, false]);
+  assert.deepEqual(gnome.looks, ['cozy', 'odd', 'hollow']);
+  assert.deepEqual(gnome.anims, { stand: 1, walk: 2 });
 
+  const src = await agent('art.get', { name: 'gnome' });
+  assert.match(src.text, /@recolor odd/);
+  assert.match(src.depth, /^1 = #2b3048/m);
+  await refused(agent('art.get', { name: 'unicorn' }), 'missing');
+
+  // A look is pixeldraw's own render of it.
   const before = host.events.last();
-  const sheet = await agent('art.look', { name: 'gnome', look: 'hollow', anim: 'walk' });
-  assert.deepEqual(sheet.frames, ['walk 1', 'walk 2']);
-  const png = readFileSync(sheet.file);
-  assert.equal(png.subarray(1, 4).toString(), 'PNG');
-  assert.equal(png.readUInt32BE(16), 2 * 34 * sheet.scale, 'two frames side by side, each with a margin');
+  const look = await agent('art.look', { name: 'gnome', anim: 'walk', look: 'hollow' });
+  assert.equal(readFileSync(look.file).subarray(1, 4).toString(), 'PNG');
   assert.equal(host.events.since(before)[0].caption, 'drawing gnome, walk');
-  assert.deepEqual((await agent('art.look', { name: 'garden-flowers' })).frames.slice(0, 3), ['daisy', 'tulip', 'sunflower']);
+  assert.ok(readFileSync((await agent('art.look', { name: 'gnome', depth: true })).file).length > 500);
+  await refused(agent('art.look', { name: 'unicorn' }), 'missing');
+  await refused(agent('art.look', { name: 'gnome', anim: 'fly' }), 'failed');
 
-  await assert.rejects(agent('art.look', { name: 'unicorn' }), (e) => e instanceof CommandError && /no drawing called unicorn; there are: gnome/.test(e.message));
-  await assert.rejects(agent('art.look', { name: 'gnome', anim: 'fly' }), (e) => e instanceof CommandError && /it has: stand, walk/.test(e.message));
-  // Accepting a drawing and bringing it into the game are the person's.
-  await refused(agent('art.accept', { worker: 'w1' }), 'permission');
-  await refused(agent('art.import'), 'permission');
+  // The agent's change is a proposal with a picture before and after; the game is not touched.
+  const tiny = 'k = #1a1c2c\n\n@size 8 8\n@rect 1 1 6 6 k\n';
+  await refused(agent('art.set', { name: 'gnome', text: 'this is not a drawing <<<' }), 'input');
+  const p = await agent('art.set', { name: 'gnome', text: tiny, note: 'a smaller gnome' }, 'r20');
+  assert.ok(p.proposed);
+  const ev = host.events.since(0).at(-1)!;
+  assert.deepEqual([ev.type, ev.kind, ev.path, ev.isNew], ['proposal', 'drawing', 'gnome', false]);
+  assert.match((ev.pictures as any).before, /^\/api\/file\/looks\//);
+  assert.match((ev.pictures as any).after, /^\/api\/file\/looks\//);
+  assert.equal((await agent('art.get', { name: 'gnome' })).text, src.text);
+  await me('proposals.decide', { round: 'r20', accept: false });
+  assert.equal((await agent('art.get', { name: 'gnome' })).text, src.text, 'rejected: still as it was');
+
+  // Accepted, it is the drawing, and the game is built with it.
+  await agent('art.set', { name: 'garden-sign', text: tiny, note: 'a sign for the gate' }, 'r21');
+  assert.equal(host.events.since(0).at(-1)!.isNew, true);
+  await me('proposals.decide', { round: 'r21', accept: true });
+  assert.equal(readFileSync(join(dir, 'game/art/garden-sign.txt'), 'utf8'), tiny);
+  assert.match(readFileSync(join(dir, 'data/art.gen.ts'), 'utf8'), /"garden-sign": \{"w":8,"h":8/);
+  assert.equal((await agent('art.list')).length, 8);
+  assert.equal(host.events.since(0).filter((e) => e.type === 'art.changed').at(-1)!.names + '', 'garden-sign');
+
+  // The person's change is made at once. A locked drawing is nobody's but theirs.
+  assert.equal((await me('art.set', { name: 'garden-sign', text: tiny.replace('6 6', '5 5') })).changed, true);
+  await me('locks.set', { ref: 'drawing:garden-sign', locked: true });
+  await refused(agent('art.set', { name: 'garden-sign', text: tiny }, 'r22'), 'locked');
+  await refused(agent('art.ask', { name: 'garden-sign', message: 'make it red' }), 'locked');
+  await refused(me('art.ask', { name: 'garden-sign', message: 'make it red' }), 'locked');
+  await me('locks.set', { ref: 'drawing:garden-sign', locked: false });
   await refused(me('art.ask', { name: 'Not A Name', message: 'x' }), 'input');
+  await refused(me('art.ask', { name: 'gnome', message: 'x', new: true }), 'exists');
+  await refused(me('art.ask', { name: 'unicorn', message: 'x' }), 'missing');
+  await refused(agent('art.build'), 'permission');
 });
 
 test('the conversation and the stage are events like everything else', async () => {

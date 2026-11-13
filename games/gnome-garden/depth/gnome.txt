@@ -1,0 +1,246 @@
+// garden gnome for the gnome garden game: 3/4 front view turned slightly to the left, feet on y=31
+// silhouette with depth: 1 farthest .. 5 nearest
+1 = #2b3048
+2 = #3f4a68
+3 = #5a6988
+4 = #7d90ab
+5 = #a6bccf
+h = #f47a66
+r = #ea5a4b
+R = #cb362e
+D = #962334
+s = #f5c7a0
+S = #dc9f78
+n = #ef9a85
+N = #cf6f60
+c = #f2ab92
+w = #fcf7ec
+W = #dbd2c2
+V = #b9ae9c
+b = #4d83c8
+B = #37639f
+C = #274678
+p = #8a5e40
+o = #6a4630
+O = #432a1b
+k = #2a1f24
+y = #f2c94c
+e = #2b1e26
+E = #0d070b
+
+@size 32 32
+
+=== stand
+@view 3/4 front, turned slightly to the left
+--- 400
+// far arm and hand (viewer's left)
+@px 7 18 2
+@px 6 19 22
+@px 5 20 222
+@px 4 21 2222
+@px 3 22 2222
+@px 2 23 222
+@px 2 24 2222
+@px 2 25 222
+@px 3 26 22
+// far boot
+@rect 9 28 5 1 2
+@rect 7 29 7 1 2
+@rect 6 30 8 2 2
+// coat
+@rect 8 19 16 9 3
+@rect 7 22 18 4 3
+@px 8 27 .
+@px 23 27 .
+// face
+@rect 9 13 14 5 3
+// beard
+@rect 8 14 1 4 4
+@rect 23 14 1 4 4
+@px 9 16 4
+@px 9 17 44
+@px 22 16 4
+@px 21 17 44
+@rect 8 18 16 3 4
+@rect 9 21 14 2 4
+@rect 9 23 13 1 4
+@rect 11 24 10 1 4
+@rect 12 25 8 1 4
+@rect 15 26 2 1 4
+// near boot
+@rect 18 28 6 1 4
+@rect 17 29 8 1 4
+@rect 16 30 10 2 4
+// hat, the tip folded over to the right
+@rect 15 0 8 1 5
+@rect 14 1 10 1 5
+@rect 13 2 12 1 5
+@rect 12 3 8 2 5
+@rect 22 3 3 1 5
+@rect 23 4 3 1 5
+@rect 11 5 9 1 5
+@rect 24 5 3 2 5
+@rect 10 6 11 2 5
+@rect 25 7 2 1 5
+@px 25 8 5
+@rect 9 8 13 2 5
+@rect 8 10 15 1 5
+@rect 7 11 18 1 5
+@rect 8 12 16 1 5
+// near arm and hand (viewer's right)
+@px 24 18 5
+@px 24 19 55
+@px 24 20 555
+@px 24 21 5555
+@px 25 22 5555
+@px 27 23 555
+@px 26 24 5555
+@px 27 25 555
+@px 27 26 55
+// nose
+@px 14 15 55
+@px 13 16 5555
+@px 13 17 5555
+@px 14 18 55
+
+=== walk
+@view 3/4 front, turned slightly to the left, walking to the left
+--- 140
+// near foot forward: far arm swings forward, near arm back; the hat tip lags up
+// far arm and hand, forward
+@px 7 18 2
+@px 6 19 22
+@px 5 20 222
+@px 4 21 2222
+@px 3 22 2222
+@px 2 23 2222
+@px 1 24 222
+@px 1 25 2222
+@px 1 26 222
+@px 2 27 22
+// far boot, lifted behind
+@px 9 27 22
+@rect 9 28 5 1 2
+@rect 7 29 7 1 2
+@rect 7 30 5 1 2
+// coat, the hem up over the lifted foot
+@rect 8 19 16 8 3
+@rect 7 22 18 4 3
+@rect 11 27 12 1 3
+// face
+@rect 9 13 14 5 3
+// beard, the point to the right
+@rect 8 14 1 4 4
+@rect 23 14 1 4 4
+@px 9 16 4
+@px 9 17 44
+@px 22 16 4
+@px 21 17 44
+@rect 8 18 16 3 4
+@rect 9 21 14 2 4
+@rect 9 23 13 1 4
+@rect 11 24 10 1 4
+@rect 13 25 8 1 4
+@rect 16 26 2 1 4
+// near boot, planted forward
+@rect 17 28 6 1 4
+@rect 16 29 8 1 4
+@rect 15 30 10 2 4
+// hat, the tip still up
+@rect 15 0 10 1 5
+@rect 14 1 13 1 5
+@rect 13 2 15 1 5
+@rect 12 3 8 2 5
+@rect 22 3 7 1 5
+@rect 26 4 3 1 5
+@rect 27 5 2 1 5
+@px 28 6 5
+@rect 11 5 9 1 5
+@rect 10 6 11 2 5
+@rect 9 8 13 2 5
+@rect 8 10 15 1 5
+@rect 7 11 18 1 5
+@rect 8 12 16 1 5
+// near arm and hand, back
+@px 24 18 5
+@px 24 19 555
+@px 24 20 55555
+@px 24 21 5555
+@px 28 21 555
+@px 27 22 5555
+@px 28 23 555
+@px 28 24 55
+// nose
+@px 14 15 55
+@px 13 16 5555
+@px 13 17 5555
+@px 14 18 55
+--- 140
+// far foot forward: far arm swings back, near arm forward; the hat tip drops
+// far arm and hand, back
+@px 7 18 2
+@px 6 19 22
+@px 5 20 222
+@px 5 21 222
+@px 4 22 222
+@px 4 23 222
+@px 4 24 222
+@px 5 25 22
+// far boot, planted forward
+@rect 8 28 5 1 2
+@rect 6 29 7 1 2
+@rect 5 30 8 2 2
+// coat, the hem up over the lifted foot
+@rect 8 19 16 8 3
+@rect 7 22 18 4 3
+@rect 9 27 12 1 3
+// face
+@rect 9 13 14 5 3
+// beard, the point to the left
+@rect 8 14 1 4 4
+@rect 23 14 1 4 4
+@px 9 16 4
+@px 9 17 44
+@px 22 16 4
+@px 21 17 44
+@rect 8 18 16 3 4
+@rect 9 21 14 2 4
+@rect 9 23 13 1 4
+@rect 11 24 10 1 4
+@rect 11 25 8 1 4
+@rect 14 26 2 1 4
+// near boot, lifted behind
+@px 21 27 44
+@rect 18 28 6 1 4
+@rect 17 29 8 1 4
+@rect 17 30 6 1 4
+// hat, the tip dropped
+@rect 15 0 7 1 5
+@rect 14 1 9 1 5
+@rect 13 2 11 1 5
+@rect 12 3 8 2 5
+@rect 22 3 3 1 5
+@rect 23 4 3 1 5
+@rect 11 5 9 1 5
+@rect 24 5 2 4 5
+@px 24 9 5
+@rect 10 6 11 2 5
+@rect 9 8 13 2 5
+@rect 8 10 15 1 5
+@rect 7 11 18 1 5
+@rect 8 12 16 1 5
+// near arm and hand, forward
+@px 24 18 5
+@px 24 19 55
+@px 24 20 555
+@px 24 21 555
+@px 24 22 555
+@px 24 23 555
+@px 23 24 5555
+@px 24 25 555
+@px 24 26 55
+// nose
+@px 14 15 55
+@px 13 16 5555
+@px 13 17 5555
+@px 14 18 55

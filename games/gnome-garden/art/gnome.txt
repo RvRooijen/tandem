@@ -1,0 +1,467 @@
+// garden gnome for the gnome garden game: 3/4 front view turned slightly to the left, feet on y=31
+// painterly: no outline, light from the top left, a ramp per material, small marks with a cause
+// three looks: as bought (cozy), smiling too wide (odd), nothing behind the eyes (hollow)
+// hat: felt
+h = #f47a66
+r = #ea5a4b
+R = #cb362e
+D = #962334
+// skin, nose, cheek
+s = #f5c7a0
+S = #dc9f78
+T = #b97a5c
+c = #f6b8a2
+n = #e98f7e
+N = #c4665c
+// beard
+w = #fcf7ec
+W = #dbd2c2
+V = #b9ae9c
+U = #988d86
+// coat (the game swaps these three for other coats)
+b = #4d83c8
+B = #37639f
+C = #274678
+// boots: leather
+P = #ab7a50
+p = #8a5e40
+o = #6a4630
+O = #432a1b
+// eyes (only the two blocks of 2 by 2 use these colours, the game finds them by it)
+e = #2b1e26
+E = #0d070b
+// mouth, and the dark of the hollow look around the eyes and between the teeth
+M = #8c3440
+X = #170d13
+
+@size 32 32
+@recolor cozy
+@recolor odd
+@recolor hollow s=#d9c6b6 S=#ae988c T=#8a766e n=#c79a8e N=#9c7068 c=#c9b0a4 w=#efe8da
+
+=== stand
+@view 3/4 front, turned slightly to the left
+--- 400
+// far arm (viewer's left), hanging beside the belly
+@px 7 18 b
+@px 6 19 bB
+@px 5 20 bbB
+@px 4 21 bbBB
+@px 3 22 bBBC
+// far hand: a mitt, the thumb towards the body
+@px 2 23 ssS
+@px 2 24 sssS
+@px 2 25 sSS
+@px 3 26 ST
+// far boot: toe to the left, the sole on y=31
+@rect 9 28 5 1 o
+@rect 7 29 7 1 o
+@rect 6 30 8 2 o
+@px 9 28 ppooo
+@px 7 29 pPpoooO
+@px 6 30 pPppoooO
+@rect 6 31 8 1 O
+// coat: a round little body, widest at the belly
+@rect 8 19 16 9 B
+@rect 7 22 18 4 B
+@px 8 27 .
+@px 23 27 .
+// the belly is lit on the left, falls into shade on the right and under the beard; the hem dark
+@px 8 21 b
+@px 23 21 B
+@px 7 22 bb
+@px 23 22 BC
+@px 7 23 bbB
+@px 22 23 CBC
+@px 7 24 bbbB
+@px 21 24 CBCC
+@px 7 25 bbbbBB
+@px 19 25 BBBCCC
+@px 8 26 BbbBBCC
+@px 17 26 BBBCCCC
+@px 9 27 BBBBBCCCCCCCCC
+// near boot: toe to the left, the sole on y=31
+@rect 18 28 6 1 o
+@rect 17 29 8 1 o
+@rect 16 30 10 2 o
+@px 18 28 pppooo
+@px 17 29 pPppoooO
+@px 16 30 pPpppooooO
+@rect 16 31 10 1 O
+// face: the brim's shadow on the forehead, bushy brows, cheeks
+@rect 9 13 14 5 s
+@px 9 13 SSWWWWSSWWVVTT
+@px 21 14 SS
+@px 21 15 SS
+@px 10 16 cc_____S__cc
+@px 17 17 S__S
+// beard: sideburns beside the face, wide at the cheeks, down to a point on the belly
+@rect 8 14 1 4 w
+@rect 23 14 1 4 w
+@px 9 16 w
+@px 9 17 ww
+@px 22 16 w
+@px 21 17 ww
+@rect 8 18 16 3 w
+@rect 9 21 14 2 w
+@rect 10 23 12 1 w
+@rect 11 24 10 1 w
+@rect 13 25 6 1 w
+@rect 15 26 2 1 w
+// the beard is a bib: lit on the left, shaded on the right; the mustache lobes throw a shadow under them
+@px 8 14 W
+@rect 23 14 1 4 W
+@px 23 14 V
+@px 22 16 W
+@px 21 17 WW
+@px 8 18 wwwwww__wwwwwWWV
+@px 8 19 wwwwwwwWwwwwwWWV
+@px 8 20 wVVVW_____WVVVVV
+@px 9 21 wwwww___WWWWWV
+@px 9 22 wwWwwwWwWVWWVV
+@px 10 23 wwWwwWwWVWVV
+@px 11 24 wwWwWwVWVV
+@px 13 25 wwWWVU
+@px 15 26 WV
+// tufts that curl out of the edge, the deepest shade under the mustache on the far side
+@px 9 23 w
+@px 12 25 w
+@px 19 25 V
+@px 22 20 UU
+@px 20 24 U
+// mouth: a small smile under the mustache, the lower lip
+@px 13 20 MMMMM
+@px 14 21 nnn
+// hat: a tall cone, the tip folded over to the right and drooping
+@poly R 8,11 10,7 12,4 14,1 17,0 22,0 25,2 26,5 26,8 24,6 23,4 21,3 20,4 21,7 23,11
+@rect 7 11 18 2 R
+// the cone is lit down its left flank and dark on the right; a crease where the tip bends over, the tip hangs in shade
+@px 15 0 rhhrrrrR
+@px 14 1 rhhrrRrrRR
+@px 13 2 rhhrrRDDRRRD
+@px 12 3 rhhrrRRD
+@px 22 3 RRD
+@px 12 4 rhrrRRDD
+@px 23 4 RRD
+@px 11 5 rhhrrRDRD
+@px 24 5 RRD
+@px 10 6 rhhrrrDRRDD
+@px 24 6 RDD
+@px 10 7 rhrrrrRRRDD
+@px 25 7 DD
+@px 9 8 rhhrrrRRRRDDD
+@px 25 8 R
+@px 9 9 rhrRRrRRRRRDD
+@px 8 10 rhrhhRRRRRRRDDD
+// brim: a rolled band, lit on top, dark underneath, a kink that catches the light
+@px 7 11 rhhhhhrrrrrRrRRDDD
+@px 8 12 RRRRDDDDDDDDDDDD
+@px 7 12 .
+@px 24 12 .
+// near arm (viewer's right), in front of the side: lighter than the flank behind it
+@px 24 18 b
+@px 24 19 BB
+@px 24 20 CBB
+@px 24 21 CBBB
+@px 25 22 CCBB
+// near hand: a mitt, the thumb towards the body
+@px 27 23 ssS
+@px 26 24 ssSS
+@px 27 25 SST
+@px 27 26 ST
+// eyes: two by two, the game finds them here
+@rect 12 14 2 2 e
+@rect 18 14 2 2 e
+// nose: round, a little left of the middle
+@px 14 15 cn
+@px 13 16 ncnN
+@px 13 17 nnnN
+@px 14 18 NN
+// odd: the same smile, a little too wide
+@variant odd
+@px 11 20 MM_____MM
+@px 10 19 M
+@px 20 19 M
+// hollow: empty sockets (only the two by two is the eye colour), a wide grin full of teeth
+@variant hollow
+@px 11 13 XXX
+@px 10 14 XXXX
+@px 10 15 XXXX
+@px 11 16 XX
+@px 18 13 XXX
+@px 18 14 XXXX
+@px 18 15 XXXX
+@px 19 16 XX
+@rect 12 14 2 2 E
+@rect 18 14 2 2 E
+@px 9 18 X
+@px 22 18 X
+@rect 9 19 14 1 X
+@px 9 20 XwXwXwXwXwXwXX
+@rect 10 21 12 1 X
+@variant
+
+=== walk
+@view 3/4 front, turned slightly to the left, walking to the left
+--- 140
+// near foot forward: far arm swings forward, near arm back; the hat tip lags up
+// far arm, forward: longer, out to the left and down
+@px 7 18 b
+@px 6 19 bB
+@px 5 20 bbB
+@px 4 21 bbBB
+@px 3 22 bbBC
+@px 2 23 bBBC
+// far hand
+@px 1 24 ssS
+@px 1 25 sssS
+@px 1 26 sSS
+@px 2 27 ST
+// far boot, lifted behind: the toe hangs, the sole shows
+@px 9 28 ppooo
+@px 7 29 pPpooOO
+@px 7 30 OOOOO
+// coat; the hem rides up over the lifted foot and shows more of its shaft
+@rect 8 19 16 9 B
+@rect 7 22 18 4 B
+@px 8 21 b
+@px 23 21 B
+@px 7 22 bb
+@px 23 22 BC
+@px 7 23 bbB
+@px 22 23 CBC
+@px 7 24 bbbB
+@px 21 24 CBCC
+@px 7 25 bbbbBB
+@px 19 25 BBBCCC
+@px 8 26 BbbBBBCC
+@px 18 26 BBCCCC
+@px 8 27 ...BBBCCCCCCCCC.
+@px 9 27 po
+// near boot, planted forward
+@px 17 28 pppooo
+@px 16 29 pPppoooO
+@px 15 30 pPpppooooO
+@rect 15 31 10 1 O
+// face
+@rect 9 13 14 5 s
+@px 9 13 SSWWWWSSWWVVTT
+@px 21 14 SS
+@px 21 15 SS
+@px 10 16 cc_____S__cc
+@px 17 17 S__S
+// beard; the point lags to the right
+@rect 8 14 1 4 w
+@px 8 14 W
+@rect 23 14 1 4 W
+@px 23 14 V
+@px 9 16 w
+@px 9 17 ww
+@px 22 16 W
+@px 21 17 WW
+@px 8 18 wwwwww__wwwwwWWV
+@px 8 19 wwwwwwwWwwwwwWWV
+@px 8 20 wVVVW_____WVVVUU
+@px 9 21 wwwww___WWWWWV
+@px 9 22 wwWwwwWwWVWWVV
+@px 10 23 wwWwwWwWVWVV
+@px 11 24 wwWwWwVWVU
+@px 14 25 wwWWVU
+@px 16 26 WV
+@px 9 23 w
+@px 13 25 w
+@px 20 25 V
+// mouth
+@px 13 20 MMMMM
+@px 14 21 nnn
+// hat; the tip still up, flung out behind
+@px 15 0 rhhrrrrRRR
+@px 14 1 rhhrrRrrrRRRD
+@px 13 2 rhhrrRDDRRRRRRD
+@px 12 3 rhhrrRRD
+@px 22 3 DDDRRRD
+@px 12 4 rhrrRRDD
+@px 26 4 DRD
+@px 11 5 rhhrrRDRD
+@px 27 5 DR
+@px 10 6 rhhrrrDRRDD
+@px 28 6 R
+@px 10 7 rhrrrrRRRDD
+@px 9 8 rhhrrrRRRRDDD
+@px 9 9 rhrRRrRRRRRDD
+@px 8 10 rhrhhRRRRRRRDDD
+@px 7 11 rhhhhhrrrrrRrRRDDD
+@px 8 12 RRRRDDDDDDDDDDDD
+// near arm, back: out to the right and up
+@px 24 18 b
+@px 24 19 BBB
+@px 24 20 CBBBB
+@px 24 21 CCCB
+// near hand
+@px 28 21 ssS
+@px 27 22 ssSS
+@px 28 23 SST
+@px 28 24 ST
+// eyes
+@rect 12 14 2 2 e
+@rect 18 14 2 2 e
+// nose
+@px 14 15 cn
+@px 13 16 ncnN
+@px 13 17 nnnN
+@px 14 18 NN
+// odd
+@variant odd
+@px 11 20 MM_____MM
+@px 10 19 M
+@px 20 19 M
+// hollow
+@variant hollow
+@px 11 13 XXX
+@px 10 14 XXXX
+@px 10 15 XXXX
+@px 11 16 XX
+@px 18 13 XXX
+@px 18 14 XXXX
+@px 18 15 XXXX
+@px 19 16 XX
+@rect 12 14 2 2 E
+@rect 18 14 2 2 E
+@px 9 18 X
+@px 22 18 X
+@rect 9 19 14 1 X
+@px 9 20 XwXwXwXwXwXwXX
+@rect 10 21 12 1 X
+@variant
+--- 140
+// far foot forward: far arm swings back, near arm forward; the hat tip drops
+// far arm, back: short, close against the body
+@px 7 18 b
+@px 6 19 bB
+@px 5 20 bbB
+@px 5 21 bBB
+// far hand, half behind the belly
+@px 4 22 ssS
+@px 4 23 sss
+@px 4 24 sSS
+@px 5 25 ST
+// far boot, planted forward
+@px 8 28 ppooo
+@px 6 29 pPpoooO
+@px 5 30 pPppoooO
+@rect 5 31 8 1 O
+// coat; the hem rides up over the lifted foot and shows more of its shaft
+@rect 8 19 16 9 B
+@rect 7 22 18 4 B
+@px 8 21 b
+@px 23 21 B
+@px 7 22 bb
+@px 23 22 BC
+@px 7 23 bbB
+@px 22 23 CBC
+@px 7 24 bbbB
+@px 21 24 CBCC
+@px 7 25 bbbbBB
+@px 19 25 BBBCCC
+@px 8 26 BbbBCC
+@px 16 26 BBBBCCCC
+@px 8 27 .BBBBBCCCCCCC...
+@px 21 27 oo
+// near boot, lifted behind: the toe hangs, the sole shows
+@px 18 28 pppooo
+@px 17 29 pPppooOO
+@px 17 30 OOOOOO
+// face
+@rect 9 13 14 5 s
+@px 9 13 SSWWWWSSWWVVTT
+@px 21 14 SS
+@px 21 15 SS
+@px 10 16 cc_____S__cc
+@px 17 17 S__S
+// beard; the point swings to the left
+@rect 8 14 1 4 w
+@px 8 14 W
+@rect 23 14 1 4 W
+@px 23 14 V
+@px 9 16 w
+@px 9 17 ww
+@px 22 16 W
+@px 21 17 WW
+@px 8 18 wwwwww__wwwwwWWV
+@px 8 19 wwwwwwwWwwwwwWWV
+@px 8 20 wVVVW_____WVVVUU
+@px 9 21 wwwww___WWWWWV
+@px 9 22 wwWwwwWwWVWWVV
+@px 10 23 wwWwwWwWVWVV
+@px 11 24 wwWwWwVWVU
+@px 12 25 wwWWVU
+@px 14 26 WV
+@px 9 23 w
+@px 11 25 w
+@px 18 25 V
+// mouth
+@px 13 20 MMMMM
+@px 14 21 nnn
+// hat; the tip dropped, hanging close to the cone
+@px 15 0 rhhrrrR
+@px 14 1 rhhrrRrrR
+@px 13 2 rhhrrRDDRRD
+@px 12 3 rhhrrRRD
+@px 22 3 RRD
+@px 12 4 rhrrRRDD
+@px 23 4 RRD
+@px 11 5 rhhrrRDRD
+@px 24 5 RD
+@px 10 6 rhhrrrDRRDD
+@px 24 6 RD
+@px 10 7 rhrrrrRRRDD
+@px 24 7 RD
+@px 9 8 rhhrrrRRRRDDD
+@px 24 8 DD
+@px 9 9 rhrRRrRRRRRDD
+@px 24 9 R
+@px 8 10 rhrhhRRRRRRRDDD
+@px 7 11 rhhhhhrrrrrRrRRDDD
+@px 8 12 RRRRDDDDDDDDDDDD
+// near arm, forward: the hand comes in front of the belly
+@px 24 18 b
+@px 24 19 BB
+@px 24 20 BBB
+@px 24 21 CBB
+@px 24 22 CBB
+// near hand
+@px 24 23 ssS
+@px 23 24 sssS
+@px 24 25 SST
+@px 24 26 ST
+// eyes
+@rect 12 14 2 2 e
+@rect 18 14 2 2 e
+// nose
+@px 14 15 cn
+@px 13 16 ncnN
+@px 13 17 nnnN
+@px 14 18 NN
+// odd
+@variant odd
+@px 11 20 MM_____MM
+@px 10 19 M
+@px 20 19 M
+// hollow
+@variant hollow
+@px 11 13 XXX
+@px 10 14 XXXX
+@px 10 15 XXXX
+@px 11 16 XX
+@px 18 13 XXX
+@px 18 14 XXXX
+@px 18 15 XXXX
+@px 19 16 XX
+@rect 12 14 2 2 E
+@rect 18 14 2 2 E
+@px 9 18 X
+@px 22 18 X
+@rect 9 19 14 1 X
+@px 9 20 XwXwXwXwXwXwXX
+@rect 10 21 12 1 X
+@variant

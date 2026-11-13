@@ -1,13 +1,15 @@
 // A host on a scratch copy of nothing: the game's code is the real one, but
 // its content, concepts and data go to a temporary folder, so a test can
 // change records without touching the game.
-import { mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createHost } from '../core/host.ts';
+import { ROOT, createHost } from '../core/host.ts';
 
 export async function scratchHost() {
   const dir = mkdtempSync(join(tmpdir(), 'tandem-'));
+  // The drawings come along as a copy: a test may change one.
+  for (const d of ['art', 'depth']) cpSync(join(ROOT, 'games/gnome-garden', d), join(dir, 'game', d), { recursive: true });
   const host = await createHost({ game: 'gnome-garden', gameDir: join(dir, 'game'), dataDir: join(dir, 'data') });
   return { host, dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }

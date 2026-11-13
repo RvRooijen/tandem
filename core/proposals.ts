@@ -9,9 +9,9 @@ export interface Proposal {
   id: string;
   round: string;
   by: string;
-  /** What kind of thing it changes: a record, or a concept. */
-  kind: 'record' | 'concept';
-  /** The record's path or the concept's id. */
+  /** What kind of thing it changes: a record, a concept, or a drawing. */
+  kind: 'record' | 'concept' | 'drawing';
+  /** The record's path, the concept's id or the drawing's name. */
   path: string;
   /** The fields as they were (undefined for something new) and as they would be. */
   before?: RecordValue;

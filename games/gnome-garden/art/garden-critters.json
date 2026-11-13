@@ -1,1 +1,0 @@
-{"format":"pixeldraw-sprite","version":1,"name":"garden-critters","image":"garden-critters.png","width":32,"height":32,"looks":{"default":{"butterfly":[[0,0,140],[33,0,140]],"firefly":[[66,0,300],[99,0,300]],"mound":[[132,0,250],[165,0,250]],"crow":[[198,0,500],[231,0,200]],"glint":[[264,0,700],[297,0,120]],"weed":[[330,0,300],[363,0,300]]}}}

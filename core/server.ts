@@ -84,7 +84,7 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
 
   await new Promise<void>((resolve) => server.listen(opts.port ?? PORT, '127.0.0.1', resolve));
   const port = (server.address() as { port: number }).port;
-  return { server, host, runner, port, close: () => new Promise<void>((r) => { runner?.stop(); server.closeAllConnections(); server.close(() => r()); }) };
+  return { server, host, runner, port, close: () => new Promise<void>((r) => { runner?.stop(); host.art.workers.stopAll(); server.closeAllConnections(); server.close(() => r()); }) };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

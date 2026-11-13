@@ -1,0 +1,660 @@
+// things that pass through the gnome garden and can be caught with a tap: one animation each, two frames, 32x32
+// butterfly | firefly | mound (something moving under the lawn) | crow | glint (eyes that are not a gnome's) | weed (as it is; as it is later)
+// painterly: no outline, light from the top left
+// butterfly: pink forewings, yellow hindwings, a dark body
+q = #fbb8cf
+p = #f590b3
+P = #c84f7e
+u = #963a66
+j = #fdeea0
+y = #f9d650
+Y = #dba62e
+J = #b07c1e
+k = #2b1e26
+K = #5a4450
+// firefly: its light (F and a are see-through: the glow around the tail), orange shield, pale wings
+f = #b8d94a
+l = #d8f070
+L = #fbffd8
+F = #b8d94a38
+a = #d8f07078
+o = #e2952f
+O = #b06f1c
+W = #e8eef890
+// earth
+M = #c79260
+m = #a8744a
+n = #8a5a33
+N = #5c3a22
+e = #3a2318
+// crow: feathers with a blue sheen, horn of the beak and legs, the eye
+B = #6c7096
+b = #4a4658
+c = #2e2a3a
+C = #1b1826
+i = #8d8279
+I = #5f5650
+V = #3b3331
+w = #f4f0e6
+// glint: the red must stay #ff4a3a and #b02a38, the game looks for them; X is the see-through ragged edge of the dark
+X = #2a1a2470
+x = #3d2836
+d = #2a1a24
+D = #170d14
+r = #ff4a3a
+R = #b02a38
+// weed: leaves, and the skin of what it is later
+h = #a4dc6a
+g = #6fb646
+G = #3f7f32
+v = #2a5a2c
+t = #fde0c8
+s = #f1c6a6
+S = #c9937a
+T = #a8705e
+Q = #fbefe4
+
+@size 32 32
+
+=== butterfly
+--- 140
+// wings open: yellow hindwings first, the pink forewings over them
+// hindwings
+@poly y 15,14 8,15 5,17 4,21 6,24 10,25 13,22 15,19
+@poly y 17,14 24,15 27,17 28,21 26,24 22,25 19,22 17,19
+// their darker rim
+@line 6 16 4 19 Y 1
+@line 4 19 4 21 Y 1
+@line 4 21 6 23 Y 1
+@line 6 23 9 24 Y 1
+@line 9 24 12 21 Y 1
+// light on the left hindwing, the right one in shade, both dark under the forewings
+@px 7 16 jjjj
+@px 6 17 jjjj
+@px 6 18 jj
+@px 9 15 YYYYYY
+@px 17 15 YYYYYY
+@px 22 19 YYYYY
+@px 21 20 YYYYYY
+@px 20 21 YYYYYYY
+@px 21 22 YYYYY
+@px 22 23 YY
+@line 25 16 27 19 J 1
+@line 27 19 27 21 J 1
+@line 27 21 25 23 J 1
+@line 25 23 22 24 J 1
+@line 22 24 19 21 J 1
+// forewings
+@poly p 15,9 9,5 5,4 3,6 2,10 4,13 9,15 15,14
+@poly p 17,9 23,5 27,4 29,6 30,10 28,13 23,15 17,14
+// their dark border, widest at the tip
+@line 6 4 3 6 P 2
+@line 3 6 2 10 P 1
+@line 2 10 4 13 P 1
+@line 4 13 8 14 P 1
+// light on the left forewing, the right one in shade, the wing roots dark beside the body
+@px 7 6 qqqq
+@px 5 7 qqqqqq
+@px 3 8 qqqqqq
+@px 3 9 qqqq
+@px 3 10 qq
+@px 14 10 P
+@px 14 11 P
+@px 13 12 PP
+@px 13 13 PP
+@px 24 10 PPPPP
+@px 21 11 PPPPPPP
+@px 19 12 PPPPPPPPP
+@px 17 13 PPPPPPPPP
+@px 20 14 PPP
+@px 17 10 P
+@px 17 11 PP
+@px 17 12 PP
+@line 25 4 28 6 u 2
+@line 28 6 29 10 u 1
+@line 29 10 27 13 u 1
+@line 27 13 23 14 u 1
+// a vein from the root of each wing, a pale fleck in each dark tip
+@line 12 11 7 11 P 1
+@line 19 11 24 11 u 1
+@line 13 16 9 20 Y 1
+@line 18 16 22 20 J 1
+@px 5 5 q
+@px 26 5 p
+// body and feelers
+@rect 15 7 2 14 k
+// light down its left side: the furry thorax, then a glint per ring of the abdomen
+@px 15 8 K
+@px 15 9 K
+@px 15 10 K
+@px 15 11 K
+@px 15 14 K
+@px 15 16 K
+@px 15 18 K
+@line 15 7 12 3 k 1
+@line 16 7 19 3 k 1
+--- 140
+// wings half shut: the same wings seen narrower, tips up
+// hindwings
+@poly y 15,14 12,15 10,17 10,21 11,24 12,25 13,22 15,19
+@poly y 17,14 20,15 22,17 22,21 21,24 20,25 19,22 17,19
+// their darker rim
+@line 10 17 10 21 Y 1
+@line 10 21 11 23 Y 1
+// light on the left hindwing, the right one in shade
+@px 11 16 jj
+@px 11 17 j
+@px 11 18 j
+@px 13 15 YY
+@px 17 15 YY
+@px 19 17 YY
+@px 19 18 YY
+@px 19 19 YY
+@px 19 20 YY
+@px 19 21 Y
+@px 11 24 .
+@line 21 17 21 21 J 1
+@line 21 21 20 23 J 1
+// forewings
+@poly p 15,9 12,4 10,3 9,5 9,10 10,13 12,15 15,14
+@poly p 17,9 20,4 22,3 23,5 23,10 22,13 20,15 17,14
+// their dark border
+@line 10 3 9 5 P 1
+@line 9 5 9 10 P 1
+@line 9 10 10 13 P 1
+// light on the left forewing, the right one in shade
+@px 10 5 qq
+@px 10 6 qq
+@px 10 7 qq
+@px 10 8 q
+@px 14 10 P
+@px 14 11 P
+@px 14 12 P
+@px 14 13 P
+@px 19 9 PPP
+@px 19 10 PPP
+@px 18 11 PPPP
+@px 17 12 PPPP
+@px 17 13 PPPP
+@line 21 3 22 5 u 1
+@line 22 5 22 10 u 1
+@line 22 10 21 13 u 1
+// a vein from the root of each wing, a pale fleck in the lit tip
+@px 11 11 PPP
+@px 18 11 uuu
+@line 13 16 12 19 Y 1
+@line 18 16 19 19 J 1
+@px 10 4 q
+// body and feelers
+@rect 15 7 2 14 k
+// light down its left side: the furry thorax, then a glint per ring of the abdomen
+@px 15 8 K
+@px 15 9 K
+@px 15 10 K
+@px 15 11 K
+@px 15 14 K
+@px 15 16 K
+@px 15 18 K
+@line 15 7 13 3 k 1
+@line 16 7 18 3 k 1
+
+=== firefly
+--- 300
+// lit: a beetle flying up to the left, its tail alight
+// glow
+@circle 19 19 7 F
+@circle 19 19 4 a
+// wings: a pale blur above the back
+@poly W 14,12 14,5 18,3 21,6 18,12
+// wing covers, lifted
+@poly k 15,12 21,8 24,10 18,15
+// tail, shield, head
+@line 16 16 20 20 l 4
+@line 17 17 20 20 L 2
+// its own light on the underside of the wing covers
+@px 19 13 G
+@px 18 14 G
+@circle 14 14 2 o
+@px 13 13 j
+@px 14 14 O
+@px 16 14 O
+@px 15 15 OO
+@px 14 16 OO
+// light along the top edge of the wing covers
+@px 20 8 K
+@px 19 9 K
+@px 17 10 KK
+@px 16 11 K
+@px 11 11 Kk
+@px 10 12 kkk
+@px 11 13 kk
+// feelers and legs
+@line 10 11 7 9 k 1
+@line 11 10 10 6 k 1
+@px 13 17 k
+@px 12 18 k
+@px 15 18 k
+@px 15 19 k
+--- 300
+// dim: the same beetle, the light nearly out
+// glow
+@circle 19 19 4 F
+// wings
+@poly W 14,12 14,5 18,3 21,6 18,12
+// wing covers
+@poly k 15,12 21,8 24,10 18,15
+// tail, shield, head
+@line 16 16 20 20 f 4
+@line 17 17 19 19 l 1
+// the dull underside of the lamp
+@px 16 18 G
+@px 17 19 G
+@px 18 20 G
+@px 19 21 G
+@circle 14 14 2 o
+@px 13 13 j
+@px 14 14 O
+@px 16 14 O
+@px 15 15 OO
+@px 14 16 OO
+// light along the top edge of the wing covers
+@px 20 8 K
+@px 19 9 K
+@px 17 10 KK
+@px 16 11 K
+@px 11 11 Kk
+@px 10 12 kkk
+@px 11 13 kk
+// feelers and legs
+@line 10 11 7 9 k 1
+@line 11 10 10 6 k 1
+@px 13 17 k
+@px 12 18 k
+@px 15 18 k
+@px 15 19 k
+
+=== mound
+--- 250
+// a ridge of earth pushed up from below: the lawn lifted and torn open over it, moving to the right
+// earth
+@poly n 1,32 3,28 6,25 10,22 13,20 17,19 21,21 25,24 28,28 31,32
+// its lit slope and its shaded slope
+@poly m 10,22 13,20 16,19 15,22 12,25 10,28 9,25
+@poly N 18,19 21,21 23,23 22,25 24,28 25,32 21,32 20,26 19,22
+// turf, lifted on both flanks
+@poly g 1,32 3,28 6,25 9,23 10,25 8,28 6,32
+@poly G 31,32 28,28 25,24 23,23 22,25 24,28 25,32
+// the lit top of the left sod, the torn edges of both
+@line 8 23 2 29 h 1
+@line 9 25 6 31 N 1
+@line 22 25 24 31 e 1
+// clods: the crest and the left slope lumpy, each lump lit on top
+@px 12 19 MMM
+@px 19 19 N
+@px 11 20 MMM
+@px 20 20 N
+@px 9 21 Mm
+@px 9 22 mMM
+@px 10 24 M
+@px 9 26 M
+@px 21 21 N
+@px 22 22 N
+// clods on the face, each with its shadow under it
+@px 14 23 mm
+@px 14 24 NN
+@px 11 27 mm
+@px 11 28 NN
+@px 17 26 m
+@px 17 27 N
+@px 13 29 mm
+@px 13 30 N
+@px 18 29 m
+@px 18 30 N
+@px 20 23 n
+// a pebble in the soil
+@px 15 27 iI
+@px 21 28 n
+// the crack where the crest split
+@px 17 19 e
+@px 17 20 e
+@px 16 21 e
+@px 16 22 e
+@px 17 23 e
+@px 17 24 e
+// grass: blades standing off the sods, light along the top of the right one, its foot dark
+@px 6 24 h
+@px 4 25 g
+@px 2 28 g
+@px 1 30 g
+@line 23 23 27 27 g 1
+@px 27 28 g
+@px 28 29 g
+@px 29 30 g
+@px 30 31 g
+@px 24 22 G
+@px 27 26 G
+@px 29 29 G
+@px 25 28 vv
+@px 25 29 vvv
+@px 26 30 vvv
+@px 26 31 vvvv
+@px 5 30 G
+@px 4 31 GG
+--- 250
+// a step further: the crest has moved on to the right, the earth behind it sinks
+// earth
+@poly n 1,32 4,28 8,26 12,23 16,20 20,19 23,21 26,24 28,27 31,32
+// its lit slope and its shaded slope
+@poly m 11,24 14,21 17,20 19,19 18,22 14,25 12,28 10,26
+@poly N 21,19 23,21 25,24 24,26 26,29 26,32 22,32 22,27 21,22
+// turf
+@poly g 1,32 4,28 8,26 11,24 11,26 8,29 6,32
+@poly G 31,32 28,27 26,24 24,23 23,25 25,28 26,32
+// the lit top of the left sod, the torn edges of both
+@line 10 24 2 29 h 1
+@line 10 26 6 31 N 1
+@line 23 25 25 31 e 1
+// clods: the crest and the left slope lumpy, each lump lit on top
+@px 16 19 MMM
+@px 21 19 NN
+@px 14 20 MMM
+@px 22 20 N
+@px 13 21 M
+@px 11 22 mMM
+@px 11 23 M
+@px 11 25 M
+// clods on the face, each with its shadow under it
+@px 16 24 mm
+@px 16 25 NN
+@px 11 28 N
+@px 13 28 mm
+@px 13 29 NN
+@px 19 27 m
+@px 19 28 N
+@px 16 30 mm
+@px 16 31 N
+@px 22 23 n
+// the pebble, left behind
+@px 13 26 iI
+@px 23 28 n
+// the crack where the crest split
+@px 20 19 e
+@px 20 20 e
+@px 19 21 e
+@px 19 22 e
+@px 20 23 e
+@px 20 24 e
+// grass: blades standing off the sods, light along the top of the right one, its foot dark
+@px 9 24 h
+@px 6 26 g
+@px 4 27 g
+@px 1 30 g
+@line 24 23 27 26 g 1
+@px 27 27 g
+@px 28 28 g
+@px 28 29 g
+@px 29 30 g
+@px 30 31 g
+@px 25 22 G
+@px 28 26 G
+@px 26 28 vv
+@px 26 29 vv
+@px 27 30 vv
+@px 27 31 vvv
+@px 5 30 G
+@px 4 31 GG
+
+=== crow
+--- 500
+// perched, looking left: glossy black, a heavy horn beak, one bright eye
+// tail
+@poly C 21,21 30,25 31,27 28,28 20,26
+// legs and toes
+@line 13 27 13 30 I 1
+@line 18 27 18 30 V 1
+@px 11 31 VIII
+@px 16 31 VVVV
+// body, the belly in its own shadow, feathered thighs
+@poly c 9,14 8,19 9,23 12,26 18,27 23,25 25,22 22,17 17,12 13,10
+@px 12 24 CCCCCCCC
+@px 11 25 CCCCCCCCCCC
+@px 12 26 CCC
+@px 17 26 CCC
+// head
+@circle 11 10 4 c
+// folded wing
+@poly C 14,14 21,17 26,23 27,25 22,25 16,23 13,19
+// sheen on the shoulder, the edges of the feather rows, a streak down the tail
+@px 14 14 b
+@px 14 15 bb
+@px 13 16 bBb
+@px 13 17 bb
+@px 13 18 b
+@line 15 20 21 23 c 1
+@line 18 19 25 23 c 1
+@px 17 17 bb
+@px 19 18 b
+@line 24 24 29 26 c 1
+// light on the breast
+@px 8 16 bb
+@px 8 17 b
+// beak
+@poly I 7,8 4,9 1,11 4,12 7,12
+@px 5 8 ii
+@px 3 9 ii
+@px 2 11 .VVVV
+@px 2 10 V
+// light on the crown, the head's shadow on the throat
+@px 9 6 bBb
+@px 8 7 bb
+@px 8 12 CC
+@px 9 13 CC
+// eye: pale, a catchlight, the pupil
+@px 9 9 wB
+@px 9 10 Bk
+--- 200
+// head cocked: tipped up and back, the eye on you
+// tail
+@poly C 21,21 30,25 31,27 28,28 20,26
+// legs and toes
+@line 13 27 13 30 I 1
+@line 18 27 18 30 V 1
+@px 11 31 VIII
+@px 16 31 VVVV
+// body, the belly in its own shadow, feathered thighs
+@poly c 9,14 8,19 9,23 12,26 18,27 23,25 25,22 22,17 17,12 13,10
+@px 12 24 CCCCCCCC
+@px 11 25 CCCCCCCCCCC
+@px 12 26 CCC
+@px 17 26 CCC
+// head
+@circle 12 9 4 c
+// folded wing
+@poly C 14,14 21,17 26,23 27,25 22,25 16,23 13,19
+// sheen on the shoulder, the edges of the feather rows, a streak down the tail
+@px 14 14 b
+@px 14 15 bb
+@px 13 16 bBb
+@px 13 17 bb
+@px 13 18 b
+@line 15 20 21 23 c 1
+@line 18 19 25 23 c 1
+@px 17 17 bb
+@px 19 18 b
+@line 24 24 29 26 c 1
+// light on the breast
+@px 8 16 bb
+@px 8 17 b
+// beak
+@px 4 6 iiiiI
+@px 2 7 iiIIII
+@px 4 8 VVVV
+// light on the crown, the head's shadow on the throat
+@px 10 5 bBb
+@px 9 6 bb
+@px 9 12 CC
+@px 9 13 CCC
+// eye: pale, a catchlight, the pupil turned to you
+@px 10 8 wB
+@px 10 9 kB
+
+=== glint
+--- 700
+// a darkness standing in the garden, as tall as a gnome, with eyes in it
+// the dark: thin at the edge, deepest around the eyes
+@poly X 4,32 2,29 4,25 3,20 5,17 3,13 6,10 9,6 12,6 15,3 19,5 23,5 25,9 28,12 27,17 29,21 27,25 30,29 29,32
+@poly x 6,32 4,28 5,23 4,18 6,12 10,8 15,6 20,7 24,10 27,15 27,21 28,26 28,32
+@poly d 7,32 6,27 7,21 6,17 8,12 11,9 16,8 21,9 24,12 26,17 27,23 27,28 27,32
+@ellipse 16 18 9 7 D
+@poly D 9,32 8,26 8,20 25,20 25,26 24,32
+// eyes: two blocks of 4 by 3 at x 10..13 and 18..21, y 14..16, only r and R (the game looks for them)
+@rect 10 14 4 3 r
+@rect 18 14 4 3 r
+@px 12 15 RR
+@px 20 15 RR
+@px 12 16 RR
+@px 20 16 RR
+--- 120
+// a blink: the same blocks gone dark red, a bright slit left
+// the dark
+@poly X 4,32 2,29 4,25 3,20 5,17 3,13 6,10 9,6 12,6 15,3 19,5 23,5 25,9 28,12 27,17 29,21 27,25 30,29 29,32
+@poly x 6,32 4,28 5,23 4,18 6,12 10,8 15,6 20,7 24,10 27,15 27,21 28,26 28,32
+@poly d 7,32 6,27 7,21 6,17 8,12 11,9 16,8 21,9 24,12 26,17 27,23 27,28 27,32
+@ellipse 16 18 9 7 D
+@poly D 9,32 8,26 8,20 25,20 25,26 24,32
+// eyes: the same two blocks, only r and R
+@rect 10 14 4 3 R
+@rect 18 14 4 3 R
+@px 10 15 rrrr
+@px 18 15 rrrr
+
+=== weed
+--- 300
+// a dandelion's rosette: toothed leaves flat on the soil, one bud on a short stalk
+// back leaves
+@line 15 30 9 21 G 3
+@line 17 30 23 21 v 3
+// leaves between, half raised
+@line 14 30 5 23 g 3
+@line 18 30 27 23 G 3
+// side leaves, flat on the soil; the left one in the shadow of the leaf above it
+@poly g 16,30 12,27 7,25 3,26 2,28 6,29 11,31
+@poly g 16,30 20,27 25,25 29,26 30,28 26,29 21,31
+@px 6 26 GGGGGG
+// front leaves: the left one lit, the right one in shade
+@poly g 16,29 12,29 8,32 16,32
+@poly g 16,29 20,29 25,32 16,32
+@px 11 30 hhh
+@px 10 31 hhh
+@px 20 30 GG
+@px 19 31 GGGG
+// midribs
+@line 14 28 10 21 g 1
+@line 18 28 22 21 G 1
+@line 12 28 5 23 h 1
+@line 19 29 26 23 g 1
+@line 12 28 4 27 h 1
+@line 19 28 27 27 h 1
+// the crown, dark where the leaves meet
+@px 14 29 GG
+@px 17 29 GG
+@px 15 30 GGG
+// teeth: notches bitten out of the leaf edges, a tooth beside each
+@px 4 28 .
+@px 7 28 .
+@px 4 23 .
+@px 7 23 .
+@px 8 21 .
+@px 12 22 G
+@px 24 21 .
+@px 20 22 v
+@px 28 23 .
+@px 27 28 .
+@px 24 29 .
+// stalk and bud
+@line 16 29 16 21 h 1
+@ellipse 16 19 2 2 y
+@px 14 20 G___G
+@px 15 21 GGG
+@px 15 17 j
+@px 14 18 jj
+@px 18 18 Y
+@px 17 19 YY
+@px 17 20 Y
+// the first ray florets coming out of the bud
+@px 14 17 j
+@px 16 16 y
+@px 18 17 Y
+--- 300
+// later on: the same rosette, but what comes up in the middle is a finger
+// back leaves
+@line 15 30 9 21 G 3
+@line 17 30 23 21 v 3
+// leaves between, half raised
+@line 14 30 5 23 g 3
+@line 18 30 27 23 G 3
+// side leaves, flat on the soil; the left one in the shadow of the leaf above it
+@poly g 16,30 12,27 7,25 3,26 2,28 6,29 11,31
+@poly g 16,30 20,27 25,25 29,26 30,28 26,29 21,31
+@px 6 26 GGGGGG
+// front leaves: the left one lit, the right one in shade
+@poly g 16,29 12,29 8,32 16,32
+@poly g 16,29 20,29 25,32 16,32
+@px 11 30 hhh
+@px 10 31 hhh
+@px 20 30 GG
+@px 19 31 GGGG
+// midribs
+@line 14 28 10 21 g 1
+@line 18 28 22 21 G 1
+@line 12 28 5 23 h 1
+@line 19 29 26 23 g 1
+@line 12 28 4 27 h 1
+@line 19 28 27 27 h 1
+// the crown, dark where the leaves meet
+@px 14 29 GG
+@px 17 29 GG
+@px 15 30 GGG
+// teeth: notches bitten out of the leaf edges, a tooth beside each
+@px 4 28 .
+@px 7 28 .
+@px 4 23 .
+@px 7 23 .
+@px 8 21 .
+@px 12 22 G
+@px 24 21 .
+@px 20 22 v
+@px 28 23 .
+@px 27 28 .
+@px 24 29 .
+// finger: crooked at the top joint, the nail towards us, its right side in shade
+@rect 14 20 4 12 s
+@rect 13 16 4 4 s
+@px 13 16 .
+@px 16 16 .
+@rect 17 20 1 12 S
+@px 16 17 S
+@px 16 18 S
+@px 16 19 S
+@px 14 17 QQ
+@px 14 18 QQ
+// pale where the light hits its left side
+@px 13 17 t
+@px 13 18 t
+@px 13 19 tt
+@rect 14 20 2 11 t
+// creases over the two knuckles, the fold under the nail
+@px 14 19 S
+@px 15 20 TT
+@px 14 21 s
+@px 15 25 TT
+@px 14 26 s
+@px 14 25 s
+// soil still clinging to it
+@px 16 29 N
+@px 14 31 n
+// soil it pushed up
+@px 12 30 nn
+@px 18 30 NN
+@px 11 31 mnn
+@px 18 31 nNN

@@ -8,4 +8,5 @@ A game engine for one person and an AI; see README.md for the idea and the layou
 - An agent's write is refused unless the command says `agent: 'free'` (cannot touch the project) or `agent: 'proposes'` (turns itself into a proposal).
 - A game's numbers live in `games/<id>/content` as records, not in code. Tests use a scratch folder (`test/helpers.ts`) so they never write there.
 - `games/<id>/data/` is not in git: the event log, proposals, pictures, the agent's session.
+- `art/src`, `art/scripts` and `art/test` are pixeldraw's code as it is there (plain JavaScript); only `art/scripts/bus.js` is tandem's own. A game's drawings are text in `games/<id>/art` and `depth`; `npm run art` builds them into the game, and a test fails when that was forgotten.
 - Heavy work that needs other content than the accepted one (a playtest of a proposal) runs in a child process (`core/job.ts`), because a game's content lives in its module.

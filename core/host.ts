@@ -4,7 +4,6 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { artCommands } from './art.ts';
 import { CommandError, createRegistry, isAgent, type By, type CommandDef, type Registry } from './commands.ts';
 import { STAGES, createConcepts, type Concept, type Concepts } from './concepts.ts';
 import { createEventLog, type EventLog } from './events.ts';
@@ -14,6 +13,7 @@ import { createLocks, type Locks } from './locks.ts';
 import { encodePng } from './png.ts';
 import { createProposals, type Proposal, type Proposals } from './proposals.ts';
 import { createRecords, type RecordSet, type RecordValue, type Records } from './records.ts';
+import { createArt, type Art } from '../art/commands.ts';
 import { ecsCommands } from '../ecs/inspect.ts';
 import { compare, type Pacing } from '../playtest/pacing.ts';
 
@@ -30,6 +30,7 @@ export interface Host {
   proposals: Proposals;
   concepts: Concepts;
   locks: Locks;
+  art: Art;
   dirs: { game: string; data: string; looks: string };
   /** Run a command as somebody. */
   run(name: string, input: Record<string, unknown> | undefined, by: By, round?: string): Promise<unknown>;
@@ -266,19 +267,21 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       name: 'proposals.decide', kind: 'write',
       about: 'Accept or reject a round of proposals as one. Accepting makes the changes real.',
       input: { round: 'string', accept: 'boolean' },
-      run(c, i) {
+      async run(c, i) {
+        if (i.accept) art.acceptable(i.round);
         const set = proposals.decide(i.round, i.accept ? 'accepted' : 'rejected');
         if (!set.length) throw new CommandError('missing', `nothing is pending in round ${i.round}`);
         if (i.accept) {
           for (const p of set) {
             if (p.kind === 'record') records.set(p.path, { ...(records.get(p.path) ?? {}), ...p.after });
-            else {
+            else if (p.kind === 'concept') {
               const now = concepts.get(p.path);
               concepts.save({ id: p.path, name: p.path, stage: 'idea', links: [], realised: [], text: '', ...now, ...(p.after as Partial<Concept>) });
             }
           }
           contentChanged();
         }
+        await art.decide(i.round, i.accept, set);
         events.add({ type: 'proposal.decided', by: c.by, round: i.round, status: i.accept ? 'accepted' : 'rejected', count: set.length, paths: set.map((p) => `${p.kind}:${p.path}`) });
         return { decided: set.length };
       },
@@ -490,10 +493,11 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   const guarded = (defs: CommandDef[]): CommandDef[] => defs.map((d) => d.kind !== 'write' || d.name.startsWith('ecs.') ? d : {
     ...d, run: (c, i) => { sandboxOnly(i.room, c.by); return d.run(c, i); },
   });
-  registry.add(...core, ...guarded(game.commands(world)), ...ecsCommands(world, game, sandboxOnly), ...artCommands({ game: id, root: ROOT, events, newLookFile, locks }));
+  const art = createArt({ game: id, root: ROOT, gameDir, dataDir, events, proposals, locks, newLookFile });
+  registry.add(...core, ...guarded(game.commands(world)), ...ecsCommands(world, game, sandboxOnly), ...art.commands);
 
   return {
-    game, registry, events, records, proposals, concepts, locks,
+    game, registry, events, records, proposals, concepts, locks, art,
     dirs: { game: gameDir, data: dataDir, looks: looksDir },
     run: (name, input, by, round) => registry.run(name, input, { by, round }),
     world,

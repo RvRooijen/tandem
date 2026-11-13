@@ -1,0 +1,410 @@
+// things that stand about in the gnome garden: one animation per thing, each on the bottom middle of its 32x32 frame
+// basket: empty, full | jar: empty and three fills of teeth | shovel | lantern
+// painterly: no outline, light from the top left
+// wicker
+m = #d9a45c
+n = #c08a46
+N = #8a5a33
+M = #5c3a22
+// what is in the basket
+w = #fcf7ec
+W = #d6cdbd
+y = #f9d650
+p = #f590b3
+P = #c84f7e
+g = #6fb646
+G = #3f7f32
+b = #7fa8ee
+B = #4f74c4
+// teeth: enamel w and W, the root, the shade between them
+r = #eedfba
+U = #d6ccb8
+T = #c0b39c
+// glass and lid
+l = #ffffff
+a = #b9deea
+A = #93c2d4
+c = #6c9cb2
+e = #8f98a3
+E = #5f6772
+// metal
+s = #d5dae0
+t = #b9c0c9
+D = #7b838e
+// lantern
+k = #2b222c
+K = #453a48
+o = #f29a2e
+Y = #fff3b0
+O = #b8641f
+j = #6b5f70
+q = #948a9c
+
+@size 32 32
+
+=== basket
+--- 300
+// handle: a hoop of twisted willow, behind the rim; the left side catches the light
+@px 13 5 mmmnnN
+@px 11 6 mmnnnNnnNN
+@px 10 7 mnn
+@px 19 7 nNN
+@px 9 8 mN
+@px 21 8 nN
+@px 8 9 mn
+@px 22 9 nM
+@px 8 10 mn
+@px 22 10 nN
+@px 7 11 mN
+@px 23 11 nN
+@px 7 12 mn
+@px 23 12 nM
+@px 7 13 mn
+@px 23 13 nN
+@px 6 14 mN
+@px 24 14 nN
+@px 6 15 mn
+@px 24 15 nM
+@px 6 16 mn
+@px 24 16 nN
+// inside: the far wall in shade
+@ellipse 15 17 11 2 M
+@ellipse 16 17 11 2 M
+@px 18 16 NNNNNN
+// body: wider at the top; lit on the left, in shade on the right
+@px 5 20 mmmNmmnNnnnNnnnMNNNMNN
+@px 5 21 mmmNmmnNnnnNnnnMNNNMNN
+@px 5 22 mNmmmNnnnNnnnNnNNMNNNM
+@px 5 23 mNmmmNnnnNnnnNnNNMNNNM
+@px 6 24 mmNmmnNnnnNnnnMNNNMN
+@px 6 25 mmNmmnNnnnNnnnMNNNMN
+@px 6 26 NmmmNnnnNnnnNnNNMNNN
+@px 6 27 NmmmNnnnNnnnNnNNMNNN
+@px 7 28 mNmmnNnnnNnnnMNNNM
+@px 7 29 mNmmnNnnnNnnnMNNNM
+@px 7 30 nnnNnnnNnnnNnNNMNN
+@rect 7 31 18 1 M
+// rim: a braided band
+@px 3 18 mmnmmnmmnmmnmmnmnnNNNMNNMN
+@px 3 19 nNnnNnnNnnNnnNnnnNNNMNNMNN
+--- 300
+@px 13 5 mmmnnN
+@px 11 6 mmnnnNnnNN
+@px 10 7 mnn
+@px 19 7 nNN
+@px 9 8 mN
+@px 21 8 nN
+@px 8 9 mn
+@px 22 9 nM
+@px 8 10 mn
+@px 22 10 nN
+@px 7 11 mN
+@px 23 11 nN
+@px 7 12 mn
+@px 23 12 nM
+@px 7 13 mn
+@px 23 13 nN
+@px 6 14 mN
+@px 24 14 nN
+@px 6 15 mn
+@px 24 15 nM
+@px 6 16 mn
+@px 24 16 nN
+@ellipse 15 17 11 2 M
+@ellipse 16 17 11 2 M
+@px 18 16 NNNNNN
+// flowers, heaped on a bed of leaves
+@ellipse 16 15 11 3 G
+@poly G 8,13 12,10 20,10 24,13 24,15 8,15
+@px 11 10 gg
+@px 18 10 gg
+@px 11 15 gg
+@px 18 16 g
+@px 21 16 gg
+// daisy, left
+@px 7 10 w_w_w
+@px 7 11 _www_
+@px 7 12 wwyww
+@px 7 13 _wwW_
+@px 7 14 w_W_W
+// tulip, top middle
+@px 13 8 p_p_p
+@px 13 9 ppppp
+@px 13 10 pppPP
+@px 13 11 _pPP_
+@px 15 12 g
+@px 15 13 G
+// buttercup, right
+@px 19 10 _yyy_
+@px 19 11 yyyyy
+@px 19 12 yyoyy
+@px 19 13 yyyyo
+@px 19 14 _yoo_
+// second daisy, low on the right
+@px 23 13 w_w_w
+@px 23 14 _www_
+@px 23 15 wwyWW
+@px 23 16 _wWW_
+@px 23 17 w_W_W
+// forget-me-nots, in the middle
+@px 13 14 _b_
+@px 13 15 byb
+@px 13 16 _B_
+@px 16 15 _b_
+@px 16 16 byb
+@px 16 17 _B_
+// a rose, low on the left
+@px 4 14 _pp_
+@px 4 15 pPpp
+@px 4 16 ppPP
+@px 4 17 _pP_
+@px 5 20 mmmNmmnNnnnNnnnMNNNMNN
+@px 5 21 mmmNmmnNnnnNnnnMNNNMNN
+@px 5 22 mNmmmNnnnNnnnNnNNMNNNM
+@px 5 23 mNmmmNnnnNnnnNnNNMNNNM
+@px 6 24 mmNmmnNnnnNnnnMNNNMN
+@px 6 25 mmNmmnNnnnNnnnMNNNMN
+@px 6 26 NmmmNnnnNnnnNnNNMNNN
+@px 6 27 NmmmNnnnNnnnNnNNMNNN
+@px 7 28 mNmmnNnnnNnnnMNNNM
+@px 7 29 mNmmnNnnnNnnnMNNNM
+@px 7 30 nnnNnnnNnnnNnNNMNN
+@rect 7 31 18 1 M
+@px 3 18 mmnmmnmmnmmnmmnmnnNNNMNNMN
+@px 3 19 nNnnNnnNnnNnnNnnnNNNMNNMNN
+
+=== jar
+--- 300
+// empty: thick glass, lighter in the middle, the right side and the bottom in shade
+@rect 8 10 17 1 a
+@rect 7 11 19 1 a
+@rect 6 12 21 1 a
+@rect 5 13 23 17 a
+@px 22 10 AAA
+@px 23 11 AAA
+@px 24 12 AAA
+@rect 24 13 3 17 A
+// the walls and the thick bottom
+@line 5 13 5 29 A 1
+@line 27 13 27 29 c 1
+@rect 6 30 21 1 A
+@rect 8 31 17 1 c
+// neck and tin lid
+@rect 10 9 13 1 A
+@px 20 9 ccc
+@rect 9 4 15 5 t
+@px 9 4 ssssssssssssste
+@rect 19 5 5 4 e
+@rect 22 5 2 4 E
+@rect 9 8 13 1 e
+@px 10 6 ss
+@px 16 8 O
+@px 7 11 l
+@px 6 12 l
+// a streak of light down the left
+@line 7 14 7 25 l 1
+@px 8 13 l
+--- 300
+@rect 8 10 17 1 a
+@rect 7 11 19 1 a
+@rect 6 12 21 1 a
+@rect 5 13 23 17 a
+@px 22 10 AAA
+@px 23 11 AAA
+@px 24 12 AAA
+@rect 24 13 3 17 A
+// a few teeth at the bottom: a molar upright, an incisor upside down, a molar upside down, an incisor
+@px 6 23 _wwww___r__r____r_www
+@px 6 24 wwwwww__rW_rr__rW_www
+@px 6 25 wwwwwW_rrr_rr__rW_wwW
+@px 6 26 wwwwWW_www_wwwwww_wwW
+@px 6 27 rr__rr_www_wwwwwW_rrr
+@px 6 28 rr__rW_wwW_wwwwWW__rW
+@px 6 29 r____W_wwW__wwWW___r_
+@line 5 13 5 29 A 1
+@line 27 13 27 29 c 1
+@rect 6 30 21 1 A
+@rect 8 31 17 1 c
+@rect 10 9 13 1 A
+@px 20 9 ccc
+@rect 9 4 15 5 t
+@px 9 4 ssssssssssssste
+@rect 19 5 5 4 e
+@rect 22 5 2 4 E
+@rect 9 8 13 1 e
+@px 10 6 ss
+@px 16 8 O
+@px 7 11 l
+@px 6 12 l
+@line 7 14 7 21 l 1
+@px 8 13 l
+--- 300
+@rect 8 10 17 1 a
+@rect 7 11 19 1 a
+@rect 6 12 21 1 a
+@rect 5 13 23 17 a
+@px 22 10 AAA
+@px 23 11 AAA
+@px 24 12 AAA
+@rect 24 13 3 17 A
+// half full: the teeth behind in shade, the ones in front each with crown and roots
+@rect 6 20 21 10 T
+// teeth further back, dimmer
+@px 6 22 _UUU____UU___UUU___UU
+@px 25 20 UU
+@px 25 21 UU
+// on top: two incisors lying flat, one between them with its root in the air
+@px 14 15 _r_
+@px 14 16 _rW
+@px 14 17 rrr
+@px 14 18 www
+@px 6 19 wwwr____www______rwww
+@px 6 20 wwwrrrr_wwW___rrrrwww
+@px 6 21 wwWr____wwW______rwWW
+@px 6 23 _wwww___r__r____r_www
+@px 6 24 wwwwww__rW_rr__rW_www
+@px 6 25 wwwwwW_rrr_rr__rW_wwW
+@px 6 26 wwwwWW_www_wwwwww_wwW
+@px 6 27 rr__rr_www_wwwwwW_rrr
+@px 6 28 rr__rW_wwW_wwwwWW__rW
+@px 6 29 r____W_wwW__wwWW___r_
+@line 5 13 5 29 A 1
+@line 27 13 27 29 c 1
+@rect 6 30 21 1 A
+@rect 8 31 17 1 c
+@rect 10 9 13 1 A
+@px 20 9 ccc
+@rect 9 4 15 5 t
+@px 9 4 ssssssssssssste
+@rect 19 5 5 4 e
+@rect 22 5 2 4 E
+@rect 9 8 13 1 e
+@px 10 6 ss
+@px 16 8 O
+@px 7 11 l
+@px 6 12 l
+@line 7 14 7 17 l 1
+@px 8 13 l
+--- 300
+@rect 8 10 17 1 a
+@rect 7 11 19 1 a
+@rect 6 12 21 1 a
+@rect 5 13 23 17 a
+@px 22 10 AAA
+@px 23 11 AAA
+@px 24 12 AAA
+@rect 24 13 3 17 A
+// full to the lid
+@rect 9 10 15 1 T
+@rect 8 11 17 1 T
+@rect 7 12 19 1 T
+@rect 6 13 21 17 T
+// under the lid: two incisors lying flat, a crown in the corner
+@px 10 10 UUU__UUUU___UU
+@px 7 14 UU___UUU____UUU___U
+@px 6 22 _UUU____UU___UUU___UU
+@px 6 11 __wwwr________rwww___
+@px 6 12 __wwwrrrr__rrrrwww_w_
+@px 6 13 __wwWr________rwWW_wW
+// second layer: an incisor, a molar upside down, a molar upright, an incisor upside down
+@px 6 15 www_r____r__wwww___r_
+@px 6 16 www_rr__rW_wwwwww__rW
+@px 6 17 wwW_rr__rW_wwwwwW_rrr
+@px 6 18 wwW_wwwwww_wwwwWW_www
+@px 6 19 rrr_wwwwwW_rr__rr_www
+@px 6 20 _rW_wwwwWW_rr__rW_wwW
+@px 6 21 _r___wwWW__r____W_wwW
+@px 6 23 _wwww___r__r____r_www
+@px 6 24 wwwwww__rW_rr__rW_www
+@px 6 25 wwwwwW_rrr_rr__rW_wwW
+@px 6 26 wwwwWW_www_wwwwww_wwW
+@px 6 27 rr__rr_www_wwwwwW_rrr
+@px 6 28 rr__rW_wwW_wwwwWW__rW
+@px 6 29 r____W_wwW__wwWW___r_
+@line 5 13 5 29 A 1
+@line 27 13 27 29 c 1
+@rect 6 30 21 1 A
+@rect 8 31 17 1 c
+@rect 10 9 13 1 A
+@px 20 9 ccc
+@rect 9 4 15 5 t
+@px 9 4 ssssssssssssste
+@rect 19 5 5 4 e
+@rect 22 5 2 4 E
+@rect 9 8 13 1 e
+@px 10 6 ss
+@px 16 8 O
+@px 7 11 l
+@px 6 12 l
+
+=== shovel
+--- 300
+// held upright, blade up: a steel blade catching the light, an ash handle
+// earth still clinging to the tip; the worn edge on the lit side; the socket strap as a ridge up the middle
+@px 14 4 tNN
+@px 13 5 stNMD
+@px 12 6 stttDND
+@px 11 7 sttttDDDD
+@px 11 8 sttttDDDD
+@px 11 9 stttsDDDD
+@px 11 10 stttsDDDD
+@px 11 11 stttsDDDE
+@px 11 12 stttsDDDE
+// the rolled treads at the shoulders
+@px 11 13 sssstEEEE
+// socket, with its rivet
+@px 14 14 stD
+@px 14 15 sED
+@px 14 16 tDE
+// shaft: ash, the grain showing
+@rect 14 17 3 10 n
+@line 14 17 14 26 m 1
+@line 16 17 16 26 N 1
+@px 15 20 N
+@px 15 21 N
+@px 15 24 N
+// grip: a fork with a crossbar
+@px 13 27 mnnnN
+@px 12 28 mn___nN
+@px 12 29 mn___nN
+@px 12 30 mnnnnnN
+@px 13 31 NNNNN
+
+=== lantern
+--- 300
+// a hand lantern: black iron, a candle behind glass
+// carry ring and cap
+@px 14 10 _Kk_
+@px 14 11 K__k
+@px 14 12 K__k
+@px 14 13 _Kk_
+@px 13 14 jKKkkk
+// hood: the left slope catches the light
+@px 12 15 jKKKkkkk
+@px 11 16 jKKKKkkkkk
+@px 10 17 jjKKKKkkkkkk
+// cage: corner posts, the glass warm from the candle, darker toward the corners
+@rect 11 18 10 11 k
+@line 11 18 11 28 K 1
+@px 12 18 OOOOOOOO
+@px 12 19 OoooooOO
+@px 12 20 ooyYyooO
+@px 12 21 oyyYYyoO
+@px 12 22 oyyYYyoo
+@px 12 23 ooywwyoO
+@px 12 24 OoowWooO
+@px 12 25 OoowWoOO
+@px 12 26 OOowWoOO
+@px 12 27 OOowWOOO
+@px 12 28 OOOwWOOO
+// rivets on the posts, a latch on the right, vent slots in the hood
+@px 11 19 j
+@px 11 27 j
+@px 20 19 K
+@px 20 27 K
+@px 20 23 j
+@px 13 16 kk
+// base
+@px 11 29 jKKKKkkkkk
+@px 10 30 Kkkkkkkkkkkk
+@px 10 31 kkkkkkkkkkkk

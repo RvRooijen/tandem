@@ -1,0 +1,611 @@
+// the round buttons of the gnome garden: one frame each
+// water (watering can) | bell | away (an eye, shut) | sing (a pair of notes)
+e = #8f98a3
+E = #5f6772
+i = #62b0e0
+I = #2f6fa8
+y = #f9d650
+Y = #c98f22
+l = #fff3b0
+k = #2b1e26
+v = #9a72d6
+V = #5f3f9a
+w = #fcf7ec
+// depth tones of the silhouette: 1 farthest, 5 nearest
+1 = #2b3048
+2 = #3f4a68
+3 = #5a6988
+4 = #7d90ab
+5 = #a6bccf
+
+@size 16 16
+
+=== water
+--- 300
+.
+.
+.
+..........EE....
+...eeeeee..EE...
+..eeeeeeEE..E...
+.e.eeeeeEE..E.i.
+e..eeeeeEEEE..i.
+e..eeeeeEE...i.i
+.e.eeeeeEE......
+..eeeeeeEE....i.
+...eeeeEEE......
+....EEEEE.......
+.
+.
+.
+
+=== bell
+--- 300
+.
+.
+.......kk.......
+.......yy.......
+......yyyY......
+.....ylyyYY.....
+.....ylyyYY.....
+....yylyyYYY....
+....yyyyyYYY....
+...yyyyyyYYYY...
+..yyyyyyyYYYYY..
+..YYYYYYYYYYYY..
+.......kk.......
+.......kk.......
+.
+.
+
+=== away
+--- 300
+.
+.
+.
+.
+.
+.k............k.
+..kk........kk..
+....kkkkkkkk....
+...k..k..k..k...
+..k...k..k...k..
+......k..k......
+.
+.
+.
+.
+.
+
+=== sing
+--- 300
+.
+.
+......vvvvvvv...
+......vVVVVVv...
+......v.....v...
+......v.....v...
+......v.....v...
+......v.....v...
+...vvvv..vvvv...
+..vvVVv.vvVVv...
+..vVVVv.vVVVv...
+...vvv...vvv....
+.
+.
+.
+.
+
+=== gloves
+--- 300
+// fingers
+@rect 3 3 2 5 3
+@rect 6 2 2 6 3
+@rect 9 3 2 5 3
+@rect 12 5 2 3 3
+// palm
+@rect 3 7 11 5 3
+// cuff
+@rect 4 12 9 1 4
+@rect 3 13 11 2 4
+// thumb, folded over the palm
+@px 0 6 55
+@px 0 7 555
+@px 0 8 5555
+@px 1 9 5555
+@px 3 10 55
+
+=== can
+--- 300
+// handle, behind
+@px 10 3 222
+@px 9 4 2___2
+@px 9 5 2____2
+@line 14 6 14 8 2
+@px 13 9 2
+// body
+@rect 6 6 7 8 3
+// spout
+@line 6 12 2 6 4 2
+// rose
+@px 0 3 5555
+@px 0 4 5555
+@px 1 5 555
+
+=== compost
+--- 300
+// heap
+@px 5 10 33333333
+@px 3 11 33333333333
+@px 2 12 3333333333333
+@px 1 13 33333333333333
+@rect 0 14 16 1 3
+// fork: grip, handle, tines
+@rect 8 0 4 2 4
+@rect 9 2 2 5 4
+@px 7 7 444444
+@px 7 8 4_44_4
+@px 7 9 4_44_4
+
+=== basket
+--- 300
+// inside
+@rect 2 7 12 1 2
+// body
+@rect 2 9 12 3 3
+@rect 3 12 10 3 3
+// handle
+@px 5 1 444444
+@px 3 2 444____444
+@px 2 3 44________44
+@rect 2 4 2 3 4
+@rect 12 4 2 3 4
+// rim
+@px 1 7 5____________5
+@rect 1 8 14 1 5
+
+=== boots
+--- 300
+// far boot: shaft, foot, sole, cuff
+@rect 11 3 4 6 2
+@rect 10 8 5 4 2
+@rect 10 12 6 1 2
+@rect 10 1 6 2 3
+// near boot: shaft, foot, sole, cuff
+@rect 5 5 5 5 4
+@rect 1 10 9 3 4
+@px 2 9 444
+@rect 1 13 10 1 4
+@rect 4 3 7 2 5
+
+=== hoe
+--- 300
+// handle
+@line 2 14 11 3 3 2
+// blade, hooked down at the top end
+@px 10 1 4444
+@px 11 2 4444
+@px 13 3 44
+@rect 13 4 3 3 4
+@px 14 7 44
+
+=== porch
+--- 300
+// wall plate
+@rect 1 2 2 9 2
+// arm, brace
+@rect 3 3 8 1 3
+@line 3 7 6 4 3
+@px 10 4 3
+// lantern: cap, base
+@px 9 5 444
+@px 8 6 44444
+@px 7 7 4444444
+@rect 7 12 7 1 4
+@px 9 13 444
+// glass
+@rect 8 8 5 4 5
+
+=== thumb
+--- 300
+// wrist
+@rect 1 8 3 6 2
+// fist
+@rect 4 7 10 7 3
+@px 13 7 .
+@px 13 13 .
+// curled fingers
+@rect 9 8 5 5 4
+// thumb
+@px 6 1 555
+@rect 5 2 4 2 5
+@rect 5 4 3 4 5
+
+=== sign
+--- 300
+// post
+@rect 7 9 2 6 2
+// board
+@rect 1 2 14 7 4
+// tuft
+@px 5 14 55__55
+
+=== shovel
+--- 300
+// shaft
+@rect 7 3 2 5 2
+// grip
+@rect 5 0 6 3 3
+@px 7 1 ..
+// blade
+@rect 4 8 8 4 4
+@px 5 12 444444
+@px 6 13 4444
+@px 7 14 44
+
+=== sieve
+--- 300
+// mesh, the bottom
+@rect 2 5 12 5 2
+// inner wall at the back
+@px 5 3 333333
+@px 3 4 3333333333
+@px 2 5 33________33
+// rim
+@px 5 2 444444
+@px 3 3 44______44
+@px 2 4 4__________4
+@rect 1 5 1 4 4
+@rect 14 5 1 4 4
+// front of the hoop
+@px 1 9 5555______5555
+@rect 1 10 14 1 5
+@px 2 11 555555555555
+@px 3 12 5555555555
+@px 5 13 555555
+
+=== steps
+--- 300
+// three slabs, down to the right and toward us
+@rect 1 3 5 11 2
+@rect 6 6 5 8 3
+@rect 11 9 4 5 4
+
+=== roots
+--- 300
+// roots
+@px 4 8 2__2___2
+@px 3 9 2___2____2
+@px 2 10 2___22_____2
+@px 5 11 2__22
+@px 4 12 2___2_2
+@px 3 13 2____2__2
+@px 3 14 2____2___2
+// bed
+@rect 1 4 14 4 3
+// flower
+@rect 6 0 3 3 4
+@px 7 3 4
+
+=== charm
+--- 300
+// string
+@line 1 0 7 6 3
+@line 14 0 8 6 3
+// tooth
+@rect 5 7 6 4 4
+@px 5 11 44__44
+@px 5 12 44__44
+@px 5 13 4____4
+
+=== names
+--- 300
+// cover
+@rect 0 5 16 8 2
+@px 1 13 22222222222222
+// gutter
+@rect 7 5 2 7 3
+// pages
+@px 2 3 4444____4444
+@px 1 4 444444__444444
+@rect 1 5 6 7 4
+@rect 9 5 6 7 4
+// ribbon
+@rect 12 11 1 4 5
+
+=== hum
+--- 300
+// mouth: upper lip, lower lip
+@px 1 9 333__333
+@px 1 10 333333333
+@px 0 11 3_________3
+@px 1 11 444444444
+@px 1 12 444444444
+@px 3 13 44444
+// note
+@rect 13 0 1 6 5
+@px 14 0 5
+@px 14 1 55
+@px 15 2 5
+@px 11 5 55
+@px 10 6 5555
+@px 10 7 555
+// the hum, drifting up
+@px 11 10 4
+@px 12 9 4
+
+=== pretend
+--- 300
+// face
+@rect 3 6 10 4 3
+// hat
+@px 7 0 44
+@px 6 1 4444
+@px 5 2 444444
+@px 4 3 44444444
+@px 3 4 4444444444
+@rect 1 5 14 1 4
+// beard, wider than the face
+@px 3 9 4444444444
+@rect 1 10 14 2 4
+@px 2 12 444444444444
+@px 3 13 4444444444
+@px 5 14 444444
+@px 7 15 44
+// nose
+@rect 7 8 2 3 5
+
+=== chorus
+--- 300
+// middle note
+@rect 10 1 1 6 2
+@px 11 1 2
+@px 11 2 22
+@px 12 3 2
+@px 8 6 22
+@px 7 7 2222
+@px 7 8 222
+// left note
+@rect 3 6 1 6 3
+@px 4 6 3
+@px 4 7 33
+@px 5 8 3
+@px 1 11 33
+@px 0 12 3333
+@px 0 13 333
+// right note
+@rect 13 8 1 6 5
+@px 14 8 5
+@px 14 9 55
+@px 15 10 5
+@px 11 13 55
+@px 10 14 5555
+@px 10 15 555
+
+=== evening
+--- 300
+// sky
+@rect 2 1 12 12 1
+@rect 1 2 14 10 1
+// moon
+@circle 10 7 3 2
+// hedge
+@rect 0 10 16 5 4
+@px 1 9 444__4444__444
+
+=== moonbloom
+--- 300
+// moon
+@px 12 0 111
+@px 11 1 11
+@px 11 2 1
+@px 11 3 11
+@px 12 4 111
+@px 14 7 1
+// stem
+@rect 6 11 1 5 2
+// leaves
+@px 7 13 333
+@px 3 14 333
+// bloom
+@circle 6 7 4 4
+@px 3 4 .
+@px 9 4 .
+@px 3 10 .
+@px 9 10 .
+// heart
+@rect 5 6 3 3 5
+
+=== marrow
+--- 300
+// shaft
+@line 4 11 11 4 3 3
+// knobs
+@rect 10 1 3 3 3
+@rect 12 3 3 3 3
+@rect 1 9 3 3 3
+@rect 3 11 3 3 3
+// crack
+@px 6 6 .
+@px 7 7 .
+@px 7 8 .
+@px 8 9 .
+// the near half
+@px 6 7 4
+@px 5 8 44
+@rect 1 9 7 2 4
+@px 1 11 444444
+@rect 3 12 3 2 4
+// a drop of marrow
+@px 8 10 4
+
+=== gate
+--- 300
+// night in the opening
+@rect 3 4 10 10 1
+// posts
+@rect 1 3 2 12 3
+@rect 13 3 2 12 3
+@px 1 2 33
+@px 13 2 33
+// gate leaf on the left post, swung open toward us: boards, each lower than the last
+@rect 3 5 2 8 5
+@rect 5 6 2 8 5
+@rect 7 7 1 8 5
+
+=== feed
+--- 300
+// stem
+@rect 7 12 2 4 2
+// leaves
+@px 9 14 33
+@px 5 13 33
+// bloom, a cup open to the drop
+@px 4 6 44_44_44
+@rect 4 7 8 3 4
+@px 5 10 444444
+@px 6 11 4444
+// drop
+@px 7 0 55
+@px 7 1 55
+@px 6 2 5555
+@px 6 3 5555
+@px 7 4 55
+@px 8 5 5
+
+=== deeper
+--- 300
+// rim of the hole
+@px 3 10 3333333333
+@rect 1 11 14 3 3
+@px 3 14 3333333333
+// the dark
+@px 5 10 111111
+@rect 3 11 10 1 1
+@rect 2 12 12 1 1
+@px 4 13 11111111
+// arrow
+@rect 6 0 4 6 5
+@px 3 6 5555555555
+@px 4 7 55555555
+@px 5 8 555555
+@px 6 9 5555
+@px 7 10 55
+
+=== plot
+--- 300
+// dug earth, far to near
+@px 4 5 22222222
+@px 3 6 2222222222
+@rect 2 7 12 2 3
+@rect 1 9 14 1 3
+@rect 1 10 14 2 4
+@rect 2 12 12 1 4
+// grass at the edge
+@px 0 11 4______________4
+@px 1 12 4____________4
+
+=== unearth
+--- 300
+// the dark under the brim
+@rect 3 11 10 1 1
+// earth pushed aside, behind
+@px 0 11 222__________222
+@px 0 8 2
+@px 15 7 2
+@px 2 8 2
+@px 14 5 2
+// hat
+@px 9 0 33
+@px 8 1 33
+@px 7 2 333
+@px 7 3 3333
+@px 6 4 33333
+@px 6 5 333333
+@px 5 6 3333333
+@px 5 7 33333333
+@px 4 8 333333333
+@px 3 9 33333333333
+// brim
+@px 1 10 44444444444444
+// ground in front
+@rect 0 12 16 3 5
+
+=== nap
+--- 300
+// pillow
+@rect 1 10 12 5 3
+@px 1 9 3__________3
+@px 1 15 3__________3
+// z z z
+@px 2 6 444
+@px 3 7 4
+@px 2 8 444
+@px 6 3 4444
+@px 8 4 4
+@px 7 5 4
+@px 6 6 4444
+@px 11 0 55555
+@px 14 1 5
+@px 13 2 5
+@px 12 3 5
+@px 11 4 55555
+
+=== tooth
+--- 300
+// roots
+@rect 3 9 4 2 3
+@rect 9 9 4 2 3
+@px 4 11 333__333
+@px 4 12 33____33
+@px 4 13 33____33
+@px 5 14 3____3
+// crown
+@rect 3 2 10 7 4
+@px 3 2 .
+@px 12 2 .
+@px 7 2 ..
+
+=== pebble
+--- 300
+@ellipse 8 9 6 4 3
+
+=== whisper
+--- 300
+// the small puff, behind
+@px 8 11 22
+@px 7 12 2222
+@px 7 13 22
+@px 0 13 2
+// wisp
+@px 10 5 33333
+@px 7 6 3333333
+@px 5 7 33333333
+@px 3 8 3333333
+@px 2 9 33333
+@px 1 10 3333
+@px 1 11 333
+@px 2 12 33
+// the curl, toward us
+@px 10 1 444
+@px 9 2 44_44
+@px 9 3 4__444
+@px 12 4 444
+
+=== hat
+--- 300
+// tip, bent back
+@px 9 2 22
+@px 8 3 22
+// cone
+@px 7 4 333
+@px 7 5 3333
+@px 6 6 33333
+@px 6 7 333333
+@px 5 8 3333333
+@px 5 9 33333333
+@px 4 10 333333333
+@px 4 11 3333333333
+@px 3 12 33333333333
+// brim
+@rect 2 13 13 1 4

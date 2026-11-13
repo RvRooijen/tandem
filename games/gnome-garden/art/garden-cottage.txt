@@ -1,0 +1,784 @@
+// the cottage of the gnome garden: the front wall, seen straight on from the lawn; the game draws it at the top left
+// painterly: no outline, light from the top left; clay tiles, lime plaster, oak, a stone plinth
+// the window glass is at 66..91 x 28..51 and the door at 28..55 x 34..77: the game lights the one and opens the other
+// columns 0..3 stay plain roof, wall and plinth: the game repeats the leftmost column on a wide screen
+// clay tiles, shadow to sunlit
+A = #6a2a2a
+B = #8c3c30
+C = #ad5238
+D = #c96c46
+E = #e28c5a
+// lime plaster, cream
+a = #9c8460
+b = #bea67a
+c = #dcc79a
+d = #f2e2ba
+e = #fdf3d6
+// old oak of the beams, dark
+F = #2e1e18
+G = #473020
+H = #644428
+I = #835e38
+J = #a27c4c
+// honey oak of the door and the window joinery
+f = #54301a
+g = #784a22
+h = #9a6630
+i = #b98646
+j = #d6a660
+// stone of the plinth and the doorstep
+K = #56524e
+L = #78726a
+M = #9c958a
+N = #bcb5a6
+O = #dad3c2
+// glass
+k = #263e50
+l = #3e6a82
+m = #6ea4bc
+n = #a8d4e2
+o = #e2f4f8
+// curtains behind the glass
+6 = #a89c8c
+7 = #d2c8b0
+z = #efe8d6
+// shutters, sage green paint
+P = #344c40
+Q = #50705a
+R = #709272
+S = #96b490
+// ivy
+p = #1c3a1c
+q = #2c5822
+r = #4a7c2c
+s = #76a63c
+// iron
+T = #18161c
+U = #302e36
+V = #504e58
+W = #7c7c86
+// lantern glass
+t = #c08a30
+u = #f0c458
+v = #fce8a4
+// flowers: pink, yellow, white
+w = #c04a78
+x = #ee82a8
+y = #fbc4d2
+X = #e2b02c
+Y = #f8dc60
+Z = #fffaf0
+// flower leaves
+8 = #3c7a34
+9 = #62a844
+0 = #98d060
+// moss
+1 = #56702c
+2 = #7e9638
+// brass
+3 = #8a6420
+4 = #d8ac3c
+5 = #fae48c
+
+@size 112 88
+
+// roof: full width, y 0..17, overhanging the wall on the right
+@rect 0 0 112 18 C
+// roof courses: each course ends in a sunlit edge and throws a line of shadow on the next
+@rect 0 1 112 1 D
+@rect 0 5 112 1 D
+@rect 0 9 112 1 D
+@rect 0 13 112 1 D
+@rect 0 16 112 1 D
+@rect 0 2 112 1 B
+@rect 0 6 112 1 B
+@rect 0 10 112 1 B
+@rect 0 14 112 1 B
+@rect 0 17 112 1 A
+// roof joints between the tiles, half a tile off per course
+@px 0 1 ________B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_
+@px 0 5 _____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B____
+@px 0 9 ________B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_
+@px 0 13 _____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B____
+@px 0 16 ________B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_____B_
+// roof: sun-bleached tiles
+@rect 12 3 5 2 D
+@rect 12 5 5 1 E
+@rect 42 3 5 2 D
+@rect 42 5 5 1 E
+@rect 66 3 5 2 D
+@rect 66 5 5 1 E
+@rect 6 11 5 2 D
+@rect 6 13 5 1 E
+@rect 30 11 5 2 D
+@rect 30 13 5 1 E
+@rect 54 11 5 2 D
+@rect 54 13 5 1 E
+@rect 84 11 5 2 D
+@rect 84 13 5 1 E
+@rect 27 7 5 2 D
+@rect 27 9 5 1 E
+@rect 57 7 5 2 D
+@rect 57 9 5 1 E
+@rect 81 7 5 2 D
+@rect 81 9 5 1 E
+@rect 15 15 5 1 D
+@rect 15 16 5 1 E
+@rect 45 15 5 1 D
+@rect 45 16 5 1 E
+@rect 69 15 5 1 D
+@rect 69 16 5 1 E
+@rect 33 0 5 1 D
+@rect 33 1 5 1 E
+@rect 63 0 5 1 D
+@rect 63 1 5 1 E
+// roof: older, darker tiles
+@rect 24 3 5 1 B
+@rect 24 5 5 1 C
+@rect 84 3 5 1 B
+@rect 84 5 5 1 C
+@rect 96 3 5 1 B
+@rect 96 5 5 1 C
+@rect 18 11 5 1 B
+@rect 18 13 5 1 C
+@rect 72 11 5 1 B
+@rect 72 13 5 1 C
+@rect 15 7 5 1 B
+@rect 15 9 5 1 C
+@rect 45 7 5 1 B
+@rect 45 9 5 1 C
+@rect 93 7 5 1 B
+@rect 93 9 5 1 C
+@rect 105 7 5 1 B
+@rect 105 9 5 1 C
+@rect 33 15 5 1 B
+@rect 33 16 5 1 C
+@rect 87 15 5 1 B
+@rect 87 16 5 1 C
+// roof: the sun glinting on the tile edges
+@px 10 1 EEE
+@px 22 1 EE
+@px 46 1 EE
+@px 7 5 EE
+@px 30 5 EEE
+@px 54 5 EE
+@px 16 9 EE
+@px 39 9 EEE
+@px 70 9 EE
+@px 13 13 EE
+@px 37 13 EE
+@px 61 13 EEE
+@px 23 16 EE
+@px 52 16 EEE
+@px 76 16 EE
+// roof: the verge at the right end, turned from the light
+@rect 111 0 1 17 B
+// roof: a tile that slipped down a notch, the dark gap it left and its shadow on the course below
+@rect 42 11 5 1 A
+@rect 42 12 5 2 C
+@rect 42 14 5 1 D
+@rect 42 15 5 1 B
+// roof: two chipped corners
+@px 52 5 B
+@px 28 13 B
+// roof: moss in the joints and along the shadowed laps, more toward the damp ivy corner
+@px 59 13 2
+@px 59 14 12
+@px 20 14 21
+@px 65 10 1
+@px 78 14 121
+@px 88 10 121
+@px 89 9 2
+@px 99 14 112
+@px 100 13 2
+@px 107 10 12
+@px 104 6 1
+@px 35 6 12
+// wall: x 0..103, y 18..77
+@rect 0 18 104 60 d
+// wall: the shadow of the eave, deepest right under it, its edge uneven like the tiles
+@rect 0 18 104 4 c
+@rect 0 18 104 2 b
+@px 6 22 ccc
+@px 14 22 cc
+@px 31 22 cccc
+@px 45 22 cc
+@px 52 22 ccc
+@px 70 22 ccc
+@rect 84 22 15 1 c
+// wall: limewash catching the sun in soft patches
+@poly e 6,26 20,25 22,31 12,33 7,31
+@poly e 5,54 16,52 20,57 17,63 7,64
+@poly e 30,24 50,23 54,26 44,28 31,27
+@px 9 24 eeeee
+@px 14 33 eeeee
+@px 10 28 ddd
+@px 15 30 dd
+@px 36 28 eeeeee
+@px 40 25 ddd
+// wall: damp from rain splashing up off the plinth
+@rect 0 68 104 2 c
+@px 6 67 cccc
+@px 17 67 cc
+@px 60 67 ccc
+@px 72 67 ccccc
+@px 84 67 ccc
+@px 93 67 cccc
+@px 8 69 bbb
+@px 64 69 bbbb
+@px 90 69 bbbbbb
+// wall: cast shadows of the door frame, lintel, shutters, sill, flower box and lantern
+@rect 59 31 1 37 c
+@px 96 24 c
+@px 96 25 c
+@rect 94 26 4 1 c
+@rect 62 26 2 1 c
+@rect 98 22 1 48 c
+@rect 61 53 3 1 c
+@rect 95 53 4 1 c
+@rect 95 56 3 2 c
+@rect 65 64 32 1 b
+@rect 65 65 33 2 c
+@rect 67 67 30 1 c
+@ellipse 20 48 3 5 c
+// wall: a crack running from the corner of the door lintel up to the eave
+@px 24 29 b
+@px 23 28 b
+@px 23 27 b
+@px 22 26 b
+@px 21 25 b
+@px 21 24 b
+@px 20 23 b
+@px 20 22 a
+@px 19 21 a
+// wall: a stain under the lantern's wall plate, drips under the end of the sill
+@px 22 41 bc
+@px 22 42 b
+@rect 62 56 1 5 c
+// wall: frost has blown a patch of plaster above the plinth, the brick shows, a crack leads down to it
+@px 13 54 b
+@px 12 55 b
+@px 12 56 b
+@px 11 57 b
+@px 11 58 b
+@px 10 59 b
+@px 9 60 aaaa
+@px 7 61 aDCCbDC
+@px 6 62 aCCCCbCCB
+@px 6 63 abbbbbbbb
+@px 6 64 aCbDDDCbC
+@px 7 65 CbCCCBbC
+@px 7 66 bbbbbbb
+@px 8 67 DCbCC
+@px 13 68 dddd
+@px 21 68 ddd
+// wall: green algae at the damp foot by the ivy
+@px 94 69 2121
+// plinth: stone along the foot of the wall
+@rect 0 70 104 8 M
+// plinth: two courses of blocks, lit top edges, mortar joints
+@rect 0 70 104 1 N
+@rect 0 74 104 1 N
+@rect 0 73 104 1 L
+@rect 0 77 104 1 L
+@rect 9 70 1 3 L
+@rect 21 70 1 3 L
+@rect 68 70 1 3 L
+@rect 81 70 1 3 L
+@rect 92 70 1 3 L
+@rect 15 74 1 3 L
+@rect 63 74 1 3 L
+@rect 75 74 1 3 L
+@rect 88 74 1 3 L
+@rect 97 74 1 3 L
+// plinth: paler and darker blocks, the corner turned from the light
+@rect 10 70 11 1 O
+@rect 10 71 11 1 N
+@rect 64 74 11 1 O
+@rect 64 75 11 1 N
+@rect 82 71 10 1 N
+@rect 16 74 9 1 M
+@rect 16 76 9 1 L
+@rect 69 70 12 1 M
+@rect 69 72 12 1 L
+@rect 89 76 8 1 L
+@rect 93 70 11 1 M
+@rect 16 77 9 1 K
+@rect 89 77 8 1 K
+@rect 103 70 1 8 L
+// plinth: chipped corners, pale lichen on the sunny blocks, moss in the mortar and at the foot, a fallen petal
+@px 22 71 L
+@px 80 72 K
+@px 62 76 L
+@px 76 75 L
+@px 14 75 L
+@px 12 72 O
+@px 17 71 O
+@px 84 72 OO
+@px 5 75 O
+@px 60 77 12
+@px 66 77 1
+@px 98 77 211
+@px 91 73 12
+@px 11 77 21
+@px 19 73 1
+@px 83 70 y
+// corner post: oak, at the right end of the wall
+@rect 99 18 5 52 H
+@rect 99 18 1 52 I
+@rect 103 18 1 52 G
+@rect 101 20 1 12 G
+@rect 100 36 1 9 G
+@rect 102 50 1 10 G
+// door frame: two posts and a heavy lintel
+@rect 25 34 3 44 H
+@rect 25 34 1 44 I
+@rect 27 34 1 44 G
+@rect 56 34 3 44 H
+@rect 56 34 1 44 I
+@rect 58 34 1 44 G
+@rect 25 30 34 4 H
+@rect 25 30 34 1 I
+@rect 25 33 34 1 G
+// door frame: sun on the lintel, grain, pegs, the lintel's shadow on the posts
+@rect 25 30 16 1 J
+@px 30 31 GGGGGG
+@px 46 32 GGGGG
+@px 51 31 GGG
+@px 26 32 F
+@px 57 32 F
+@px 25 34 GGG
+@px 56 34 GGG
+@rect 26 40 1 8 G
+@rect 26 58 1 6 G
+@rect 57 44 1 10 G
+@rect 57 62 1 5 G
+// door frame: a drying check in the lintel and the left post, the post feet dark with damp
+@px 39 32 FFFFF
+@rect 26 50 1 5 F
+@rect 25 75 3 3 G
+@px 26 77 F
+@rect 56 75 3 3 G
+@px 57 77 F
+@px 25 77 1
+// door leaf: x 28..55, y 34..77
+@rect 28 34 28 44 h
+// door planks: four boards, a dark joint and a lit edge
+@rect 34 34 1 44 g
+@rect 41 34 1 44 g
+@rect 48 34 1 44 g
+@rect 35 34 1 44 i
+@rect 42 34 1 44 i
+@rect 49 34 1 44 i
+// door: the shadow of the lintel and the left post, grain along the boards, a weathered foot
+@rect 28 34 28 2 g
+@px 28 36 ggggggggg
+@rect 28 36 1 42 g
+@rect 34 34 1 2 f
+@rect 41 34 1 2 f
+@rect 48 34 1 2 f
+@rect 31 39 1 8 g
+@rect 30 55 1 9 g
+@rect 32 60 1 5 i
+@rect 37 50 1 12 i
+@rect 39 53 1 6 g
+@rect 38 62 1 5 i
+@rect 44 52 1 8 g
+@rect 46 56 1 10 i
+@rect 53 38 1 14 g
+@rect 51 44 1 6 i
+@rect 54 62 1 9 g
+@rect 52 66 1 6 g
+@rect 28 76 28 2 g
+@px 30 75 ggg
+@px 37 75 gg
+@px 44 75 gggg
+@px 52 75 gg
+@rect 28 77 28 1 f
+@rect 34 75 1 2 f
+@rect 41 75 1 2 f
+@rect 48 75 1 2 f
+// door: a knot the grain bends around, nail heads top and bottom, boot scuffs low down
+@px 44 63 gg
+@px 44 64 gf
+@px 43 62 g
+@px 46 65 g
+@px 31 38 f
+@px 52 38 f
+@px 31 73 f
+@px 38 73 f
+@px 45 73 f
+@px 52 73 f
+@px 37 71 i
+@px 38 72 i
+@px 43 72 ii
+// door: a small window, its moulding lit top left, the sky in the glass
+@rect 38 38 8 8 g
+@rect 39 39 6 6 l
+@rect 38 38 8 1 i
+@rect 38 38 1 8 i
+@rect 45 39 1 7 f
+@rect 39 45 7 1 f
+@rect 39 39 6 1 k
+@rect 39 39 1 6 k
+@px 43 40 m
+@px 42 41 m
+@px 41 42 m
+@px 40 43 m
+@px 43 42 m
+@px 42 43 m
+@px 41 44 m
+// door: iron strap hinges, nail heads, their shadow on the boards
+@rect 28 48 19 2 U
+@px 44 47 U
+@px 44 50 U
+@rect 29 48 15 1 V
+@rect 28 49 19 1 T
+@px 31 48 W
+@px 37 48 W
+@px 43 48 W
+@rect 29 50 15 1 g
+@rect 27 47 2 4 T
+@px 27 47 V
+@rect 28 68 19 2 U
+@px 44 67 U
+@px 44 70 U
+@rect 29 68 15 1 V
+@rect 28 69 19 1 T
+@px 31 68 W
+@px 37 68 W
+@px 43 68 W
+@rect 29 70 15 1 g
+@rect 27 67 2 4 T
+@px 27 67 V
+// door: brass knob and keyhole plate
+@px 50 58 543
+@px 50 59 443
+@px 50 60 433
+@px 51 61 ggg
+@px 53 59 g
+@px 53 60 g
+@px 50 64 434
+@px 50 65 3T3
+@px 50 66 3T3
+@px 50 67 333
+// window: lintel, frame, glass x 66..91 y 28..51, mullion and bar
+@rect 62 23 34 3 H
+@rect 62 23 34 1 I
+@rect 62 25 34 1 G
+@rect 62 23 14 1 J
+@px 68 24 GGGGG
+@px 80 24 GGGGGGG
+@px 64 24 F
+@px 93 24 F
+@rect 64 26 30 28 i
+@rect 64 26 30 1 j
+@rect 64 26 1 28 j
+@rect 93 26 1 28 g
+@rect 64 53 30 1 h
+@rect 66 28 26 24 l
+// glass: the shadow of the frame along the top and left of each pane, the sky reflected
+@rect 66 28 26 2 k
+@rect 66 40 26 1 k
+@rect 66 28 1 24 k
+@rect 80 28 1 24 k
+@px 75 30 mmn
+@px 74 31 mmm
+@px 73 32 mmm
+@px 72 33 mmm
+@px 71 34 mmm
+@px 70 35 mmm
+@px 84 30 mmn
+@px 83 31 mmm
+@px 82 32 mmm
+@px 81 33 mmm
+@px 81 34 mm
+@px 81 35 m
+@poly m 77,46 77,51 72,51
+@poly m 87,47 87,51 83,51
+@px 77 50 nn
+@px 76 51 nn
+// curtains behind the glass, tied back: wide at the rod, gathered at the tie
+@rect 66 28 5 5 7
+@rect 66 33 4 3 7
+@rect 66 36 3 16 7
+@rect 66 28 5 1 6
+@rect 66 40 3 1 6
+@rect 66 28 1 24 6
+@rect 68 29 1 3 6
+@rect 69 34 1 2 6
+@rect 68 44 1 3 l
+@px 66 45 66
+@px 68 49 6
+@rect 87 28 5 5 7
+@rect 88 33 4 3 7
+@rect 89 36 3 16 7
+@rect 87 28 5 1 6
+@rect 89 40 3 1 6
+@rect 89 29 1 3 6
+@rect 90 33 1 3 6
+@rect 89 44 1 3 l
+@px 90 45 66
+@px 89 49 6
+// curtains: the crests of the folds catching the daylight
+@rect 67 29 1 3 z
+@rect 70 29 1 2 z
+@rect 67 47 1 2 z
+@rect 88 29 1 3 z
+@rect 91 29 1 2 z
+@rect 91 47 1 2 z
+@rect 78 28 2 24 i
+@rect 66 38 26 2 i
+@rect 78 28 1 24 j
+@rect 79 28 1 24 h
+@rect 66 38 26 1 j
+@rect 66 39 26 1 h
+@rect 65 27 1 26 h
+@rect 65 27 28 1 h
+@rect 92 28 1 24 j
+@rect 66 52 26 1 j
+// sill
+@rect 62 54 34 2 i
+@rect 62 54 34 1 j
+@rect 62 55 34 1 g
+// shutters: open flat against the wall, left and right of the frame
+@rect 60 27 4 26 R
+@rect 94 27 4 26 R
+@rect 60 27 1 26 S
+@rect 63 27 1 26 Q
+@rect 94 27 1 26 S
+@rect 97 27 1 26 Q
+// shutters: two battens each
+@rect 60 30 4 1 S
+@rect 60 31 4 1 Q
+@rect 60 48 4 1 S
+@rect 60 49 4 1 Q
+@rect 94 30 4 1 S
+@rect 94 31 4 1 Q
+@rect 94 48 4 1 S
+@rect 94 49 4 1 Q
+// shutters: louvre slats between the battens, iron hinges on the window side
+@rect 61 34 2 1 Q
+@rect 61 37 2 1 Q
+@rect 61 40 2 1 Q
+@rect 61 43 2 1 Q
+@rect 61 46 2 1 Q
+@rect 95 34 2 1 Q
+@rect 95 37 2 1 Q
+@rect 95 40 2 1 Q
+@rect 95 43 2 1 Q
+@rect 95 46 2 1 Q
+@rect 60 52 4 1 Q
+@rect 94 52 4 1 Q
+@px 63 31 T
+@px 63 49 T
+@px 94 31 T
+@px 94 49 T
+// shutters: paint peeled off the oak at the foot, where the rain sits
+@px 61 51 I
+@px 96 51 I
+@px 95 52 H
+// flower box: on two iron brackets under the sill, two boards, nailed at the ends
+@rect 66 64 2 3 U
+@rect 90 64 2 3 U
+@rect 66 64 1 3 V
+@rect 90 64 1 3 V
+@rect 63 58 32 6 H
+@rect 63 58 32 1 I
+@rect 63 63 32 1 G
+@rect 94 58 1 6 G
+@rect 64 61 14 1 G
+@rect 81 61 12 1 G
+@px 64 59 F
+@px 64 62 F
+@px 92 59 F
+@px 92 62 F
+// flower box: dark streaks where the watering runs out
+@px 73 62 G
+@px 73 63 F
+@px 84 62 G
+@px 84 63 F
+// flowers: a mound of leaves, light on top and dark down at the box, pink, yellow and white heads
+@px 64 52 __yx______ZZ_______YY_____yx___
+@px 64 53 _0xxw0__0_Z709_0yx_YX0__09xxw0_
+@px 64 54 099w990YY099990xxw99990ZZ09w990
+@px 64 55 9989999YX998999xw998999Z7998999
+@px 64 56 98999x998999989998999989Y999899
+@px 64 57 8889888898888988898888898889888
+// flowers: leaves trailing over the box
+@px 69 58 989
+@px 78 58 98
+@px 86 58 9899
+@px 93 58 98
+@px 70 59 9
+@px 78 59 89
+@px 87 59 98
+@px 93 59 99
+@px 79 60 9
+@px 88 60 8
+@px 93 60 89
+@px 94 61 9
+@px 93 62 98
+@px 94 63 8
+@px 94 64 9
+@px 95 65 8
+// lantern: on an iron arm left of the door
+@rect 22 34 2 7 U
+@line 23 36 16 36 U 1
+@line 22 40 19 37 U 1
+@rect 16 36 1 3 U
+@px 16 38 UU
+@px 15 39 UUUU
+@px 14 40 UUUUUT
+@rect 14 41 6 8 U
+@px 13 41 VUUUUUUT
+@rect 15 42 4 6 u
+@rect 18 42 1 6 t
+@rect 15 47 4 1 t
+@px 15 42 vv
+@px 15 43 v
+@rect 15 49 4 1 U
+@rect 16 50 2 1 U
+// lantern: iron lit on the left, dark on the right, a candle stub inside
+@rect 14 42 1 6 V
+@rect 19 41 1 8 T
+@rect 15 48 4 1 T
+@px 15 39 V
+@px 14 40 V
+@rect 22 34 1 7 V
+@rect 16 45 2 2 v
+@px 16 44 t
+// ivy: up the corner post, spreading under the eave
+@poly q 97,69 99,62 98,54 100,46 98,38 99,28 96,22 90,21 84,20 86,18 103,18 103,69
+// ivy creeping onto the roof edge
+@poly q 92,17 95,14 100,15 103,12 107,14 106,17
+// ivy: clumps of leaves that catch the light
+@poly r 86,19 88,18 90,19 88,20
+@poly r 92,19 94,18 96,20 94,21
+@poly r 98,20 100,19 102,21 100,22
+@poly r 100,25 102,24 103,26 101,27
+@poly r 98,31 100,30 101,32 99,33
+@poly r 101,36 102,35 103,37 102,38
+@poly r 99,42 101,41 102,43 100,44
+@poly r 100,48 102,47 103,49 101,50
+@poly r 98,54 100,53 101,55 99,56
+@poly r 100,60 102,59 103,61 101,62
+@poly r 97,65 99,64 100,66 98,67
+@poly r 94,15 96,14 97,16 95,17
+@poly r 101,13 103,12 105,14 103,15
+// ivy: leaf by leaf, each lit top left with a dark gap under it; on the roof edge and hanging over the eave
+@px 102 12 srq
+@px 101 13 srrpqr
+@px 94 14 srp
+@px 100 14 rpsrrpq
+@px 93 15 srrpqsrpqrrpsr
+@px 92 16 rrpqsrrpsrpqrp
+@px 90 16 q
+@px 93 17 qpsrqpqsrpq
+// ivy: the spread under the eave, two tendrils hanging down
+@px 85 18 psrrpsr_psrrp_srpsr
+@px 84 19 srrrp_rrp_rrrpsrrprr
+@px 87 20 p_srp_sr_prrpsr_p
+@px 92 21 srrp_sr_rrp_
+@px 95 22 _srrp_srp
+@px 85 20 q
+@px 86 21 q
+@px 86 22 r
+@px 90 21 q
+@px 90 22 q
+@px 90 23 r
+// ivy: up the corner post
+@px 98 23 rsr_sr
+@px 98 24 _rrprr
+@px 98 25 sr_p_p
+@px 98 26 rrpsr_
+@px 98 27 _p_rrp
+@px 98 28 _sr_p_
+@px 98 29 _rrp_s
+@px 98 30 __psrr
+@px 98 31 sr_rrp
+@px 98 32 rrp_p_
+@px 98 33 _p_sr_
+@px 98 34 _srrrp
+@px 98 35 _rrp__
+@px 98 36 s_p_sr
+@px 98 37 rr__rr
+@px 98 38 _psr_p
+@px 98 39 __rrp_
+@px 98 40 _sr_ps
+@px 98 41 _rrp_r
+@px 98 42 __p_sr
+@px 98 43 _sr_rr
+@px 98 44 _rrp_p
+@px 98 45 ___sr_
+@px 98 46 _s_rrp
+@px 98 47 _rr_p_
+@px 98 48 __p_sr
+@px 98 49 sr__rr
+@px 98 50 rrpsrp
+@px 98 51 _p_rr_
+@px 98 52 _sr_p_
+@px 98 53 _rrp_s
+@px 98 54 s_p_sr
+@px 98 55 rr__rr
+@px 98 56 _p_s_p
+@px 98 57 _srrrp
+@px 98 58 _rrp__
+@px 98 59 __p_sr
+@px 98 60 _s__rr
+@px 98 61 _rrp_p
+@px 98 62 ___sr_
+@px 98 63 _sr_rp
+@px 98 64 _rrp__
+@px 98 65 s_p_sr
+@px 98 66 rr__rr
+@px 98 67 _p_sr_
+@px 98 68 ___rrp
+// ivy: loose leaves on the wall beside it, the woody stem down over the plinth
+@px 96 56 sr
+@px 96 57 rq
+@px 96 63 s
+@px 96 64 rq
+@px 97 24 sr
+@px 97 25 q
+@rect 101 69 1 9 F
+@px 100 71 G
+@px 100 72 G
+@px 99 73 sr
+@px 99 74 rq
+@px 102 75 s
+@px 102 76 rq
+// doorstep: a stone slab under the door, y 78..85
+@rect 22 78 40 8 N
+// doorstep: the top, the nosing that catches the light, the front face
+@rect 22 81 40 1 O
+@rect 22 82 40 4 M
+@rect 22 85 40 1 L
+@rect 60 82 2 4 L
+// doorstep: the shadow under the door, the middle worn smooth and hollow by feet
+@rect 25 78 34 1 M
+@rect 33 79 18 2 O
+@px 31 80 OO
+@px 51 80 OO
+@rect 36 81 12 1 N
+@rect 36 82 12 1 O
+@rect 22 82 1 3 N
+// doorstep: a crack across the slab, a chip out of the nosing, pits, rounded foot corners, moss against the wall
+@px 53 79 M
+@px 53 80 M
+@px 54 81 M
+@px 54 82 L
+@px 54 83 L
+@px 55 84 L
+@px 55 85 K
+@px 26 81 MM
+@px 29 83 L
+@px 34 84 L
+@px 47 83 L
+@px 41 84 N
+@px 22 85 .
+@px 61 85 .
+@px 22 78 21
+@px 59 78 121
+@px 23 85 1
+@px 58 85 21

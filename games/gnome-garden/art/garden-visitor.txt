@@ -1,0 +1,702 @@
+// people who come up the garden path: 3/4 front view turned slightly to the left, feet on y=47, centred on x=16
+// painterly: no outline, light from the top left, a ramp per material, small marks with a cause
+// six looks: neighbour, postman, jogger, birdwatcher, salesman, inspector; each with its own details as a layer
+// the shared drawing is empty-handed and bare-headed; everything a look carries or wears extra is in its layer
+// skin, cheek, eyes
+a = #fbdcbc
+s = #f5c7a0
+S = #dc9f78
+Z = #b9785a
+c = #f2ab92
+e = #2b1e26
+// hair
+g = #9a6c43
+h = #7a5233
+H = #523621
+// top
+u = #9dba68
+t = #7d9c52
+T = #5b7a3e
+U = #41592f
+// trousers
+q = #b5a478
+p = #9a8a62
+P = #75684a
+Q = #544a35
+// shoes
+i = #6e5650
+o = #4a3838
+O = #2c2024
+// leather: bag, strap, case, clipboard
+m = #b07a47
+n = #8a5a33
+N = #5c3a22
+// red: tie, cap band
+r = #d5392f
+R = #a12630
+// paper, shirt
+w = #f6f2e8
+W = #cfc8b9
+// reflective bands, metal
+l = #e9eef0
+L = #a9b6bf
+// black gear: binoculars, handle
+K = #47424f
+k = #24202a
+// straw hat
+d = #e8d59c
+D = #c9ad6c
+j = #9c8350
+// brass
+y = #f2c94c
+
+@size 32 48
+@recolor neighbour
+@recolor postman u=#5f8ad2 t=#3f66b0 T=#2d4c8c U=#1f3566 q=#4a5a85 p=#34426a P=#252f4f Q=#191f38 g=#5a4030 h=#3f2b22 H=#2a1c18 a=#dcaa80 s=#c48a62 S=#a06a48 Z=#7a4c34 c=#c47f66
+@recolor jogger u=#f9a3c1 t=#f27fa8 T=#c9578a U=#983d6b q=#4b4b58 p=#34343f P=#24242c Q=#17171d g=#f7e08e h=#f2d16a H=#c9a544 i=#ffffff o=#e3e0d8 O=#a39f99
+@recolor birdwatcher u=#a5a55e t=#8d8d4c T=#69693a U=#4b4b2a q=#8f6a42 p=#73502f P=#553a22 Q=#3b2717 g=#dcdcdc h=#b9b9b9 H=#8c8c8c
+@recolor salesman u=#999ea8 t=#80858e T=#5f646d U=#44484f q=#72777f p=#595e66 P=#43474e Q=#2f3237 g=#44444f h=#2e2e37 H=#1c1c22
+@recolor inspector u=#f8b74e t=#f2a02e T=#c47a1e U=#935816 q=#415787 p=#2f4169 P=#202c4a Q=#151d33 g=#b5653a h=#8f4426 H=#642c1b
+
+=== stand
+@view 3/4 front, turned slightly to the left
+--- 400
+// far leg (to the right) and its shoe
+@rect 17 30 5 15 P
+@rect 21 33 1 11 Q
+@px 18 37 QQ
+@rect 17 43 4 1 Q
+@poly o 17,44 22,44 24,46 24,47 17,47
+@rect 17 47 8 1 O
+@px 17 44 ii
+// hips
+@rect 10 29 12 4 p
+@rect 16 29 6 4 P
+@rect 10 29 6 1 P
+@rect 16 29 6 1 Q
+@rect 16 30 1 3 Q
+// far arm (to the right), hand with the thumb to the body
+@line 23 18 24 27 T 3
+@poly S 23,28 25,28 26,30 25,31 23,31 22,29
+// torso: shoulders sloping from the neck, a little narrower at the waist
+@poly t 11,15 20,15 22,17 22,24 21,29 10,29 9,24 9,17
+// far arm in shadow: the crease against the body, the cuff
+@rect 22 18 1 6 U
+@px 23 27 UUU
+@px 23 30 ZZ
+// torso: lit on the near chest, shadow down the far side and under the near arm, a ribbed hem
+@poly u 11,16 15,16 14,20 11,21
+@rect 19 17 3 10 T
+@rect 19 27 2 2 T
+@px 19 16 TT
+@rect 10 18 1 10 T
+@rect 10 28 11 1 T
+@rect 18 28 3 1 U
+@px 13 15 T___T
+// the shoulder seam, folds where the top bunches above the hem
+@px 11 17 t
+@px 11 18 t
+@px 12 26 T
+@px 13 27 TT
+@px 16 26 T
+// neck and head: round skull, a chin under it
+@rect 14 13 4 3 S
+@ellipse 15 7 5 5 s
+@rect 12 11 7 3 s
+@px 14 14 SSSS
+@px 14 15 SSS
+// hair: short, parted on the left and swept to the right, an ear under it
+@px 13 2 hhhhh
+@px 12 3 hhhhhhh
+@px 11 4 hhhhhhhhh
+@px 10 5 hhhhhhhhhhh
+@px 10 6 h_______hhh
+@px 19 7 hh
+@px 19 8 Sh
+@px 19 9 Sh
+// face: eyes, nose, a smile, cheeks
+@px 12 8 e___e
+@px 12 9 e___e
+@px 14 10 S
+@px 12 11 S___S
+@px 13 12 ZZZ
+@px 11 10 c
+@px 17 10 c
+// light on the brow and the hair, shadow down the far side and under the chin
+@px 11 7 aa
+@px 10 8 aa
+@px 13 2 gg
+@px 12 3 ggg
+@px 11 4 gg
+@px 18 3 H
+@px 18 4 HH
+@px 19 5 HH
+@px 18 6 HHH
+@px 20 7 H
+@px 20 8 H
+@px 20 9 H
+@px 18 7 S
+@px 18 8 S
+@px 18 9 S
+@px 18 10 SS
+@px 18 11 S
+@px 17 12 SS
+@px 16 13 SSS
+@px 16 14 ZZ
+@px 16 15 Z
+// near leg (to the left) and its shoe
+@rect 10 30 5 15 p
+@rect 10 31 2 13 q
+@rect 14 31 1 13 P
+// the slanted pocket, a fold at the knee, the hem over the shoe
+@px 12 31 P
+@px 11 32 P
+@px 12 37 PP
+@rect 10 43 4 1 P
+@poly o 9,44 14,44 15,46 15,47 7,47 7,46
+@rect 7 47 8 1 O
+@px 8 44 ii
+@px 7 45 i
+@px 10 45 i_i
+// near arm (to the left), hand with the thumb to the body
+@line 8 18 7 27 u 3
+@rect 9 18 1 6 t
+@rect 8 24 1 3 t
+@px 6 27 ttt
+@px 7 22 tt
+@poly s 6,28 8,28 9,29 9,30 8,31 6,31 5,30
+@px 6 30 SS
+@px 8 28 S
+@px 8 29 S
+// the postman: a peaked cap, a bag on the far hip on a strap over the near shoulder
+@variant postman
+// cap
+@poly t 10,4 10,2 12,0 18,0 20,2 20,4
+@rect 10 3 11 1 r
+@rect 8 4 8 2 U
+@px 14 1 y
+@px 11 0 uuu
+@px 10 1 uu
+@px 17 1 TT
+@px 17 2 TTT
+@px 17 3 RRRR
+@px 8 4 TTTT
+// strap and bag
+@line 10 17 20 27 n 2
+@rect 18 26 9 8 n
+@rect 18 26 9 4 m
+@px 18 30 NNNN_NNNN
+@rect 18 33 9 1 N
+@rect 26 27 1 7 N
+@px 22 30 y
+@px 19 25 ww
+// a jogger: a headband
+@variant jogger
+// headband
+@rect 10 4 11 2 t
+@px 10 4 uu
+@px 10 5 uu
+@px 18 4 TTT
+@px 18 5 TTT
+// short sleeves: bare forearms
+@rect 6 22 4 2 s
+@rect 6 24 3 4 s
+@px 9 22 S
+@px 9 23 S
+@rect 8 24 1 4 S
+@rect 22 22 4 2 S
+@rect 23 24 3 4 S
+@rect 25 22 1 6 Z
+// a birdwatcher: a wide hat, binoculars round the neck
+@variant birdwatcher
+// hat
+@ellipse 15 4 9 1 D
+@poly D 11,3 12,0 18,0 19,3
+@rect 12 2 7 1 N
+@px 12 0 ddd
+@px 11 1 ddd
+@px 17 0 j
+@px 16 1 jj
+@px 8 3 ddddddd
+@px 6 4 ddddd
+@px 8 5 jjjjjjjjjjjjjjj
+@px 21 4 jjjj
+// the brim's shadow on the brow
+@px 10 6 HSSSSSSS
+// pocket flaps of the field jacket
+@px 12 24 TTT
+@px 16 24 TTT
+// binoculars on their strap
+@line 14 15 13 20 N 1
+@line 17 15 18 20 N 1
+@rect 12 20 7 2 k
+@rect 12 22 3 2 k
+@rect 16 22 3 2 k
+@px 12 20 KKK_KKK
+@px 13 23 L___L
+// a salesman: a tie and a case in the far hand
+@variant salesman
+// shirt, lapels and tie
+@poly w 13,15 19,15 16,22
+@line 12 15 14 21 T 1
+@line 19 15 17 21 T 1
+@rect 15 15 2 7 r
+@px 15 22 r
+@rect 16 17 1 5 R
+// a jacket button, a handkerchief in the breast pocket
+@px 15 25 U
+@px 18 19 wW
+// case
+@rect 23 32 9 7 n
+@rect 23 32 9 1 m
+@rect 23 38 9 1 N
+@rect 31 33 1 6 N
+@px 25 33 y___y
+@rect 24 31 3 1 k
+@poly S 23,28 25,28 26,30 25,31 23,31 22,29
+// the inspector: reflective bands and a clipboard in the near hand
+@variant inspector
+// reflective bands: two over the shoulders, one round the waist, one round each arm
+@line 12 16 12 23 l 1
+@line 19 17 19 23 L 1
+@rect 9 24 13 2 l
+@rect 17 24 5 2 L
+@rect 6 22 4 2 l
+@rect 22 22 4 2 L
+// clipboard
+@poly n 2,27 8,26 9,36 3,37
+@poly w 3,29 8,28 9,35 4,36
+@px 4 27 LL
+@px 4 30 WWW
+@px 4 32 WWWW
+@px 5 34 WWW
+@poly s 7,28 8,28 9,29 9,30 8,31 7,31
+@variant
+
+=== walk
+@view 3/4 front, turned slightly to the left, walking towards the viewer
+--- 160
+// near leg forward, far leg lifted behind; the near shoulder goes back and up, the far one forward and down
+// far leg (to the right), lifted, toe down
+@poly P 17,30 22,30 22,42 18,42 17,36
+@rect 21 33 1 10 Q
+@px 18 36 QQ
+@rect 18 39 3 4 Q
+@poly o 18,42 22,42 23,44 23,45 18,45
+@rect 18 45 5 1 O
+// hips
+@rect 10 29 12 4 p
+@rect 16 29 6 4 P
+@rect 10 29 6 1 P
+@rect 16 29 6 1 Q
+@rect 16 30 1 3 Q
+// far arm (to the right), swinging forward
+@line 23 19 24 28 T 3
+@poly S 23,29 25,29 26,31 25,32 23,32 22,30
+// torso
+@poly t 11,15 20,15 22,18 22,24 21,29 10,29 9,24 9,16
+// far arm in shadow: the crease against the body, the cuff
+@rect 22 19 1 5 U
+@px 23 28 UUU
+@px 23 31 ZZ
+// torso: lit on the near chest, shadow down the far side and under the near arm, a ribbed hem
+@poly u 11,16 15,16 14,20 11,21
+@rect 19 18 3 9 T
+@rect 19 27 2 2 T
+@px 19 16 TT
+@px 19 17 TTT
+@rect 10 17 1 5 T
+@rect 10 28 11 1 T
+@rect 18 28 3 1 U
+@px 13 15 T___T
+// the shoulder seam, folds where the top bunches above the hem
+@px 11 17 t
+@px 11 18 t
+@px 12 26 T
+@px 13 27 TT
+@px 16 26 T
+// neck and head
+@rect 14 13 4 3 S
+@ellipse 15 7 5 5 s
+@rect 12 11 7 3 s
+@px 14 14 SSSS
+@px 14 15 SSS
+// hair: short, parted on the left and swept to the right, an ear under it
+@px 13 2 hhhhh
+@px 12 3 hhhhhhh
+@px 11 4 hhhhhhhhh
+@px 10 5 hhhhhhhhhhh
+@px 10 6 h_______hhh
+@px 19 7 hh
+@px 19 8 Sh
+@px 19 9 Sh
+// face: eyes, nose, a smile, cheeks
+@px 12 8 e___e
+@px 12 9 e___e
+@px 14 10 S
+@px 12 11 S___S
+@px 13 12 ZZZ
+@px 11 10 c
+@px 17 10 c
+// light on the brow and the hair, shadow down the far side and under the chin
+@px 11 7 aa
+@px 10 8 aa
+@px 13 2 gg
+@px 12 3 ggg
+@px 11 4 gg
+@px 18 3 H
+@px 18 4 HH
+@px 19 5 HH
+@px 18 6 HHH
+@px 20 7 H
+@px 20 8 H
+@px 20 9 H
+@px 18 7 S
+@px 18 8 S
+@px 18 9 S
+@px 18 10 SS
+@px 18 11 S
+@px 17 12 SS
+@px 16 13 SSS
+@px 16 14 ZZ
+@px 16 15 Z
+// near leg (to the left), forward and down, and its shoe
+@poly p 10,30 15,30 14,37 13,44 8,44 9,37
+@rect 10 30 2 3 q
+@rect 9 33 2 7 q
+@rect 8 40 2 4 q
+@rect 14 30 1 3 P
+@rect 13 33 1 7 P
+@rect 12 40 1 4 P
+// the slanted pocket, a fold at the knee, the hem over the shoe
+@px 12 31 P
+@px 11 32 P
+@px 11 37 PP
+@rect 9 43 3 1 P
+@poly o 7,44 13,44 14,46 14,47 5,47 5,46
+@rect 5 47 9 1 O
+@px 6 44 ii
+@px 5 45 i
+@px 8 45 i_i
+// near arm (to the left), swinging back and out
+@line 8 17 5 24 u 3
+@line 9 18 6 24 t 1
+@px 4 24 tt
+@px 6 20 tt
+@poly s 3,25 6,25 7,26 6,28 4,28 3,27
+@px 4 27 SS
+@px 6 26 S
+// the postman: a peaked cap, a bag on the far hip on a strap over the near shoulder
+@variant postman
+// cap
+@poly t 10,4 10,2 12,0 18,0 20,2 20,4
+@rect 10 3 11 1 r
+@rect 8 4 8 2 U
+@px 14 1 y
+@px 11 0 uuu
+@px 10 1 uu
+@px 17 1 TT
+@px 17 2 TTT
+@px 17 3 RRRR
+@px 8 4 TTTT
+// strap and bag
+@line 10 16 21 27 n 2
+@rect 19 26 9 8 n
+@rect 19 26 9 4 m
+@px 19 30 NNNN_NNNN
+@rect 19 33 9 1 N
+@rect 27 27 1 7 N
+@px 23 30 y
+@px 20 25 ww
+// a jogger: a headband
+@variant jogger
+// headband
+@rect 10 4 11 2 t
+@px 10 4 uu
+@px 10 5 uu
+@px 18 4 TTT
+@px 18 5 TTT
+// short sleeves: bare forearms
+@px 5 21 sssS
+@rect 4 22 4 2 s
+@px 7 22 S
+@px 7 23 S
+@px 4 24 ssS
+@rect 22 24 4 1 S
+@rect 23 25 3 4 S
+@rect 25 24 1 5 Z
+// a birdwatcher: a wide hat, binoculars round the neck
+@variant birdwatcher
+// hat
+@ellipse 15 4 9 1 D
+@poly D 11,3 12,0 18,0 19,3
+@rect 12 2 7 1 N
+@px 12 0 ddd
+@px 11 1 ddd
+@px 17 0 j
+@px 16 1 jj
+@px 8 3 ddddddd
+@px 6 4 ddddd
+@px 8 5 jjjjjjjjjjjjjjj
+@px 21 4 jjjj
+// the brim's shadow on the brow
+@px 10 6 HSSSSSSS
+// pocket flaps of the field jacket
+@px 12 24 TTT
+@px 16 24 TTT
+// binoculars on their strap
+@line 14 15 12 20 N 1
+@line 17 15 17 20 N 1
+@rect 11 20 7 2 k
+@rect 11 22 3 2 k
+@rect 15 22 3 2 k
+@px 11 20 KKK_KKK
+@px 12 23 L___L
+// a salesman: a tie and a case in the far hand
+@variant salesman
+// shirt, lapels and tie
+@poly w 13,15 19,15 16,22
+@line 12 15 14 21 T 1
+@line 19 15 17 21 T 1
+@rect 15 15 2 7 r
+@px 15 22 r
+@rect 16 17 1 5 R
+// a jacket button, a handkerchief in the breast pocket
+@px 15 25 U
+@px 18 19 wW
+// case
+@rect 23 33 9 7 n
+@rect 23 33 9 1 m
+@rect 23 39 9 1 N
+@rect 31 34 1 6 N
+@px 25 34 y___y
+@rect 24 32 3 1 k
+@poly S 23,29 25,29 26,31 25,32 23,32 22,30
+// the inspector: reflective bands and a clipboard in the near hand
+@variant inspector
+// reflective bands: two over the shoulders, one round the waist, one round each arm
+@line 12 16 12 23 l 1
+@line 19 17 19 23 L 1
+@rect 9 24 13 2 l
+@rect 17 24 5 2 L
+@rect 5 20 4 2 l
+@rect 22 23 4 2 L
+// clipboard
+@poly n 0,24 6,23 7,33 1,34
+@poly w 1,26 6,25 7,32 2,33
+@px 2 24 LL
+@px 2 27 WWW
+@px 2 29 WWWW
+@px 3 31 WWW
+@poly s 5,25 6,25 7,26 6,28 5,28
+@variant
+--- 160
+// far leg forward, near leg lifted behind; the far shoulder goes back and up, the near one forward and down
+// far leg (to the right), forward and down, and its shoe
+@poly P 17,30 22,30 21,37 21,44 16,44 16,37
+@rect 21 30 1 3 Q
+@rect 20 33 1 11 Q
+@px 17 37 QQ
+@rect 16 43 4 1 Q
+@poly o 15,44 21,44 23,46 23,47 15,47
+@rect 15 47 9 1 O
+@px 15 44 ii
+// hips
+@rect 10 29 12 4 p
+@rect 16 29 6 4 P
+@rect 10 29 6 1 P
+@rect 16 29 6 1 Q
+@rect 16 30 1 3 Q
+// far arm (to the right), swinging back and out
+@line 23 17 26 24 T 3
+@poly S 25,25 28,25 28,27 27,28 25,28 24,26
+// torso
+@poly t 11,15 20,15 22,16 22,24 21,29 10,29 9,24 9,18
+// far arm in shadow: the crease against the body, the cuff
+@rect 22 16 1 4 U
+@px 25 24 UUU
+@px 25 27 ZZ
+// torso: lit on the near chest, shadow down the far side and under the near arm, a ribbed hem
+@poly u 11,16 15,16 14,20 11,21
+@rect 19 17 3 10 T
+@rect 19 27 2 2 T
+@px 19 16 TTT
+@rect 10 18 1 10 T
+@rect 10 28 11 1 T
+@rect 18 28 3 1 U
+@px 13 15 T___T
+// the shoulder seam, folds where the top bunches above the hem
+@px 11 17 t
+@px 11 18 t
+@px 12 26 T
+@px 13 27 TT
+@px 16 26 T
+// neck and head
+@rect 14 13 4 3 S
+@ellipse 15 7 5 5 s
+@rect 12 11 7 3 s
+@px 14 14 SSSS
+@px 14 15 SSS
+// hair: short, parted on the left and swept to the right, an ear under it
+@px 13 2 hhhhh
+@px 12 3 hhhhhhh
+@px 11 4 hhhhhhhhh
+@px 10 5 hhhhhhhhhhh
+@px 10 6 h_______hhh
+@px 19 7 hh
+@px 19 8 Sh
+@px 19 9 Sh
+// face: eyes, nose, a smile, cheeks
+@px 12 8 e___e
+@px 12 9 e___e
+@px 14 10 S
+@px 12 11 S___S
+@px 13 12 ZZZ
+@px 11 10 c
+@px 17 10 c
+// light on the brow and the hair, shadow down the far side and under the chin
+@px 11 7 aa
+@px 10 8 aa
+@px 13 2 gg
+@px 12 3 ggg
+@px 11 4 gg
+@px 18 3 H
+@px 18 4 HH
+@px 19 5 HH
+@px 18 6 HHH
+@px 20 7 H
+@px 20 8 H
+@px 20 9 H
+@px 18 7 S
+@px 18 8 S
+@px 18 9 S
+@px 18 10 SS
+@px 18 11 S
+@px 17 12 SS
+@px 16 13 SSS
+@px 16 14 ZZ
+@px 16 15 Z
+// near leg (to the left), lifted, toe down
+@poly p 10,30 15,30 15,36 14,42 10,42
+@rect 10 30 2 12 q
+@rect 14 30 1 9 P
+@rect 13 39 1 3 P
+// the slanted pocket, a fold at the bent knee, the hem over the shoe
+@px 12 31 P
+@px 11 32 P
+@px 11 36 PPP
+@rect 10 41 3 1 P
+@poly o 9,42 14,42 14,45 8,45 8,44
+@rect 8 45 6 1 O
+@px 9 42 ii
+// near arm (to the left), swinging forward
+@line 8 19 8 28 u 3
+@rect 9 19 1 9 t
+@px 7 28 ttt
+@px 7 23 tt
+@poly s 6,29 9,29 10,30 10,31 9,32 7,32 6,31
+@px 7 31 SS
+@px 9 30 S
+// the postman: a peaked cap, a bag on the far hip on a strap over the near shoulder
+@variant postman
+// cap
+@poly t 10,4 10,2 12,0 18,0 20,2 20,4
+@rect 10 3 11 1 r
+@rect 8 4 8 2 U
+@px 14 1 y
+@px 11 0 uuu
+@px 10 1 uu
+@px 17 1 TT
+@px 17 2 TTT
+@px 17 3 RRRR
+@px 8 4 TTTT
+// strap and bag
+@line 10 18 19 27 n 2
+@rect 17 27 9 8 n
+@rect 17 27 9 4 m
+@px 17 31 NNNN_NNNN
+@rect 17 34 9 1 N
+@rect 25 28 1 7 N
+@px 21 31 y
+@px 18 26 ww
+// a jogger: a headband
+@variant jogger
+// headband
+@rect 10 4 11 2 t
+@px 10 4 uu
+@px 10 5 uu
+@px 18 4 TTT
+@px 18 5 TTT
+// short sleeves: bare forearms
+@rect 7 23 3 6 s
+@rect 9 23 1 6 S
+@px 23 21 SSSZ
+@rect 24 22 4 2 S
+@px 27 22 Z
+@px 27 23 Z
+@px 25 24 SSZ
+// a birdwatcher: a wide hat, binoculars round the neck
+@variant birdwatcher
+// hat
+@ellipse 15 4 9 1 D
+@poly D 11,3 12,0 18,0 19,3
+@rect 12 2 7 1 N
+@px 12 0 ddd
+@px 11 1 ddd
+@px 17 0 j
+@px 16 1 jj
+@px 8 3 ddddddd
+@px 6 4 ddddd
+@px 8 5 jjjjjjjjjjjjjjj
+@px 21 4 jjjj
+// the brim's shadow on the brow
+@px 10 6 HSSSSSSS
+// pocket flaps of the field jacket
+@px 12 24 TTT
+@px 16 24 TTT
+// binoculars on their strap
+@line 14 15 14 20 N 1
+@line 17 15 19 20 N 1
+@rect 13 20 7 2 k
+@rect 13 22 3 2 k
+@rect 17 22 3 2 k
+@px 13 20 KKK_KKK
+@px 14 23 L___L
+// a salesman: a tie and a case in the far hand
+@variant salesman
+// shirt, lapels and tie
+@poly w 13,15 19,15 16,22
+@line 12 15 14 21 T 1
+@line 19 15 17 21 T 1
+@rect 15 15 2 7 r
+@px 15 22 r
+@rect 16 17 1 5 R
+// a jacket button, a handkerchief in the breast pocket
+@px 15 25 U
+@px 18 19 wW
+// case
+@rect 23 29 9 7 n
+@rect 23 29 9 1 m
+@rect 23 35 9 1 N
+@rect 31 30 1 6 N
+@px 25 30 y___y
+@rect 25 28 3 1 k
+@poly S 25,25 28,25 28,27 27,28 25,28 24,26
+// the inspector: reflective bands and a clipboard in the near hand
+@variant inspector
+// reflective bands: two over the shoulders, one round the waist, one round each arm
+@line 12 16 12 23 l 1
+@line 19 17 19 23 L 1
+@rect 10 24 12 2 l
+@rect 17 24 5 2 L
+@rect 7 22 3 2 l
+@rect 23 20 4 2 L
+// clipboard
+@poly n 2,28 8,27 9,37 3,38
+@poly w 3,30 8,29 9,36 4,37
+@px 4 28 LL
+@px 4 31 WWW
+@px 4 33 WWWW
+@px 5 35 WWW
+@poly s 8,29 9,29 10,30 10,31 9,32 8,32
+@variant

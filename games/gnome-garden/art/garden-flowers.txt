@@ -1,0 +1,436 @@
+// the flowers of the gnome garden: one animation per kind, frames = sprout, bud, ripe (heartbloom: two ripe frames, it beats)
+// each stands on the bottom middle of its 32x32 frame; painterly: no outline, light from the top left
+// stems and leaves
+l = #a4dc6a
+g = #6fb646
+G = #3f7f32
+// white petals
+j = #ffffff
+w = #fcf7ec
+W = #d6cdbd
+// yellow
+y = #f9d650
+Y = #dba62e
+// pink
+q = #fbb8cf
+p = #f590b3
+P = #c84f7e
+// seed head, soil brown
+m = #a8744a
+n = #8a5a33
+N = #5c3a22
+// reds
+h = #ff9a94
+r = #e24d40
+R = #b02a38
+D = #74192a
+// toadstool stem
+c = #f5e7c4
+C = #cdb98a
+// iris
+i = #62b0e0
+I = #2f6fa8
+// skin, nail
+s = #f1c6a6
+S = #c9937a
+Q = #fbefe4
+// what grows last has a face
+e = #2b1e26
+k = #ef9a85
+
+@size 32 32
+
+=== daisy
+--- 300
+// seedling: two leaves on a short stalk
+@line 16 31 16 26 g 2
+@ellipse 12 25 3 2 g
+@ellipse 21 24 3 2 G
+@px 10 24 ll
+@px 20 23 g
+--- 300
+// stem and two leaves, the right-hand side in shade
+@line 15 31 15 17 g 2
+@line 17 31 17 17 G 1
+@ellipse 10 25 4 2 g
+@px 7 24 lll
+@px 12 26 GG
+@ellipse 22 22 4 2 G
+@px 20 21 gg
+// bud, still shut, in its sepals
+@ellipse 16 13 3 4 w
+@poly W 17,10 19,12 19,15 17,17
+@poly G 13,15 16,18 19,15 16,16
+@px 14 11 w
+--- 300
+// stem and two leaves, the right-hand side in shade
+@line 15 31 15 16 g 2
+@line 17 31 17 16 G 1
+@ellipse 10 25 4 2 g
+@px 7 24 lll
+@px 12 26 GG
+@ellipse 22 22 4 2 G
+@px 20 21 gg
+// petals all round, the lower right ones in shade; a domed yellow middle
+@ellipse 16 2 2 3 w
+@ellipse 10 9 3 2 w
+@ellipse 11 4 2 2 w
+@ellipse 21 4 2 2 w
+@ellipse 22 9 3 2 W
+@ellipse 11 14 2 2 W
+@ellipse 21 14 2 2 W
+@ellipse 16 16 2 3 W
+@px 15 1 jj
+@px 9 8 jj
+@circle 16 9 3 y
+@px 17 10 YY
+@px 16 11 YY
+@px 14 7 jj
+
+=== tulip
+--- 300
+// seedling: two leaves on a short stalk
+@line 16 31 16 26 g 2
+@ellipse 12 25 3 2 g
+@ellipse 21 24 3 2 G
+@px 10 24 ll
+@px 20 23 g
+--- 300
+// stem and two leaves, the right-hand side in shade
+@line 15 31 15 17 g 2
+@line 17 31 17 17 G 1
+@ellipse 10 25 4 2 g
+@px 7 24 lll
+@px 12 26 GG
+@ellipse 22 22 4 2 G
+@px 20 21 gg
+// bud, still shut, in its sepals
+@ellipse 16 13 3 4 p
+@poly P 17,10 19,12 19,15 17,17
+@poly G 13,15 16,18 19,15 16,16
+@px 14 11 p
+--- 300
+// stem and two leaves, the right-hand side in shade
+@line 15 31 15 17 g 2
+@line 17 31 17 17 G 1
+@ellipse 10 25 4 2 g
+@px 7 24 lll
+@px 12 26 GG
+@ellipse 22 22 4 2 G
+@px 20 21 gg
+// a cup of three petals, light on the left one
+@poly p 10,3 13,7 16,2 19,7 22,3 23,11 20,16 12,16 9,11
+@poly P 17,5 19,7 22,3 23,11 20,16 16,16
+@line 11 6 11 12 q 1
+@line 12 5 12 9 q 1
+@line 16 4 16 12 P 1
+@px 14 15 PP
+
+=== sunflower
+--- 300
+// seedling: two leaves on a short stalk
+@line 16 31 16 26 g 2
+@ellipse 12 25 3 2 g
+@ellipse 21 24 3 2 G
+@px 10 24 ll
+@px 20 23 g
+--- 300
+// stem and two leaves, the right-hand side in shade
+@line 15 31 15 17 g 2
+@line 17 31 17 17 G 1
+@ellipse 10 25 4 2 g
+@px 7 24 lll
+@px 12 26 GG
+@ellipse 22 22 4 2 G
+@px 20 21 gg
+// bud, still shut, in its sepals
+@ellipse 16 13 3 4 y
+@poly Y 17,10 19,12 19,15 17,17
+@poly G 13,15 16,18 19,15 16,16
+@px 14 11 y
+--- 300
+// stem and two leaves, the right-hand side in shade
+@line 15 31 15 19 g 2
+@line 17 31 17 19 G 1
+@ellipse 10 25 4 2 g
+@px 7 24 lll
+@px 12 26 GG
+@ellipse 22 22 4 2 G
+@px 20 21 gg
+// a ring of petals round a dark seed head
+@circle 16 10 9 Y
+@ellipse 16 2 2 3 y
+@ellipse 9 5 3 2 y
+@ellipse 7 10 3 2 y
+@ellipse 9 15 3 2 y
+@ellipse 23 5 3 2 y
+@ellipse 25 10 3 2 Y
+@ellipse 23 15 3 2 Y
+@ellipse 16 18 2 3 Y
+@circle 16 10 5 n
+@poly N 17,7 21,10 18,14 16,15 19,11
+@px 13 8 mm
+@px 14 7 m
+@px 15 10 N
+@px 13 11 N
+@px 17 9 n
+@px 15 12 m
+
+=== rose
+--- 300
+// seedling: two leaves on a short stalk
+@line 16 31 16 26 g 2
+@ellipse 12 25 3 2 g
+@ellipse 21 24 3 2 G
+@px 10 24 ll
+@px 20 23 g
+--- 300
+// stem and two leaves, the right-hand side in shade
+@line 15 31 15 17 g 2
+@line 17 31 17 17 G 1
+@ellipse 10 25 4 2 g
+@px 7 24 lll
+@px 12 26 GG
+@ellipse 22 22 4 2 G
+@px 20 21 gg
+// bud, still shut, in its sepals
+@ellipse 16 13 3 4 r
+@poly R 17,10 19,12 19,15 17,17
+@poly G 13,15 16,18 19,15 16,16
+@px 14 11 r
+--- 300
+// stem and two leaves, the right-hand side in shade
+@line 15 31 15 17 g 2
+@line 17 31 17 17 G 1
+@ellipse 10 25 4 2 g
+@px 7 24 lll
+@px 12 26 GG
+@ellipse 22 22 4 2 G
+@px 20 21 gg
+// petals wound round each other; sepals underneath
+@circle 16 9 7 R
+@ellipse 14 8 5 4 r
+@poly D 20,5 23,9 21,14 17,16 20,11
+@line 12 7 16 5 D 1
+@line 16 5 19 8 D 1
+@line 19 8 17 11 D 1
+@line 17 11 13 10 D 1
+@line 13 10 14 8 D 1
+@px 11 6 hh
+@px 10 8 h
+@px 15 13 RR
+@poly G 11,15 16,18 21,15 16,16
+
+=== toadstool
+--- 300
+// a button, just through
+@ellipse 16 28 4 3 r
+@px 14 27 h
+@rect 15 30 3 2 c
+--- 300
+// half up
+@poly r 9,25 11,21 16,19 21,21 23,25
+@poly R 19,20 21,21 23,25 19,25
+@px 12 22 ww
+@px 17 21 w
+@rect 10 25 13 1 C
+@poly c 13,26 19,26 20,31 12,31
+@poly C 17,26 19,26 20,31 18,31
+--- 300
+// cap: a red dome with white warts, gills underneath; a stout cream stalk with a ring
+@poly r 2,18 4,12 9,7 16,5 23,7 28,12 30,18
+@poly R 20,6 23,7 28,12 30,18 23,18
+@ellipse 9 11 3 2 h
+@circle 9 15 2 w
+@circle 17 9 2 w
+@circle 24 13 1 w
+@px 14 15 ww
+@px 21 17 W
+@px 10 16 W
+@px 18 10 W
+@rect 3 18 27 2 C
+@px 4 19 c_c_c_c_c_c_c_c_c_c_c_c_c
+@poly c 12,20 20,20 21,31 11,31
+@poly C 17,20 20,20 21,31 18,31
+@rect 12 23 9 1 C
+@px 13 27 C
+
+=== eyebright
+--- 300
+// seedling: two leaves on a short stalk
+@line 16 31 16 26 g 2
+@ellipse 12 25 3 2 g
+@ellipse 21 24 3 2 G
+@px 10 24 ll
+@px 20 23 g
+--- 300
+// stem and two leaves, the right-hand side in shade
+@line 15 31 15 17 g 2
+@line 17 31 17 17 G 1
+@ellipse 10 25 4 2 g
+@px 7 24 lll
+@px 12 26 GG
+@ellipse 22 22 4 2 G
+@px 20 21 gg
+// bud, still shut, in its sepals
+@ellipse 16 13 3 4 w
+@poly W 17,10 19,12 19,15 17,17
+@poly G 13,15 16,18 19,15 16,16
+@px 14 11 w
+--- 300
+// stem and two leaves, the right-hand side in shade
+@line 15 31 15 17 g 2
+@line 17 31 17 17 G 1
+@ellipse 10 25 4 2 g
+@px 7 24 lll
+@px 12 26 GG
+@ellipse 22 22 4 2 G
+@px 20 21 gg
+// an eye on a stalk: the pupil is drawn by the game, looking at you
+@circle 16 9 7 w
+@poly W 20,12 23,9 22,14 18,16 15,16
+@px 11 4 jjj
+@px 10 6 jj
+@circle 16 9 4 i
+@poly I 17,10 20,8 20,11 17,13 14,12
+@px 14 7 jj
+@px 22 7 r
+@px 23 10 r
+@px 10 12 r
+// lashes
+@line 8 3 10 5 W 1
+@line 16 0 16 1 W 1
+@line 24 3 22 5 W 1
+
+=== fingerwort
+--- 300
+// one fingertip
+@rect 15 26 3 6 s
+@px 15 25 QQQ
+@px 17 27 S
+@px 17 29 S
+@px 13 31 G
+@px 19 31 G
+--- 300
+// three fingertips
+@rect 10 24 3 8 s
+@rect 15 21 3 11 s
+@rect 20 23 3 9 s
+@px 10 23 QQQ
+@px 15 20 QQQ
+@px 20 22 QQQ
+@rect 12 25 1 7 S
+@rect 17 22 1 10 S
+@rect 22 24 1 8 S
+@px 9 31 G
+@px 24 31 G
+--- 300
+// a hand, reaching up out of the bed: four fingers and a thumb, nails, a wrist
+@rect 9 9 3 12 s
+@rect 14 6 3 14 s
+@rect 19 8 3 13 s
+@rect 24 13 2 9 s
+@line 5 17 8 22 s 3
+@poly s 8,19 23,19 26,21 24,28 10,28 7,24
+@rect 11 27 10 5 s
+// shade on the right of each finger and down the heel of the hand
+@rect 11 10 1 10 S
+@rect 16 7 1 12 S
+@rect 21 9 1 11 S
+@rect 25 14 1 8 S
+@poly S 20,20 23,19 26,21 24,28 19,28
+@rect 18 28 3 4 S
+// nails
+@px 9 8 QQQ
+@px 14 5 QQQ
+@px 19 7 QQQ
+@px 24 12 QQ
+@px 4 16 QQ
+// knuckles, and the grass it came up through
+@px 10 15 S
+@px 15 13 S
+@px 20 14 S
+@px 9 31 G
+@px 22 31 GG
+@px 10 30 G
+
+=== heartbloom
+--- 300
+// a dark seedling
+@line 16 31 16 26 G 2
+@ellipse 12 25 3 2 G
+@ellipse 21 24 3 2 G
+@px 16 24 D
+--- 300
+// a dark stem with a vein in it
+@line 15 31 15 19 G 2
+@line 17 31 17 20 D 1
+@ellipse 10 26 4 2 G
+@ellipse 22 23 4 2 G
+// bud
+@ellipse 16 14 3 4 R
+@px 15 12 r
+@px 17 16 D
+--- 300
+// a dark stem with a vein in it
+@line 15 31 15 19 G 2
+@line 17 31 17 20 D 1
+@ellipse 10 26 4 2 G
+@ellipse 22 23 4 2 G
+// a heart: at rest
+@circle 12 8 5 R
+@circle 20 8 5 R
+@poly R 7,10 25,10 16,20
+@circle 12 8 3 r
+@circle 19 8 3 r
+@poly r 10,10 21,10 16,17
+@poly D 22,5 25,8 24,12 18,18 16,20 20,12
+@px 10 6 hh
+@px 10 7 h
+--- 300
+// a dark stem with a vein in it
+@line 15 31 15 19 G 2
+@line 17 31 17 20 D 1
+@ellipse 10 26 4 2 G
+@ellipse 22 23 4 2 G
+// a heart: the beat
+@circle 11 8 6 R
+@circle 21 8 6 R
+@poly R 5,10 27,10 16,22
+@circle 11 8 4 r
+@circle 20 8 4 r
+@poly r 8,10 23,10 16,19
+@poly D 24,4 27,8 26,12 19,19 16,22 21,13
+@px 9 5 hhh
+@px 9 6 hh
+@px 9 7 h
+
+=== gnomecap
+--- 300
+// the tip of something red
+@poly r 15,31 16,27 18,27 19,31
+@px 18 29 R
+@px 18 30 RR
+--- 300
+// a hat, half out of the ground
+@poly R 9,31 14,21 16,18 18,18 19,20 18,22 23,31
+@poly r 9,31 14,21 16,18 16,24 13,31
+@poly D 19,22 23,31 19,31
+@px 12 26 h
+@px 11 28 hh
+--- 300
+// a hat with somebody under it, up to his beard in the bed
+@poly R 6,22 11,13 15,4 17,2 19,2 20,4 19,6 21,11 26,22
+@poly r 6,22 11,13 15,4 16,3 15,9 13,22
+@poly h 10,17 12,14 11,20 9,21
+@poly D 19,6 21,11 26,22 20,22 19,12
+@rect 5 22 22 1 D
+@ellipse 16 25 6 3 s
+@poly S 19,23 22,24 22,27 19,27
+@rect 12 24 2 2 e
+@rect 18 24 2 2 e
+@circle 15 27 2 k
+@poly w 8,28 24,28 28,31 4,31
+@poly W 18,28 24,28 28,31 20,31
+@px 6 31 G
+@px 26 31 G

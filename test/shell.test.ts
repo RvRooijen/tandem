@@ -232,20 +232,53 @@ test('content: a record is changed by hand, and the game in the page follows', a
   assert.deepEqual(app.refs.splice(0), ['record:flowers/tulip']);
 });
 
-test('art: the drawings are listed, one is looked at, and it can be handed to the agent', async () => {
+test('art: the drawings are listed, one is looked at and locked, and a worker\'s drawing comes back as a card with pictures', async () => {
   tab('Art');
   await until(() => all('#t-body .item').length === 7, 'the drawings');
-  assert.match(all('#t-body .item')[0].textContent!, /gnome.*32×32/);
-  assert.ok(button('Bring drawings into the game') && button('Ask a worker'));
-  click(all('#t-body .item')[0]);
-  await until(() => $('.sheet img'), 'the sheet', 15000);
+  assert.match(all('#t-body .item').at(-1)!.textContent!, /gnome.*32×32.*2 animations · 3 looks · depth map/);
+  assert.match($('.workers').textContent!, /No worker is drawing/);
+  click(all('#t-body .item').at(-1)!);
+  await until(() => $('.sheet img'), 'the picture', 15000);
   assert.match(($('.sheet img') as HTMLImageElement).src, /\/api\/file\/looks\/look-/);
-  assert.match($('.sheet .t-hint').textContent!, /stand · walk/);
+  assert.deepEqual(all('.chips .t-chip').map((c) => c.textContent), ['all', 'stand', 'walk ×2', 'depth map', 'cozy', 'odd', 'hollow']);
+  const first = ($('.sheet img') as HTMLImageElement).src;
   click(all('.chips .t-chip').find((c) => c.textContent === 'walk ×2')!);
-  await until(() => /walk 1 · walk 2/.test($('.sheet .t-hint')?.textContent ?? ''), 'the walk', 15000);
-  // Asking for a change needs words.
+  await until(() => $('.sheet img') && ($('.sheet img') as HTMLImageElement).src !== first, 'the walk', 15000);
+
+  // Asking for a change needs words. With words, a worker draws, and its round is a card in the chat.
   click(button('Ask a worker'));
   assert.equal($('#t-toast').textContent, 'Say what should change.');
+  type($('textarea[aria-label="Brief for a worker"]'), 'a taller hat');
+  click(button('Ask a worker'));
+  tab('Chat');
+  const cards = all('.card.prop').filter((c) => !/drawing gnome/.test(c.textContent!)).length;
+  await until(() => all('.card.prop').length === cards + 1 && all('.pictures img').length === 2, 'the worker\'s proposal', 20000);
+  const card = all('.card.prop').at(-1)!;
+  assert.match($('.change .path', card).textContent!, /drawing gnome/);
+  assert.deepEqual(all('.pictures figcaption', card).map((f) => f.textContent), ['as it is', 'as proposed']);
+  assert.equal(all('.pictures img', card).length, 2);
+  await until(() => all('button', card).some((b) => b.textContent === 'Accept'), 'its buttons');
+  assert.deepEqual(all('button', card).map((b) => b.textContent), ['Feedback', 'Accept', 'Reject']);
+
+  // Feedback sends it round again; the card says it is drawing, then offers the choice again.
+  asked = 'taller still';
+  click(button('Feedback', card));
+  await until(() => host.events.since(0).filter((e) => e.type === 'art.round').length === 2, 'the second round', 20000);
+  await until(() => all('button', card).some((b) => b.textContent === 'Accept'), 'its buttons again');
+  click(button('Reject', card));
+  await until(() => card.dataset.status === 'rejected', 'the rejection');
+  assert.deepEqual(await host.run('art.workers', {}, 'me'), []);
+
+  // A lock on a drawing: no worker gets it.
+  tab('Art');
+  await until(() => $('button.lock'), 'the drawing, with its lock');
+  click($('button.lock'));
+  await until(() => host.locks.has('drawing:gnome'), 'the lock');
+  type($('textarea[aria-label="Brief for a worker"]'), 'a taller hat');
+  click(button('Ask a worker'));
+  await until(() => /locked/.test($('#t-toast').textContent!), 'the refusal');
+  click($('button.lock'));
+  await until(() => !host.locks.has('drawing:gnome'), 'the lock to come off');
   click(button('Talk about this'));
   assert.deepEqual(app.refs.splice(0), ['drawing:gnome']);
 });
@@ -330,6 +363,7 @@ test('a new conversation clears the chat and keeps what is still to be decided',
   await host.run('records.set', { path: 'flowers/daisy', value: { value: 2 }, note: 'still open' }, AGENT, 'r950');
   await until(() => all('.card.prop').some((c) => c.dataset.status === 'pending'), 'a pending proposal');
   assert.ok(all('.msg').length >= 3 && all('.card.prop').length >= 3);
+  asked = '7';
   click($('.composer .new-chat'));
   await until(() => all('.msg').length === 0, 'the chat to be cleared');
   assert.equal(all('.card.prop').length, 1, 'the pending proposal is still there');

@@ -199,10 +199,15 @@ figure.card.look figcaption { padding: 6px 10px; font-size: 12px; color: var(--t
 .look-at span { color: var(--t-soft); }
 
 /* ---- art */
+.pictures { display: flex; gap: 8px; margin: 6px 0; }
+.pictures figure { flex: 1 1 0; min-width: 0; margin: 0; cursor: zoom-in; }
+.pictures img { display: block; width: 100%; image-rendering: pixelated; border-radius: 8px; background: #101014; }
+.pictures figcaption { font-size: 11.5px; color: var(--t-soft); padding-top: 3px; text-align: center; }
+.card .working { padding: 8px 0 0; font-size: 13px; }
+.card .working button { min-height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--t-line); background: var(--t-bg); margin-left: auto; }
 .sheet img { display: block; width: 100%; image-rendering: pixelated; border-radius: 10px; cursor: zoom-in; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
 #tandem .t-chip.tap { cursor: pointer; min-height: 32px; padding: 3px 12px; color: var(--t-ink); }
-pre.workers { font-family: var(--t-mono); font-size: 12px; color: var(--t-soft); background: var(--t-raise); border-radius: 10px; padding: 10px; white-space: pre-wrap; word-break: break-word; margin-bottom: 8px; }
 
 /* ---- over the stage */
 #t-banner {

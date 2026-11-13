@@ -7,11 +7,13 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node", "vite/client"],
     "skipLibCheck": true,
+    "allowJs": true,
+    "checkJs": false,
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["core", "ecs", "playtest", "shell", "games", "test", "vite.config.ts"]
+  "include": ["core", "ecs", "playtest", "art", "shell", "games", "test", "vite.config.ts"]
 }

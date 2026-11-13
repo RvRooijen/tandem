@@ -204,6 +204,8 @@ export function createApp(root: HTMLElement, info: Info, game: GameModule, page:
         for (const p of panels) p.agent?.();
         return;
       }
+      // What is only told, not kept (what a worker is doing right now), goes to the panels and nowhere else.
+      if (ev.n === 0) { for (const p of panels) p.event?.(ev, true); return; }
       app.events.push(ev);
       if (live) {
         // What the agent shows, it shows on the stage itself.
@@ -214,7 +216,7 @@ export function createApp(root: HTMLElement, info: Info, game: GameModule, page:
           if (app.playing && (ev.type !== 'proposal.decided' || ev.round === app.playing)) void app.stopPlaying();
           else if (!app.playing) void run<RecordSet>('records.all').then(apply).catch(() => {});
         }
-        if (ev.by !== 'me' && ['message', 'proposal', 'look', 'playtest'].includes(ev.type)) app.badge('chat', true);
+        if (ev.by !== 'me' && ['message', 'proposal', 'look', 'playtest', 'art.round'].includes(ev.type)) app.badge('chat', true);
       }
       for (const p of panels) p.event?.(ev, live);
     },

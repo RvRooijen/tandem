@@ -49,8 +49,11 @@ export function createWorkers(o: WorkersOptions) {
   const runs = new Map<string, ChildProcess>();
   const stopped = new Set<string>();
 
+  /** The workers that are drawing right now, as they are this moment; the others are read from their file. */
+  const active = new Map<string, Worker>();
   const file = (id: string) => join(spaces.dir(id), 'worker.json');
   const get = (id: string): Worker | undefined => {
+    if (active.has(id)) return active.get(id);
     try { return JSON.parse(readFileSync(file(id), 'utf8')) as Worker; } catch { return undefined; }
   };
   const save = (w: Worker) => writeFileSync(file(w.id), JSON.stringify(w, null, 2));
@@ -90,6 +93,7 @@ export function createWorkers(o: WorkersOptions) {
 
   function run(w: Worker, prompt: string) {
     w.state = 'running'; w.doing = 'starting'; w.said = '';
+    active.set(w.id, w);
     save(w); cast(w);
     const edit = w.names.flatMap((n) => [`Edit(art/${n}.txt)`, `Write(art/${n}.txt)`, `Edit(depth/${n}.txt)`, `Write(depth/${n}.txt)`]);
     const proc = spawn(process.env.CLAUDE_BIN ?? 'claude', [
@@ -140,10 +144,8 @@ export function createWorkers(o: WorkersOptions) {
     proc.on('close', async (code) => {
       clearTimeout(timer);
       runs.delete(w.id);
+      active.delete(w.id);
       if (!spaces.exists(w.id)) return;                        // closed while it ran
-      // The phase is what it reported last (see note); take what is on disk, it was written while this ran.
-      const now = get(w.id);
-      if (now) w.phase = now.phase;
       const wasStopped = stopped.delete(w.id);
       if (wasStopped) { w.state = 'stopped'; w.doing = 'stopped'; }
       else if (failed || code !== 0) { w.state = 'failed'; w.doing = failed || err.trim().split('\n').pop() || `claude ended with code ${code}`; }
@@ -215,6 +217,7 @@ export function createWorkers(o: WorkersOptions) {
     close(id: string) {
       runs.get(id)?.kill();
       runs.delete(id);
+      active.delete(id);
       spaces.remove(id);
     },
 

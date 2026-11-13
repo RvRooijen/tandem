@@ -1,0 +1,28 @@
+// garden sign: a small wooden board on a post, moss at the foot
+. = none
+1 = #2b3048
+2 = #3f4a68
+3 = #5a6988
+4 = #7d90ab
+5 = #a6bccf
+
+@size 32 32
+// post
+@rect 15 6 3 24 3
+@px 15 5 33
+// board (slightly crooked, a chip out of the bottom right corner)
+@rect 7 9 9 10 4
+@rect 16 8 10 10 4
+@px 25 17 .
+@px 7 9 .
+// moss at the foot, in front of the post: a taller tuft on the left, a low one on the right
+@ellipse 16 30 6 1 5
+@rect 11 29 11 2 5
+@px 11 28 5555
+@px 12 27 555
+@px 13 26 5
+@px 18 28 5555
+// moss creeping up the foot of the post
+@px 15 27 5
+@px 15 28 5
+@px 17 26 5

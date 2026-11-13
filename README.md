@@ -79,6 +79,11 @@ you see it work.
 | the bridge in its page | the agent can read the world you are in; the working copy starts from where you are; the agent can point at things |
 | an adapter | the agent sees inside: state in words, pictures, entities and systems, a bot that plays it through, and all of that on its working copy too |
 
+**Pointing, on any page.** A project's page is started on an inner port and shown through tandem (`core/through.ts`), which
+adds a few lines of its own to it on the way (`bridge/page.js`); the project is not changed for it. With those, the agent
+can put a ring around something on the page (`stage.point` with `at`: the words on it, or a selector), and you can drag
+tandem's round button onto something to point at it: it goes with your next message.
+
 **The bridge** is one small file, `bridge/tandem.bridge.ts`, copied into the project (it has no imports). The page calls `tandemStart()` before it starts its world and `tandemConnect({ snapshot, toScreen })` once it runs. Outside tandem's frame it does nothing.
 
 **The adapter** exports `game`, a `GameModule` (`core/game.ts`): how to make a world from a snapshot, step it, describe it in words, draw it to pixels, let a bot play it and report milestones, and the things a player can do as commands. Tandem loads it in the core and in jobs, never in the page. Gnome Garden's is `tandem.adapter.ts` in `../incremental`.
@@ -103,7 +108,7 @@ you see it work.
                  the guide a drawing worker follows, workspaces, workers, sprites, the art commands
     ecs/         the inspector, for projects on archetype-ecs with an adapter
     playtest/    pacing runs, and comparing two of them
-    bridge/      the file a project's page copies to talk to tandem
+    bridge/      the file a project's page copies to talk to tandem, and the lines tandem adds to any page it shows
     shell/       tandem's page: the project in a frame, a sheet with Chat, Concepts and Art over it
     test/        on a small fixture project (test/fixture) and, for what needs an adapter, on Gnome Garden
 

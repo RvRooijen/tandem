@@ -105,6 +105,9 @@ export function createRunner(host: Host) {
           out.push(e ? `Entity ${rest} in the world being played: ${JSON.stringify(e.components)}` : `Entity ${rest} (no longer there)`);
         } else if (kind === 'drawing') {
           out.push(`Drawing ${rest}${host.locks.has(`drawing:${rest}`) ? ' (LOCKED)' : ''}: one of the game's drawings, made in pixeldraw. See it with art.look.`);
+        } else if (kind === 'page') {
+          const p = JSON.parse(rest) as { words?: string; tag?: string; selector?: string; path?: string };
+          out.push(`Something on the project's page that the person pointed at${p.path ? ` (the page at ${p.path})` : ''}: a <${p.tag ?? '?'}>${p.words ? ` that says "${p.words}"` : ''}${p.selector ? `, in the page as ${p.selector}` : ''}. Find it in the code by those words or that name.`);
         } else if (kind === 'point') {
           out.push(`A point in the project's world: ${rest} (world units)`);
         } else out.push(ref);

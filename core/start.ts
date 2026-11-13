@@ -3,7 +3,8 @@
 // last is opened again.
 //   tandem's page    http://localhost:5173   (the phone page: the project in a frame, the tools over it)
 //   the core         http://127.0.0.1:5201   (commands, events, the agent)
-//   the project      http://localhost:5210   (its own page, started with the command from its tandem.json)
+//   the project      http://localhost:5210   (its own page, started with the command tandem was given for it, on an
+//                                            inner port, and shown through tandem: core/through.ts)
 // All listen on this machine only: the core can start an agent with a command
 // line, which is not something to offer the whole network.
 // The core runs as a child that is started again when it asks to be: after a
@@ -17,6 +18,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SETUP, loadProject, stopTree } from './project.ts';
 import { SWITCH, readState, writeState } from './projects.ts';
+import { innerPort, startThrough } from './through.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PAGE_PORT = Number(process.env.TANDEM_PAGE_PORT ?? 5210);
@@ -37,7 +39,8 @@ function startProject() {
     stopTree(page);
     page = undefined;
     paging = project?.root;
-    const command = project?.pageCommand(PAGE_PORT);
+    // The page itself runs on an inner port; it is shown through tandem, on the port it is known at (see below).
+    const command = project?.pageCommand(innerPort(PAGE_PORT));
     if (project && command) {
       const mine = spawn('sh', ['-c', command], { cwd: project.root, stdio: 'inherit', env, detached: true });
       page = mine;
@@ -67,6 +70,10 @@ function stop(code = 0) {
 }
 process.on('SIGINT', () => stop());
 process.on('SIGTERM', () => stop());
+
+// The project's page goes through tandem: as it is, with tandem's few lines added to it, so that things on it can
+// be pointed at. Whatever project is open, it is shown on this port.
+startThrough({ port: PAGE_PORT, to: innerPort(PAGE_PORT) }).catch((e) => console.log(`the project's page cannot be shown on port ${PAGE_PORT}: ${e instanceof Error ? e.message : e}`));
 
 // Tandem's own page.
 const shell = spawn('npx', ['vite'], { cwd: ROOT, stdio: 'inherit', env: process.env, detached: true });

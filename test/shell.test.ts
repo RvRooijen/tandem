@@ -139,12 +139,12 @@ test('the project\'s page is in a frame and the tools lie over it, shut', async 
   assert.deepEqual(all('.t-tab').map((t) => t.textContent), ['Chat', 'Concepts', 'Art']);
   await until(() => frame.src === 'http://localhost:5210/', 'the frame to show the project\'s own page');
   assert.ok(!frame.hidden && $('#t-nopage').hidden);
-  assert.deepEqual(app.stage.can, { snapshot: false, point: false }, 'a page that says nothing is simply shown');
+  assert.deepEqual(app.stage.can, { snapshot: false, point: false, find: false }, 'a page that says nothing is simply shown');
 });
 
 test('a page that uses the bridge tells tandem its world, and where things are', async () => {
   fromFrame({ type: 'hello', loaded: false, can: { snapshot: true, point: true } });
-  assert.deepEqual(app.stage.can, { snapshot: true, point: true });
+  assert.deepEqual(app.stage.can, { snapshot: true, point: true, find: false });
   // Its world is passed on to the core, for a project that can be seen inside (this one cannot: nothing is sent).
   fromFrame({ type: 'snapshot', snapshot: { blooms: 2 } });
   assert.ok(!ran.includes('world.push'));
@@ -432,6 +432,71 @@ test('the agent shows things on the person\'s screen', async () => {
   fromFrame({ type: 'hello', loaded: false, can: { snapshot: false, point: false } });
   await host.run('stage.point', { x: 1, y: 1, text: 'over here' }, AGENT);
   await until(() => /The agent points at something: over here/.test($('#t-toast').textContent!), 'the words');
+  // Something on an ordinary page is pointed at by the words on it: tandem's own lines in the page find it, and
+  // the ring goes around it.
+  await assert.rejects(host.run('stage.point', { text: 'nothing to point at' }, AGENT), /what to point at/);
+  fromFrame({ type: 'page', can: { find: true } });
+  toFrame.length = 0;
+  await host.run('stage.point', { at: 'Make a group', text: 'start here' }, AGENT);
+  await until(() => toFrame.some((m) => m.type === 'find'), 'the page to be asked for it');
+  const finding = toFrame.find((m) => m.type === 'find');
+  assert.equal(finding.at, 'Make a group');
+  fromFrame({ type: 'found', id: finding.id, x: 40, y: 500, w: 200, h: 44 });
+  await until(() => $('#t-ring').classList.contains('box') && $('#t-ring span').textContent === 'start here', 'the ring around it');
+  assert.deepEqual([$('#t-ring').style.left, $('#t-ring').style.top], ['150px', '542px'], 'its middle, moved by where the frame is');
+  assert.deepEqual([$('#t-ring i').style.width, $('#t-ring i').style.height], ['214px', '58px'], 'as large as the thing, and a little more');
+  // What is not on the page now is said, not shown somewhere.
+  toFrame.length = 0;
+  await host.run('stage.point', { at: 'Draw the names' }, AGENT);
+  await until(() => toFrame.some((m) => m.type === 'find'), 'the page to be asked again');
+  fromFrame({ type: 'found', id: toFrame.find((m) => m.type === 'find').id, missing: true });
+  await until(() => /points at "Draw the names", but that is not on the page now/.test($('#t-toast').textContent!), 'it to be said');
+  // With the tools open they cover the page: the pointing waits until they are shut.
+  app.open('chat');
+  toFrame.length = 0;
+  await host.run('stage.point', { at: 'Make a group' }, AGENT);
+  await until(() => /Shut the tools to see it/.test($('#t-toast').textContent!), 'it to wait');
+  assert.equal(toFrame.length, 0);
+  app.close();
+  await until(() => toFrame.some((m) => m.type === 'find'), 'the page to be asked once it is in view');
+
+  // And the person points: the round button is dragged onto something on the page. What is under it is marked
+  // while it is dragged; let go, that thing goes with the next message, and the button is where it was.
+  const fab = $('#t-fab');
+  const pointer = (type: string, x: number, y: number) => { const ev = new w.MouseEvent(type, { bubbles: true, clientX: x, clientY: y }); Object.defineProperty(ev, 'pointerId', { value: 1 }); fab.dispatchEvent(ev); };
+  const answer = async (what: Record<string, unknown>) => {
+    await until(() => toFrame.some((m) => m.type === 'pick'), 'the page to be asked what is there');
+    const asked = toFrame.filter((m) => m.type === 'pick');
+    toFrame.length = 0;
+    for (const m of asked) fromFrame({ type: 'picked', id: m.id, ...what });
+    return asked.at(-1);
+  };
+  toFrame.length = 0;
+  app.refs.length = 0;
+  pointer('pointerdown', 340, 60);
+  pointer('pointermove', 343, 62);
+  assert.equal(fab.classList.contains('drag'), false, 'a finger that hardly moved is a tap');
+  pointer('pointermove', 200, 400);
+  assert.ok(fab.classList.contains('drag'));
+  assert.equal(fab.style.transform, 'translate(-140px, 340px)', 'it follows the finger');
+  const there = { x: 40, y: 380, w: 200, h: 44, words: 'Make a group', tag: 'button', selector: 'main > button.go', path: '/' };
+  assert.deepEqual([(await answer(there)).x, (await Promise.resolve(190))], [190, 190], 'asked in the page\'s own measure: where the finger is, less where the frame is');
+  await until(() => !$('#t-ring').hidden && $('#t-ring span').textContent === '"Make a group"', 'the thing to be marked');
+  pointer('pointerup', 200, 400);
+  assert.equal(fab.classList.contains('drag'), false);
+  assert.equal(fab.style.transform, '', 'the button is back where it was');
+  await answer(there);
+  await until(() => app.refs.length === 1, 'the thing to go with the next message');
+  assert.deepEqual(JSON.parse(app.refs[0].slice('page:'.length)), { words: 'Make a group', tag: 'button', selector: 'main > button.go', path: '/' });
+  assert.ok(!$('#t-sheet').classList.contains('shut'), 'the chat is opened on it');
+  assert.match($('.t-chip.ref[data-kind=page]').textContent!, /on the page: "Make a group"/);
+  assert.ok($('#t-ring').hidden);
+  // The click that follows a drag does not shut the tools again; and a tap is still a tap.
+  click(fab);
+  assert.ok(!$('#t-sheet').classList.contains('shut'));
+  app.refs.length = 0;
+  app.close();
+
   await host.run('stage.open', { tab: 'concepts', id: 'night-roses' }, AGENT);
   await until(() => $('input.title'), 'the concept to be opened');
   assert.ok(!$('#t-sheet').classList.contains('shut'));

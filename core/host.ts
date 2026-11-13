@@ -228,7 +228,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     // ---- talking
     {
       name: 'chat.send', kind: 'write', agent: 'free',
-      about: 'Say something in the conversation. refs is a list of things it is about: "concept:<id>", "drawing:<name>", "entity:<id>", "point:<x>,<y>". files is a list of what chat.attach gave back: photos and files that go with it.',
+      about: 'Say something in the conversation. refs is a list of things it is about: "concept:<id>", "drawing:<name>", "entity:<id>", "point:<x>,<y>", "page:<json>" (something on the project\'s page: {words, tag, selector, path}). files is a list of what chat.attach gave back: photos and files that go with it.',
       input: { text: 'string', refs: 'json?', files: 'json?' },
       run(c, i) {
         checkList(i.refs, 'refs');
@@ -617,9 +617,13 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     // ---- the stage: the agent shows the person something in the app
     {
       name: 'stage.point', kind: 'write', agent: 'free',
-      about: 'Point at a place in the world being played (world units) with a few words: a ring appears there on the person\'s screen.',
-      input: { x: 'number', y: 'number', text: 'string?' },
-      run: (c, i) => { events.add({ type: 'stage.point', by: c.by, x: i.x, y: i.y, text: i.text ?? '' }); return { shown: true }; },
+      about: 'Point at something on the person\'s screen with a few words (text): a ring appears there. at is something on the project\'s page: the words on it as the person reads them (a button, a heading, a label), or a CSS selector; the page moves to it. x and y are a place in the world being played (world units), where the project says where things are.',
+      input: { at: 'string?', x: 'number?', y: 'number?', text: 'string?' },
+      run(c, i) {
+        if (!i.at?.trim() && (i.x === undefined || i.y === undefined)) throw new CommandError('input', 'say what to point at: at (words on the page, or a selector), or x and y in the world');
+        events.add({ type: 'stage.point', by: c.by, ...(i.at?.trim() ? { at: i.at.trim() } : { x: i.x, y: i.y }), text: i.text ?? '' });
+        return { shown: true, says: 'the ring is put on the person\'s screen if their page has it; you are not told whether it was found' };
+      },
     },
     {
       name: 'stage.open', kind: 'write', agent: 'free',

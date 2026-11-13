@@ -7,7 +7,7 @@ import type { AgentStatus } from '../core/runner.ts';
 import { info as getInfo, run, type Info } from './api.ts';
 import { createBubbles } from './bubbles.ts';
 import { clear, h } from './dom.ts';
-import type { Stage } from './stage.ts';
+import type { Picked, Stage } from './stage.ts';
 
 export interface Panel {
   id: string;
@@ -30,14 +30,14 @@ export interface App {
   stage: Stage;
   events: Event[];
   agent: AgentStatus;
-  /** What the next message is about: "concept:<id>", "drawing:<name>", "point:<x>,<y>". */
+  /** What the next message is about: "concept:<id>", "drawing:<name>", "point:<x>,<y>", "page:<json>" (something on the project's page). */
   refs: string[];
   open(tab: string, id?: string): void;
   close(): void;
   current(): string | null;
   /** Hang something on the next message and go to the chat. */
   attach(ref: string): void;
-  point(x: number, y: number, text?: string): void;
+  point(x: number, y: number, text?: string, at?: string): void;
   /** Show the agent's working copy in the frame instead of the project, and back. */
   playCopy(): Promise<void>;
   playProject(): void;
@@ -51,7 +51,7 @@ export interface App {
 }
 
 export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: Panel[]): App & { feed(ev: Event, live: boolean): void; stageChanged(): void } {
-  const fab = h<'button'>('button#t-fab', { 'aria-label': 'Open the tools', onclick: () => (shown ? app.close() : app.open(last)) }, h('i.mark'), h('i.badge'));
+  const fab = h<'button'>('button#t-fab', { 'aria-label': 'Open the tools', title: 'Tap to open the tools; drag onto something on the page to point at it', onclick: () => { if (dragged) { dragged = false; return; } if (shown) app.close(); else app.open(last); } }, h('i.mark'), h('i.badge'));
   const tabs = h<'nav'>('nav#t-tabs');
   const body = h('div#t-body');
   const foot = h('div#t-foot');
@@ -70,7 +70,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
 
   let shown: string | null = null, last = 'chat';
   let ringTimer = 0, toastTimer = 0;
-  let pointed: { x: number; y: number; text: string } | undefined;
+  let pointed: { x: number; y: number; text: string; at?: string } | undefined;
   const badges = new Set<string>();
 
   const tabEls = new Map<string, HTMLButtonElement>();
@@ -80,6 +80,69 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     tabEls.set(p.id, b);
     tabs.append(b);
   }
+
+  /** The ring: a round mark on a place in the world, or a box around a thing on the page; `stays` a few seconds, or until it is taken away. */
+  function showRing(px: number, py: number, w: number, h: number, text: string, box: boolean, stays: boolean) {
+    ring.style.left = `${px}px`;
+    ring.style.top = `${py}px`;
+    const mark = ring.querySelector('i') as HTMLElement;
+    mark.style.width = `${Math.max(46, Math.min(w + 14, window.innerWidth - 8))}px`;
+    mark.style.height = `${Math.max(46, Math.min(h + 14, window.innerHeight - 8))}px`;
+    ring.classList.toggle('box', box);
+    ring.querySelector('span')!.textContent = text;
+    ring.hidden = false;
+    ring.classList.remove('go');
+    clearTimeout(ringTimer);
+    if (!stays) return;
+    void ring.offsetWidth;
+    ring.classList.add('go');
+    ringTimer = window.setTimeout(() => { ring.hidden = true; }, 7000);
+  }
+
+  // ---- the button dragged onto something on the page: "this, here". What is under it is marked while it is
+  // dragged; let go, that thing goes with the next message, and the button is back where it was.
+  let drag: { id: number; x: number; y: number; on: boolean; last: number } | undefined;
+  let dragged = false;
+  const naming = (got: Picked) => (got.words ? `"${got.words.length > 36 ? `${got.words.slice(0, 35)}…` : got.words}"` : got.tag);
+  fab.addEventListener('pointerdown', (ev) => { if (!shown) drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, on: false, last: 0 }; });
+  fab.addEventListener('pointermove', (ev) => {
+    if (!drag || ev.pointerId !== drag.id) return;
+    const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
+    if (!drag.on) {
+      if (Math.hypot(dx, dy) < 10) return;
+      drag.on = true;
+      fab.setPointerCapture?.(ev.pointerId);
+      fab.classList.add('drag');
+    }
+    fab.style.transform = `translate(${dx}px, ${dy}px)`;
+    if (Date.now() - drag.last < 90) return;
+    drag.last = Date.now();
+    const mine = drag;
+    void stage.pick(ev.clientX, ev.clientY).then((got) => {
+      if (drag !== mine) return;
+      if (got) showRing(got.x + got.w / 2, got.y + got.h / 2, got.w, got.h, naming(got), true, false); else ring.hidden = true;
+    });
+  });
+  const drop = (ev: PointerEvent) => {
+    if (!drag || ev.pointerId !== drag.id) return;
+    const was = drag;
+    drag = undefined;
+    // Not moved: a tap, and the click opens the tools.
+    if (!was.on) return;
+    // (The click that comes after a drag is not a tap.)
+    dragged = true;
+    setTimeout(() => { dragged = false; }, 350);
+    fab.classList.remove('drag');
+    fab.style.transform = '';
+    if (ev.type === 'pointercancel') { ring.hidden = true; return; }
+    void stage.pick(ev.clientX, ev.clientY).then((got) => {
+      ring.hidden = true;
+      if (!got) return app.toast(stage.can.find ? 'There is nothing there to point at.' : 'This page cannot be asked what is there.');
+      app.attach(`page:${JSON.stringify({ words: got.words, tag: got.tag, selector: got.selector, path: got.path })}`);
+    });
+  };
+  fab.addEventListener('pointerup', drop);
+  fab.addEventListener('pointercancel', drop);
 
   function paintBadges() {
     for (const [id, el] of tabEls) el.classList.toggle('news', badges.has(id));
@@ -116,7 +179,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       fab.classList.remove('open');
       bubbles.shut(true);
       // What was pointed at while the tools covered the page is shown now that the page can be seen.
-      if (pointed) { const p = pointed; pointed = undefined; app.point(p.x, p.y, p.text); }
+      if (pointed) { const p = pointed; pointed = undefined; app.point(p.x, p.y, p.text, p.at); }
     },
 
     attach(ref) {
@@ -124,20 +187,21 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       app.open('chat');
     },
 
-    point(x, y, text = '') {
+    point(x, y, text = '', at) {
       // The tools are the whole screen while they are open: the pointing waits until the page is in view.
-      if (shown) { pointed = { x, y, text }; return app.toast(`The agent points at something on the page${text ? `: ${text}` : ''}. Shut the tools to see it.`); }
-      void stage.where(x, y).then((at) => {
-        if (!at) return app.toast(text ? `The agent points at something: ${text}` : 'The agent points at something, but this page does not say where things are.');
-        ring.style.left = `${at.x}px`;
-        ring.style.top = `${at.y}px`;
-        ring.querySelector('span')!.textContent = text;
-        ring.hidden = false;
-        ring.classList.remove('go');
-        void ring.offsetWidth;
-        ring.classList.add('go');
-        clearTimeout(ringTimer);
-        ringTimer = window.setTimeout(() => { ring.hidden = true; }, 7000);
+      if (shown) { pointed = { x, y, text, at }; return app.toast(`The agent points at something on the page${text ? `: ${text}` : ''}. Shut the tools to see it.`); }
+      const ringAt = (px: number, py: number, w = 46, h = 46) => showRing(px, py, w, h, text, at !== undefined, true);
+      if (at !== undefined) {
+        void stage.find(at).then((r) => {
+          if (r === 'missing') return app.toast(`The agent points at "${at}"${text ? ` (${text})` : ''}, but that is not on the page now.`);
+          if (!r) return app.toast(`The agent points at "${at}"${text ? `: ${text}` : ''}, but this page cannot be asked where that is.`);
+          ringAt(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h);
+        });
+        return;
+      }
+      void stage.where(x, y).then((p) => {
+        if (!p) return app.toast(text ? `The agent points at something: ${text}` : 'The agent points at something, but this page does not say where things are.');
+        ringAt(p.x, p.y);
       });
     },
 
@@ -214,7 +278,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       bubbles.feed(ev, live);
       if (live) {
         // What the agent shows, it shows on the stage itself.
-        if (ev.type === 'stage.point') app.point(Number(ev.x), Number(ev.y), String(ev.text ?? ''));
+        if (ev.type === 'stage.point') app.point(Number(ev.x), Number(ev.y), String(ev.text ?? ''), typeof ev.at === 'string' ? ev.at : undefined);
         if (ev.type === 'stage.open') app.open(String(ev.tab), ev.id ? String(ev.id) : undefined);
         if (ev.type === 'proposal.decided' && ev.round === 'code') app.playProject();
         // How the project is run was changed: the core and the project's page start again, and this page with them.

@@ -25,13 +25,18 @@ interface Round {
 
 export function refChip(app: App, ref: string, onRemove?: () => void): HTMLElement {
   const [kind, rest] = [ref.slice(0, ref.indexOf(':')), ref.slice(ref.indexOf(':') + 1)];
+  // Something on the project's page: what is written on it, or what kind of thing it is.
+  let onPage: { words?: string; tag?: string; selector?: string } = {};
+  if (kind === 'page') { try { onPage = JSON.parse(rest); } catch { /* shown as it is */ } }
   const open = () => {
     if (kind === 'concept') app.open('concepts', rest);
     else if (kind === 'drawing') app.open('art', rest);
     else if (kind === 'point') { const [x, y] = rest.split(',').map(Number); app.point(x, y); }
+    else if (kind === 'page' && onPage.selector) { app.close(); app.point(0, 0, '', onPage.selector); }
   };
+  const label = kind === 'page' ? `on the page: ${onPage.words ? `"${onPage.words.length > 40 ? `${onPage.words.slice(0, 39)}…` : onPage.words}"` : onPage.tag ?? 'something'}` : `${kind} ${rest}`;
   return h('span.t-chip.ref', { data: { kind } },
-    h('span', { onclick: open }, `${kind} ${rest}`),
+    h('span', { onclick: open }, label),
     onRemove && h<'button'>('button', { 'aria-label': 'Take off', onclick: onRemove }, '✕'));
 }
 
@@ -348,7 +353,8 @@ export function chatPanel(): Panel {
       case 'playtest':
         return playtestCard(ev);
       case 'stage.point':
-        return h('div.sys.tap', { onclick: () => { app.close(); app.point(Number(ev.x), Number(ev.y), String(ev.text ?? '')); } }, '◎ pointed at the game', ev.text ? `: ${ev.text}` : '');
+        return h('div.sys.tap', { onclick: () => { app.close(); app.point(Number(ev.x), Number(ev.y), String(ev.text ?? ''), typeof ev.at === 'string' ? ev.at : undefined); } },
+          typeof ev.at === 'string' ? `◎ pointed at "${ev.at}" on the page` : '◎ pointed at the game', ev.text ? `: ${ev.text}` : '');
       case 'stage.open':
         return h('div.sys.tap', { onclick: () => app.open(String(ev.tab), ev.id ? String(ev.id) : undefined) }, `↗ opened ${ev.tab}${ev.id ? ` · ${ev.id}` : ''}`);
       // Drawing work lives in the Art tab; here it is one line that leads there.

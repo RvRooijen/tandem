@@ -20,12 +20,16 @@ type Brief = { id: string; name: string; stage: Stage; locked: boolean; summary:
 export function conceptsPanel(): Panel {
   let app!: App;
   let body: HTMLElement | undefined;
+  /** Under the concept that is open: saving what was changed in it, or throwing that away. */
+  let foot: HTMLElement | undefined;
   let open: string | undefined;
   let dirty = false;
 
   async function list() {
     if (!body) return;
     open = undefined;
+    dirty = false;
+    if (foot) clear(foot);
     const all = (await app.act<Brief[]>('concepts.list')) ?? [];
     if (!body || open) return;
     const name = h<'input'>('input', { placeholder: 'A new concept: name it', 'aria-label': 'Name of a new concept' });
@@ -59,8 +63,12 @@ export function conceptsPanel(): Panel {
     if (!c) return void list();
     dirty = false;
     const draft: Concept = JSON.parse(JSON.stringify(c));
-    const saveBtn = h<'button'>('button.primary', { disabled: true, onclick: () => void save() }, 'Saved');
-    const touch = () => { dirty = true; saveBtn.disabled = false; saveBtn.textContent = 'Save'; };
+    // What the person changes is theirs to keep or to throw away: the two buttons are there as soon as something is
+    // different, and stay in view under the concept while it is worked on.
+    const saveBtn = h<'button'>('button.primary', { onclick: () => void save() }, 'Save');
+    const discardBtn = h<'button'>('button', { onclick: () => { dirty = false; void detail(id); } }, 'Discard');
+    const unsaved = h('div.t-row.unsaved', { hidden: true }, h('span.k', {}, 'Not saved yet'), discardBtn, saveBtn);
+    const touch = () => { dirty = true; unsaved.hidden = false; };
 
     async function save() {
       const input: Record<string, unknown> = { id };
@@ -69,8 +77,7 @@ export function conceptsPanel(): Panel {
       if (Object.keys(input).length > 1 && (await app.act('concepts.update', input)) === undefined) return;
       Object.assign(c!, JSON.parse(JSON.stringify(draft)));
       dirty = false;
-      saveBtn.disabled = true;
-      saveBtn.textContent = 'Saved';
+      unsaved.hidden = true;
     }
 
     const name = h<'input'>('input.title', { value: draft.name, 'aria-label': 'Name', oninput: () => { draft.name = name.value; touch(); } });
@@ -104,18 +111,20 @@ export function conceptsPanel(): Panel {
       oninput: () => { draft.realised = realised.value.split('\n').map((s) => s.trim()).filter(Boolean); touch(); } });
 
     clear(body,
-      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void leave(list) }, '‹ Concepts'), h('span.grow'), app.lockButton(`concept:${id}`, c.locked), saveBtn),
+      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void leave(list) }, '‹ Concepts'), h('span.grow'), app.lockButton(`concept:${id}`, c.locked)),
       name, firm, firmSays, text,
       h('h3', {}, 'Links'), linksEl, h('div.adder', {}, kind, to),
       h('h3', {}, 'What makes it real'), realised,
       h('div.t-row', {},
         h<'button'>('button.primary', { onclick: () => void leave(() => app.attach(`concept:${id}`)) }, 'Talk about this'),
         h<'button'>('button.danger', { onclick: async () => { if (confirm(`Throw "${c.name}" away?`) && (await app.act('concepts.remove', { id })) !== undefined) void list(); } }, 'Delete')));
+    if (foot) clear(foot, unsaved);
     paintFirm(); paintLinks();
     requestAnimationFrame(fit);
 
     async function leave(then: () => unknown) {
-      if (dirty) await save();
+      // Going somewhere else with something unsaved: asked, not decided for them.
+      if (dirty) { if (confirm(`Save what you changed in "${draft.name}"? Cancel throws the changes away.`)) await save(); else dirty = false; }
       then();
     }
   }
@@ -123,11 +132,12 @@ export function conceptsPanel(): Panel {
   return {
     id: 'concepts', title: 'Concepts',
     init(a) { app = a; },
-    show(b, _foot, id) {
+    show(b, f, id) {
       body = b;
+      foot = f;
       void (id ? detail(id) : open ? detail(open) : list());
     },
-    hide() { body = undefined; },
+    hide() { body = undefined; foot = undefined; },
     event(ev: Event, live) {
       if (!live || !body) return;
       // Somebody else changed what is on the screen: show it as it is now, unless it is being typed in.

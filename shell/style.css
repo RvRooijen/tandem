@@ -64,6 +64,10 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 .bubble p { word-break: break-word; }
 .bubble.says.error { color: var(--t-bad); }
 .bubble.waits { border-color: var(--t-accent); cursor: default; }
+.bubble.waits { position: relative; padding-right: 34px; }
+#tandem .bubble .hide { position: absolute; top: 2px; right: 2px; width: 32px; height: 32px; padding: 0; border: 0; background: none; color: var(--t-soft); font-size: 14px; line-height: 1; border-radius: 50%; }
+.bubble.waits .answers { margin-right: -22px; }
+.bubble.many .wait .answers { margin-right: -22px; }
 .bubble.waits .say { cursor: pointer; }
 .bubble.waits b { display: block; margin-bottom: 2px; }
 .bubble.waits p { color: var(--t-soft); font-size: 13px; }
@@ -100,6 +104,9 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 #t-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 12px 18px; overscroll-behavior: contain; user-select: text; -webkit-user-select: text; }
 #t-foot { flex: none; padding: 0 10px calc(8px + env(safe-area-inset-bottom)); }
 #t-foot:empty { display: none; }
+/* A concept with something changed in it: keep it or throw it away. */
+#t-foot .unsaved { justify-content: flex-end; align-items: center; padding-top: 8px; border-top: 1px solid var(--t-line); margin: 0; }
+#t-foot .unsaved .k { margin-right: auto; }
 
 /* ---- things everything uses */
 #tandem button { font: inherit; color: var(--t-ink); cursor: pointer; }

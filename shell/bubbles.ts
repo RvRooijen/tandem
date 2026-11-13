@@ -20,6 +20,7 @@ interface Waiting {
 export interface BubbleHost {
   act<T>(name: string, input?: Record<string, unknown>): Promise<T | undefined>;
   open(tab: string, id?: string): void;
+  info?: { project: string | null };
 }
 
 /** Whether the offer to read a project was put off, here on this device. */
@@ -41,6 +42,15 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
   /** While the agent is at work its proposals are not shown one by one as they come: the round is shown when it is done. */
   let busy = false;
   const held = new Set<string>();
+  /**
+   * What the person put out of sight: it still waits in the chat, but not over the page. Kept on this device, per
+   * project, until it is decided or something new comes with it.
+   */
+  const hideKey = `tandem-hidden:${app.info?.project ?? ''}`;
+  const hidden = new Set<string>((() => { try { return JSON.parse(localStorage.getItem(hideKey) ?? '[]') as string[]; } catch { return []; } })());
+  const keepHidden = () => { try { localStorage.setItem(hideKey, JSON.stringify([...hidden].slice(-60))); } catch { /* not kept, then */ } };
+  const hide = (keys: string[]) => { for (const k of keys) hidden.add(k); keepHidden(); paint(); };
+  const unhide = (key: string) => { if (hidden.delete(key)) keepHidden(); };
   /** What the bubbles last showed: painted again only when that changed, so a bubble does not pop up anew for nothing. */
   let showing = '';
 
@@ -48,9 +58,9 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
     clearTimeout(timer);
     const now = Date.now();
     while (said.length && said[0].until <= now) said.shift();
-    el.hidden = !shut || (!waiting.size && !said.length);
+    const list = [...waiting].filter(([key]) => !hidden.has(key));
+    el.hidden = !shut || (!list.length && !said.length);
     if (el.hidden) { showing = ''; return void clear(el); }
-    const list = [...waiting];
     if (said.length) timer = window.setTimeout(paint, Math.max(200, said[0].until - now));
     const now_ = JSON.stringify([list.map(([key, w]) => [key, w.title, w.text, w.yes.label]), said.slice(-2).map((x) => x.text)]);
     if (now_ === showing) return;
@@ -59,11 +69,13 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
       // One thing waiting is said in full, with its two answers. Several are one bubble, a line each: what it is,
       // and its own two answers beside it.
       list.length === 1 && list.map(([key, w]) => h('div.bubble.waits', { data: { key } },
+        h<'button'>('button.hide', { 'aria-label': 'Hide', title: 'Hide: it stays in the chat', onclick: () => hide([key]) }, '✕'),
         h('div.say', { onclick: () => app.open(...w.open) }, h('b', {}, w.title), w.text && h('p', {}, w.text)),
         h('div.answers', {},
           h<'button'>('button.primary', { onclick: () => w.yes.run() }, w.yes.label),
           h<'button'>('button', { onclick: () => w.no.run() }, w.no.label)))),
       list.length > 1 && h('div.bubble.waits.many', {},
+        h<'button'>('button.hide', { 'aria-label': 'Hide', title: 'Hide: they stay in the chat', onclick: () => hide(list.map(([key]) => key)) }, '✕'),
         h('div.count', { onclick: () => app.open('chat') }, `${list.length} things wait for you`),
         list.map(([key, w]) => h('div.wait', { data: { key } },
           h('div.say', { onclick: () => app.open(...w.open) }, h('b', {}, w.title)),
@@ -136,6 +148,9 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
           if (ev.worker) break;
           const round = String(ev.round);
           if (!rounds.has(round)) rounds.set(round, new Map());
+          // Put out of sight, it comes back when there is something new in it: another piece, or other files.
+          const was = rounds.get(round)!.get(String(ev.id));
+          if (live && (!was || JSON.stringify(was.files ?? was.after) !== JSON.stringify(ev.files ?? ev.after))) unhide(round);
           rounds.get(round)!.set(String(ev.id), ev);
           proposal(round);
           break;
@@ -149,11 +164,12 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
           const round = String(ev.round), open = rounds.get(round);
           for (const id of (ev.ids as string[] | undefined) ?? []) open?.delete(id);
           if (open?.size && Number(ev.left) > 0) proposal(round);
-          else { rounds.delete(round); waiting.delete(round); }
+          else { rounds.delete(round); waiting.delete(round); unhide(round); }
           break;
         }
         case 'art.round': {
           const id = String(ev.worker);
+          if (live) unhide(id);
           if (ev.state !== 'waiting') {
             waiting.delete(id);
             if (live && shut && ev.state === 'failed') said.push({ text: `The worker on ${ev.name} failed.`, error: true, until: Date.now() + 9000 });

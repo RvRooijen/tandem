@@ -343,12 +343,22 @@ test('concepts: add one, work on it, and hand it to the agent', async () => {
   assert.ok($('.segments button.on').textContent === 'idea');
   assert.deepEqual(all('.segments button').map((b) => b.textContent), ['idea', 'design', 'build', 'playtest']);
 
+  // What is changed is the person's to keep or to throw away: the two buttons come when something is different.
+  assert.ok($('#t-foot .unsaved').hidden, 'nothing changed, nothing to save');
+  type($('textarea.words'), 'A thought I do not want after all.');
+  assert.equal($('#t-foot .unsaved').hidden, false);
+  assert.deepEqual(all('#t-foot .unsaved button').map((b) => b.textContent), ['Discard', 'Save']);
+  click(button('Discard'));
+  await until(() => $('textarea.words') && ($('textarea.words') as HTMLTextAreaElement).value === '' && $('#t-foot .unsaved').hidden, 'the concept as it was');
+  assert.equal(host.concepts.get('night-roses')!.text, '', 'nothing of it was kept');
+
   click(all('.segments button').find((b) => b.textContent === 'design')!);
   type($('textarea.words'), 'A rose that only opens after dark.');
   assert.ok(!all('#t-body h3').some((x) => /promise/i.test(x.textContent!)), 'a concept has no timings to fill in');
   type($('textarea[aria-label="What makes it real"]'), 'a new flower\nthe nap');
   click(button('Save'));
   await until(() => host.concepts.get('night-roses')?.stage === 'design', 'the concept to be saved');
+  await until(() => $('#t-foot .unsaved').hidden, 'the buttons to go when it is saved');
   const c = host.concepts.get('night-roses')!;
   assert.equal(c.text, 'A rose that only opens after dark.');
   assert.deepEqual(c.realised, ['a new flower', 'the nap']);
@@ -737,7 +747,7 @@ test('with the tools shut, tandem speaks in a bubble: what it says goes again, w
   await host.run('concepts.create', { name: 'Later roses', text: 'Roses come later.' }, AGENT, 'r970');
   await until(() => $('.bubble.waits'), 'the proposal');
   assert.match($('.bubble.waits b').textContent!, /A new concept · Later roses/);
-  assert.deepEqual(all('.bubble.waits button').map((b) => b.textContent), ['Approve', 'Decline']);
+  assert.deepEqual(all('.bubble.waits button').map((b) => b.getAttribute('aria-label') ?? b.textContent), ['Hide', 'Approve', 'Decline']);
   tab('Concepts');
   assert.ok($('#t-bubbles').hidden);
   app.close();
@@ -768,6 +778,19 @@ test('with the tools shut, tandem speaks in a bubble: what it says goes again, w
   assert.equal($('.bubble.waits'), standing);
   click(button('Decline', $('.bubble.waits')));
   await until(() => !$('.bubble.waits'), 'the bubble to go');
+
+  // What waits can be put out of sight: it stays in the chat, and comes back over the page when something new comes with it.
+  await host.run('concepts.create', { name: 'Reeds' }, AGENT, 'r975');
+  await until(() => /A new concept · Reeds/.test($('.bubble.waits b')?.textContent ?? ''), 'the proposal');
+  click($('.bubble.waits .hide'));
+  assert.ok(!$('.bubble.waits'), 'hidden at once');
+  assert.deepEqual(JSON.parse(w.localStorage.getItem('tandem-hidden:fixture')!), ['r975'], 'and kept, for when the page is opened again');
+  assert.equal((await host.run('proposals.list', { status: 'pending' }, 'me') as unknown[]).length, 1, 'it still waits');
+  await host.run('concepts.create', { name: 'Rushes' }, AGENT, 'r975');
+  await until(() => /A proposal · 2 changes/.test($('.bubble.waits b')?.textContent ?? ''), 'it to be back with what is new');
+  click(button('Decline', $('.bubble.waits')));
+  await until(() => !$('.bubble.waits'), 'the bubble to go');
+  assert.deepEqual(JSON.parse(w.localStorage.getItem('tandem-hidden:fixture')!), []);
 
   // A round of several that is decided piece by piece keeps waiting for what is left of it.
   for (const name of ['Moss', 'Ferns']) await host.run('concepts.create', { name }, AGENT, 'r972');

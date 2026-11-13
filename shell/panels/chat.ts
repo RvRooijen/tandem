@@ -9,6 +9,8 @@ interface Change {
   id: string; kind: string; path: string; before?: Record<string, unknown>; after?: Record<string, unknown>; note: string;
   touches?: { id: string; name: string; stage: string }[];
   /** A drawing: what it looks like. */
+  /** Code: the files the working copy changes. */
+  files?: { path: string; added: number; removed: number; status: string }[];
   phase?: string; isNew?: boolean; pictures?: { before?: string; after?: string; looks?: { look: string; before?: string; after?: string }[] };
 }
 interface Round { round: string; by: string; changes: Change[]; status: 'pending' | 'accepted' | 'rejected'; el?: HTMLElement }
@@ -99,6 +101,26 @@ export function chatPanel(): Panel {
       h('span.now', {}, short(c.after![k], k === 'text' ? 200 : 40))));
   }
 
+  /** Code is not read on a phone: which files, and how much of each. */
+  function codeFiles(c: Change): HTMLElement[] {
+    const files = c.files ?? [];
+    return [
+      ...files.slice(0, 14).map((f) => h('div.field', {}, h('span.k', {}, f.path.replace(/^games\/[^/]+\//, '')), f.status !== 'changed' && h('span.was.new', {}, f.status),
+        h('span.pct', { data: { dir: 'up' } }, `+${f.added}`), f.removed > 0 && h('span.pct.minus', { data: { dir: 'down' } }, `−${f.removed}`))),
+      ...(files.length > 14 ? [h('div.note', {}, `and ${files.length - 14} more files`)] : []),
+    ];
+  }
+
+  /** The working copy has a page of its own: the game as the agent coded it, started from where the person is. */
+  async function playCopy(btn: HTMLButtonElement) {
+    btn.disabled = true;
+    btn.textContent = 'Starting the copy…';
+    const got = await app.act<{ url: string }>('code.play');
+    btn.disabled = false;
+    btn.textContent = 'Play the copy';
+    if (got) window.open(got.url, 'tandem-copy');
+  }
+
   /** A drawing is shown, not spelled out: as it was and as it would be. */
   function pictures(c: Change): HTMLElement {
     const pic = (url: string | undefined, label: string) => url && h('figure', { onclick: () => app.zoom(url) }, h<'img'>('img', { src: url, alt: `${c.path}, ${label}`, loading: 'lazy' }), h('figcaption', {}, label));
@@ -116,15 +138,17 @@ export function chatPanel(): Panel {
     const touched = new Map<string, { name: string; stage: string }>();
     for (const c of r.changes) for (const t of c.touches ?? []) touched.set(t.id, t);
     const records = r.changes.some((c) => c.kind === 'record');
+    const coded = r.changes.some((c) => c.kind === 'code');
     clear(el,
-      h('div.t-head', {}, h('b', {}, r.changes.length === 1 ? 'A proposal' : `A proposal, ${r.changes.length} changes`), h('span.state', {}, r.status)),
+      h('div.t-head', {}, h('b', {}, coded ? 'A change to the game\'s code' : r.changes.length === 1 ? 'A proposal' : `A proposal, ${r.changes.length} changes`), h('span.state', {}, r.status)),
       r.changes.map((c) => h('div.change', {},
         h('div.path', { onclick: () => app.open(c.kind === 'concept' ? 'concepts' : c.kind === 'drawing' ? 'art' : 'content', c.path) }, h('i', {}, c.kind), ' ', c.path),
-        c.kind === 'drawing' ? pictures(c) : fieldLines(c),
+        c.kind === 'drawing' ? pictures(c) : c.kind === 'code' ? codeFiles(c) : fieldLines(c),
         c.note && h('div.note', {}, c.note))),
       touched.size > 0 && h('div.touches', {}, 'touches ', [...touched].map(([id, t]) => h('span.t-chip.stage', { data: { stage: t.stage }, onclick: () => app.open('concepts', id) }, `${t.name} · ${t.stage}`))),
       r.status === 'pending' && h('div.t-row', {},
         records && h<'button'>('button', { onclick: () => void app.play(r.round) }, app.playing === r.round ? 'Playing…' : 'Play it'),
+        coded && h<'button'>('button', { onclick: (ev: MouseEvent) => void playCopy(ev.currentTarget as HTMLButtonElement) }, 'Play the copy'),
         records && h<'button'>('button', { onclick: (ev: MouseEvent) => void compareRound(r, ev.currentTarget as HTMLButtonElement) }, 'Compare'),
         h<'button'>('button.primary', { onclick: () => void app.act('proposals.decide', { round: r.round, accept: true }) }, 'Accept'),
         h<'button'>('button.danger', { onclick: () => void app.act('proposals.decide', { round: r.round, accept: false }) }, 'Reject')));
@@ -160,6 +184,8 @@ export function chatPanel(): Panel {
   function card(ev: Event): HTMLElement | null {
     switch (ev.type) {
       case 'message':
+        // What the engine tells the agent (art was accepted: bring it into the game) is shown, small: it is why the agent starts working.
+        if (ev.by === 'engine') return h('div.sys.engine', {}, `⚙ to the agent: ${String(ev.text ?? '')}`);
         return h(`div.msg.${ev.by === 'me' ? 'me' : 'agent'}${ev.error ? '.error' : ''}`, {},
           Array.isArray(ev.refs) && h('div.refs', {}, (ev.refs as string[]).map((r) => refChip(app, r))),
           prose(String(ev.text ?? '')),
@@ -182,8 +208,10 @@ export function chatPanel(): Panel {
       case 'art.round':
         return h(`div.sys.tap${ev.state === 'failed' ? '.fail' : ''}`, { onclick: () => app.open('art', `worker:${ev.worker}`) },
           ev.state === 'failed' ? `🖌 the worker on ${ev.name} failed` : ev.state === 'stopped' ? `🖌 the worker on ${ev.name} was stopped` : `🖌 ${ev.name}: ${ev.phase === 'silhouette' ? 'a silhouette to approve' : 'a drawing to accept'}. Look in Art`);
+      case 'code.changed':
+        return h('div.sys', {}, `✓ the working copy is the game now: ${(ev.files as string[]).length} ${(ev.files as string[]).length === 1 ? 'file' : 'files'} changed. The core starts again with it`);
       case 'art.changed':
-        return (ev.names as string[]).length ? h('div.sys.tap', { onclick: () => app.open('art', (ev.names as string[])[0]) }, `✓ ${(ev.names as string[]).join(', ')} ${(ev.names as string[]).length === 1 ? 'is' : 'are'} in the game now`) : null;
+        return (ev.names as string[]).length ? h('div.sys.tap', { onclick: () => app.open('art', (ev.names as string[])[0]) }, `✓ ${(ev.names as string[]).join(', ')}: ${ev.built === false ? 'accepted into the art files; the agent brings it into the game' : 'in the game now'}`) : null;
       case 'lock.changed':
         return h('div.sys', {}, `${ev.locked ? '🔒 locked' : '🔓 unlocked'}: ${ev.ref}`);
       case 'concept.changed':
@@ -200,6 +228,8 @@ export function chatPanel(): Panel {
       const key = String(ev.round);
       let r = rounds.get(key);
       const stick = nearBottom();
+      // The working copy is one round that comes back: once decided, what it proposes next is a new card.
+      if (r && r.status !== 'pending') r = undefined;
       if (!r) {
         r = { round: key, by: String(ev.by), changes: [], status: 'pending' };
         rounds.set(key, r);

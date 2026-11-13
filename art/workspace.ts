@@ -78,8 +78,12 @@ export function createWorkspaces(gameDir: string, workDir: string) {
     });
   }
 
+  /** A workspace for one job (a picture), with a name nobody else has, so two jobs at once do not draw over each other. */
+  let n = 0;
+  const scratch = () => { const id = `_s${process.pid}-${++n}`; ensure(id, true); return id; };
+
   return {
-    dir, ensure, changes, render,
+    dir, ensure, changes, render, scratch,
     exists: (id: string) => existsSync(join(dir(id), 'base.json')),
     remove: (id: string) => rmSync(dir(id), { recursive: true, force: true }),
     list: () => (existsSync(workDir) ? readdirSync(workDir).filter((id) => existsSync(join(dir(id), 'worker.json'))) : []),

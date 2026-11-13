@@ -35,6 +35,8 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
   const host = opts.host ?? await createHost();
   const runner = opts.agent === false ? undefined : createRunner(host);
   if (runner) host.registry.add(...runner.commands);
+  // Whoever stops the core stops what it started: the agent and the workers are its children.
+  host.onStop.push(() => runner?.stop(), () => host.art.workers.stopAll());
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://x');
@@ -84,10 +86,12 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
 
   await new Promise<void>((resolve) => server.listen(opts.port ?? PORT, '127.0.0.1', resolve));
   const port = (server.address() as { port: number }).port;
-  return { server, host, runner, port, close: () => new Promise<void>((r) => { runner?.stop(); host.art.workers.stopAll(); server.closeAllConnections(); server.close(() => r()); }) };
+  return { server, host, runner, port, close: () => new Promise<void>((r) => { runner?.stop(); host.art.workers.stopAll(); for (const stop of host.onStop) stop(); server.closeAllConnections(); server.close(() => r()); }) };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const s = await startServer();
+  // Stopped from outside: what the core started stops with it.
+  for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, () => { void s.close().then(() => process.exit(0)); setTimeout(() => process.exit(0), 1500).unref(); });
   console.log(`tandem core: ${s.host.game.name} on http://127.0.0.1:${s.port}/api  (${s.host.registry.list().length} commands)`);
 }

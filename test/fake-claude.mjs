@@ -57,6 +57,17 @@ if (prompt.startsWith('fail')) {
   say({ type: 'result', is_error: true, result: 'out of patience', session_id: 'sess-1' });
   process.exit(1);
 }
+// Asked to code: it changes the game's code where it stands, which is its working copy.
+if (prompt.startsWith('code:')) {
+  const { writeFileSync, existsSync } = await import('node:fs');
+  if (prompt.includes('undo')) (await import('node:fs')).rmSync('games/gnome-garden/src/sim/seasons.ts', { force: true });
+  else writeFileSync('games/gnome-garden/src/sim/seasons.ts', 'export const SEASONS = 4;\n');
+  const tools = args.slice(args.indexOf('--allowedTools') + 1);
+  const text = `Seasons ${prompt.includes('undo') ? 'taken out' : 'added'}. In the copy: ${existsSync('core/cli.ts') && process.cwd().includes('tandem-wt')}. May edit: ${tools.includes('Edit(games/gnome-garden/src/**)')}; content: ${tools.some((t) => t.includes('content'))}. Note: ${prompt.includes('could not take') ? 'clash' : 'none'}.`;
+  say({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
+  say({ type: 'result', is_error: false, result: text, session_id: 'sess-1' });
+  process.exit(0);
+}
 say({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text' } } });
 say({ type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Let me ' } } });
 const command = `node core/cli.ts run records.set '{"path":"flowers/tulip","value":{"value":8},"note":"a little more"}'`;

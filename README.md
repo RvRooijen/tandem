@@ -30,11 +30,13 @@ line. `npm start -- --host` puts the page on the network if you want that.
 - **Locks.** Anything can be locked: a concept, a record, a drawing. A locked thing is the person's alone; the engine refuses the agent any change or proposal to it, even when the person asks the agent for one.
 - **Content is records** (`games/<game>/content/<kind>/<id>.json`): every number and line the game is tuned with. The game reads them; nothing is tuned in code.
 - **The agent has senses**: `game.state` (words), `game.look` / `game.lookAt` (pictures), `ecs.*` (entities and systems), `playtest.run` / `playtest.compare` (a bot plays the whole game in ten seconds, as it is and as proposed), `art.list` / `art.look` (the drawings).
+- **Working files and project files.** The project is what is played. The agent codes in a working copy of its own (a git worktree in `.work/agent`), where it can build and run the tests; it may change the game's code there, not the engine, and not content, concepts or drawings as files. What its copy differs from the project is one change set: a card with the files, a button to play the copy (a second page, started from the world you are in, keeping nothing), accept (one commit into the project; the core starts again with the new code) or reject (the copy is the project again). Accepting art puts the drawing in the project's art files and tells the agent, whose work it is to bring it into the game.
 - **Art is in the engine.** A drawing is text (`games/<game>/art/<name>.txt`, with a depth map in `depth/`), in pixeldraw's format and rendered by pixeldraw's own code, which lives in `art/`. A drawing worker (a headless Claude with pixeldraw's way of working: silhouette first, then colour, in rounds of edit, render, look) draws in its own copy; what it draws is a proposal with a picture before and after. Accepted, it is built straight into the game's sprites. Nothing outside this repo is needed.
 
 ## Layout
 
-    core/        commands, events, records, proposals, concepts, the host that ties them to a game,
+    core/        commands, events, records, proposals, concepts, locks, the host that ties them to a game,
+                 the agent's working copy (code.ts) and its page (preview.ts),
                  the HTTP server, the command line, the agent runner and what the agent is told
     art/         drawings: pixeldraw's format, renderer and tests (src/, scripts/, test/, as they are there),
                  the guide a drawing worker follows, workspaces, workers, sprites for a game, the art commands
@@ -71,7 +73,8 @@ Not there yet:
 - **A restart cuts work off.** The agent and the drawing workers are child processes of the core; restarting it stops whatever is mid-run. A stopped worker keeps its conversation and its copy, and goes on with the next feedback.
 - **Characters with clothes.** pixeldraw's attachments (a body with items per slot) render here, but nothing exports them to a game, and a worker cannot be asked for one from the page.
 - **Drawing by hand.** pixeldraw's viewer (painting pixels, sketching over a frame, watching every edit live) is not here; the page shows renders.
-- **Code.** The agent cannot change code, only content and concepts. A new kind of thing (a new flower with its own sprite, a new rule) still needs a coding session.
+- **The agent coding, for real.** The working copy, the change set and the hand-over of accepted art are tested with a stand-in for Claude; a real agent has not coded a change yet, and the page of the working copy has not been seen on a screen.
+- **The engine itself** is not the agent's to change; it says what it would need.
 - **New records.** A record can be changed, not added: the game only reads the ones it knows.
 - **One game at a time**, chosen with `TANDEM_GAME`. There is no second game yet to prove the seams.
 - Playing a proposal lays it over the game you are in the middle of; there is no "from the start" yet other than the bot's.

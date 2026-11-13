@@ -4,6 +4,8 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   root: 'shell',
   base: './',
+  // The page of the agent's working copy runs next to this one and keeps its own cache.
+  ...(process.env.TANDEM_PREVIEW && { cacheDir: 'node_modules/.vite-preview' }),
   esbuild: { target: 'es2022' },
   build: { target: 'es2022', outDir: '../dist', emptyOutDir: true },
   optimizeDeps: { exclude: ['archetype-ecs'] },

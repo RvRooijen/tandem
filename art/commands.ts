@@ -26,6 +26,8 @@ export interface ArtOptions {
   proposals: Proposals;
   locks: Locks;
   newLookFile(): { file: string; url: string };
+  /** Drawings were taken into the project: somebody has to bring them into the game. Unset: they are built straight in. */
+  accepted?(drawings: { name: string; w: number; h: number; looks: string[]; anims: Record<string, number>; isNew: boolean; depth: boolean }[]): void;
 }
 
 export function createArt(o: ArtOptions) {
@@ -68,16 +70,29 @@ export function createArt(o: ArtOptions) {
     if (value.depth !== undefined) { mkdirSync(join(o.gameDir, 'depth'), { recursive: true }); writeFileSync(depthFile(name), value.depth); }
   }
 
-  /** A picture of a drawing as some text would make it, without touching the real one. */
-  async function picture(name: string, value: { text: string; depth?: string } | undefined, flags: string[] = [], file = `art/${name}.txt`) {
-    const root = spaces.ensure('_look', true);
-    if (value) {
-      writeFileSync(join(root, 'art', `${name}.txt`), value.text);
-      if (value.depth !== undefined) writeFileSync(join(root, 'depth', `${name}.txt`), value.depth);
-    }
-    const look = o.newLookFile();
-    copyFileSync(await spaces.render('_look', file, flags), look.file);
-    return look;
+  /**
+   * Take drawings into the project: their text, in the game's art files. That is all. A drawing that changed or is
+   * new is not in the game yet: building it in, and making the game use what is new about it, is the agent's work
+   * in its working copy (see core/code.ts), and it is told (o.accepted). Without an agent that codes, the drawings
+   * are built straight in, which is all an unchanged game can do with them.
+   */
+  async function take(list: { name: string; value: { text?: string; depth?: string } }[], by: string) {
+    if (!list.length) return;
+    const isNew = list.map((d) => !has(d.name));
+    for (const d of list) write(d.name, d.value);
+    if (!o.accepted) await build();
+    o.events.add({ type: 'art.changed', by, names: list.map((d) => d.name), built: !o.accepted });
+    o.accepted?.(list.map((d, i) => ({ ...describeDrawing(d.name, readFileSync(artFile(d.name), 'utf8')), isNew: isNew[i], depth: existsSync(depthFile(d.name)) })));
+  }
+
+  /** A picture of one of the game's drawings, rendered in a workspace of its own. */
+  async function picture(name: string, flags: string[] = [], file = `art/${name}.txt`) {
+    const space = spaces.scratch();
+    try {
+      const look = o.newLookFile();
+      copyFileSync(await spaces.render(space, file, flags), look.file);
+      return look;
+    } finally { spaces.remove(space); }
   }
 
   const worker = (id: string) => {
@@ -124,7 +139,7 @@ export function createArt(o: ArtOptions) {
             copyFileSync(await spaces.render(i.worker, file, flags), look.file);
           } else {
             need(i.name);
-            look = await picture(i.name, undefined, flags, file);
+            look = await picture(i.name, flags, file);
           }
         } catch (e) {
           if (e instanceof CommandError) throw e;
@@ -138,7 +153,7 @@ export function createArt(o: ArtOptions) {
     },
     {
       name: 'art.set', kind: 'write', agent: 'proposes',
-      about: 'Write a drawing: its whole text, and its depth map if that changes too. The person\'s is in the game at once; the agent\'s becomes a proposal with a picture before and after. For real drawing work, ask a worker (art.ask) instead: it draws in rounds and looks at what it makes.',
+      about: 'Write a drawing: its whole text, and its depth map if that changes too. The person\'s is in the project at once; the agent\'s becomes a proposal with a picture before and after. For real drawing work, ask a worker (art.ask) instead: it draws in rounds and looks at what it makes.',
       input: { name: 'string', text: 'string', depth: 'string?', note: 'string?' },
       async run(c, i) {
         if (!validName(i.name)) throw new CommandError('input', 'a drawing is named in lower-case words with dashes');
@@ -155,10 +170,8 @@ export function createArt(o: ArtOptions) {
           o.events.add({ type: 'proposal', by: c.by, round, id: p.id, kind: 'drawing', path: i.name, phase: 'color', pictures, note: p.note, isNew: !was });
           return { proposed: p.id, round, picture: pictures.after };
         }
-        write(i.name, after);
-        const built = await build();
-        o.events.add({ type: 'art.changed', by: c.by, names: [i.name] });
-        return { changed: true, built };
+        await take([{ name: i.name, value: after }], c.by);
+        return { changed: true };
       },
     },
     {
@@ -241,14 +254,12 @@ export function createArt(o: ArtOptions) {
 
   return {
     commands, workers,
-    /** A round of proposals is being decided: what it means for drawings, and for the worker whose round it is. */
-    async decide(round: string, accept: boolean, set: Proposal[]) {
-      const drawings = set.filter((p) => p.kind === 'drawing');
-      if (accept && drawings.length) {
-        for (const p of drawings) write(p.path, p.after as { text?: string; depth?: string });
-        await build();
-        o.events.add({ type: 'art.changed', by: 'me', names: drawings.map((p) => p.path) });
-      }
+    /**
+     * A round is being accepted: its drawings go into the project's art files.
+     */
+    accepting: (pending: Proposal[]) => take(pending.filter((p) => p.kind === 'drawing').map((p) => ({ name: p.path, value: p.after as { text?: string; depth?: string } })), 'me'),
+    /** A round was decided: the worker whose round it was is done. */
+    decided(round: string) {
       if (workers.get(round)) workers.close(round);
     },
     /** May this round be accepted as it is? A silhouette is not a drawing yet. */

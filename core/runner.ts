@@ -12,8 +12,19 @@ import { entityView } from '../ecs/inspect.ts';
 
 const TOOLS = [
   'Bash(node core/cli.ts:*)',
-  'Read(core/**)', 'Read(ecs/**)', 'Read(playtest/**)', 'Read(shell/**)', 'Read(games/**)', 'Read(docs/**)', 'Read(*.md)',
+  'Read(core/**)', 'Read(ecs/**)', 'Read(playtest/**)', 'Read(art/**)', 'Read(shell/**)', 'Read(games/**)', 'Read(docs/**)', 'Read(*.md)',
   'Glob', 'Grep',
+];
+
+/**
+ * What the agent may do in its working copy, on top of the above: change the game's code, build its drawings in,
+ * run its tests and the type check, and see what it changed. Not the game's content, concepts or drawings (those
+ * go through commands, where they are proposals and can be locked), and not the engine.
+ */
+const codeTools = (game: string) => [
+  ...['src/**', 'test/**', 'tools/**', 'module.ts', 'page.ts', 'index.html'].flatMap((p) => [`Edit(games/${game}/${p})`, `Write(games/${game}/${p})`]),
+  `Bash(node --no-warnings --test:*)`, `Bash(npx tsc --noEmit:*)`, `Bash(node --no-warnings games/${game}/tools/import-art.ts:*)`,
+  'Bash(git status:*)', 'Bash(git diff:*)',
 ];
 
 export interface AgentStatus {
@@ -60,7 +71,7 @@ export function createRunner(host: Host) {
       const may = c.agent === 'yes' ? '' : c.agent === 'no' ? ' [the person only]' : ' [from you: a proposal]';
       return `- ${c.name}${may}: ${c.about}${input ? ` Takes { ${input} }.` : ''}`;
     }).join('\n');
-    return `${readFileSync(join(ROOT, 'core/agent-intro.md'), 'utf8')}\n## The game\n\n${host.game.name} (${host.game.id}). Its content is under games/${host.game.id}/content, its concepts under games/${host.game.id}/concepts; you may read the code under games/${host.game.id}/src to understand a rule.\n\n## The commands\n\n${list}\n`;
+    return `${readFileSync(join(ROOT, 'core/agent-intro.md'), 'utf8')}${host.code ? `\n${readFileSync(join(ROOT, 'core/agent-code.md'), 'utf8').replaceAll('<game>', host.game.id)}` : ''}\n## The game\n\n${host.game.name} (${host.game.id}). Its content is under games/${host.game.id}/content, its concepts under games/${host.game.id}/concepts; you may read the code under games/${host.game.id}/src to understand a rule.\n\n## The commands\n\n${list}\n`;
   }
 
   /** What a message points at, written out, so the agent does not have to go and fetch it. */
@@ -93,21 +104,30 @@ export function createRunner(host: Host) {
     busy = true; doing = 'starting'; text = '';
     cast(true);
     const round = `r${ev.n}`;
-    const prompt = `${ev.text}${expand(ev.refs)}\n\n[This is round ${round}. Where the person is in the game: ${firstLine()}]`;
+    // Its working copy first takes in whatever the project gained since it last worked.
+    let copy = '';
+    if (host.code) {
+      try {
+        const { conflicts } = host.code.sync();
+        if (conflicts.length) copy = ` The project changed ${conflicts.join(', ')}, which your working copy changed too, so your copy could not take the project's version in: look at both (git diff) and bring yours up to date before anything else.`;
+      } catch (e) { copy = ` Your working copy could not be brought up to date (${e instanceof Error ? e.message.split('\n')[0] : e}); say so, and do not change code this round.`; }
+    }
+    const from = ev.by === 'engine' ? '[From the engine, not the person:] ' : '';
+    const prompt = `${from}${ev.text}${expand(ev.refs)}\n\n[This is round ${round}. Where the person is in the game: ${firstLine()}${copy}]`;
     const args = [
       '-p', prompt, '--append-system-prompt', intro(),
       '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
       '--model', process.env.TANDEM_MODEL ?? 'claude-fable-5-2', '--effort', process.env.TANDEM_EFFORT ?? 'medium',
       ...(session && !retry ? ['--resume', session] : []),
       // Only the tools below: the person's own default permission mode is not inherited.
-      '--permission-mode', 'default', '--allowedTools', ...TOOLS,
+      '--permission-mode', 'default', '--allowedTools', ...TOOLS, ...(host.code ? codeTools(host.game.id) : []),
     ];
     const proc = spawn(process.env.CLAUDE_BIN ?? 'claude', args, {
-      cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: host.code?.work ?? ROOT, stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, TANDEM_BY: 'agent:main', TANDEM_ROUND: round },
     });
     child = proc;
-    let buf = '', err = '', said = 0, failed = '';
+    let buf = '', err = '', said = 0, failed = '', lastSaid = '';
     const timer = setTimeout(() => { failed = 'it took more than fifteen minutes and was stopped'; proc.kill(); }, 15 * 60_000);
     const say = (t: string, extra: Record<string, unknown> = {}) => host.events.add({ type: 'message', by: 'agent', text: t, round, ...extra });
 
@@ -137,7 +157,7 @@ export function createRunner(host: Host) {
           const now = u ? (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.output_tokens ?? 0) : 0;
           if (now && now !== context) { context = now; keep(); cast(true); }
           for (const block of msg.message?.content ?? []) {
-            if (block.type === 'text' && block.text.trim()) { said++; text = ''; say(block.text.trim()); }
+            if (block.type === 'text' && block.text.trim()) { said++; text = ''; lastSaid = block.text.trim(); say(lastSaid); }
             if (block.type === 'tool_use') {
               const cmd = String(block.input?.command ?? '');
               const m = cmd.match(/core\/cli\.ts\s+run\s+([\w.]+)/);
@@ -165,6 +185,8 @@ export function createRunner(host: Host) {
         forget();
         return run(ev, true);
       } else if (failed || code !== 0) say(`That did not work: ${failed || err.trim().split('\n').pop() || `claude ended with code ${code}`}`, { error: true });
+      // What its working copy now differs from the project is the change set the person gets to play and decide.
+      try { host.proposeCode('agent:main', lastSaid); } catch (e) { say(`(The working copy could not be compared with the project: ${e instanceof Error ? e.message.split('\n')[0] : e})`, { error: true }); }
       if (session && context > CONTEXT_LIMIT) {
         say(`(The conversation reached ${Math.round(context / 1000)}k tokens; the next message starts a new one.)`);
         forget();
@@ -193,7 +215,8 @@ export function createRunner(host: Host) {
       if (child) { forgotten = true; child.kill(); }
       return cast(true);
     }
-    if (ev.n > 0 && ev.type === 'message' && ev.by === 'me') {
+    // The person speaks, or the engine has news for the agent (art was accepted: bring it into the game).
+    if (ev.n > 0 && ev.type === 'message' && (ev.by === 'me' || ev.by === 'engine')) {
       if (off) return void host.events.cast({ type: 'agent.status', ...status() });
       queue.push(ev);
       cast(true);

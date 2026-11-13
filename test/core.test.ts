@@ -203,6 +203,10 @@ test('the world being played is mirrored; a sandbox can be played and poked in',
   assert.deepEqual(sys.order.slice(0, 4), ['grow', 'ripe', 'brain', 'walkGnomes']);
   assert.equal(sys.queries.find((q: any) => q.name === 'grow').mode, 'kernel');
 
+  // A world as data, to start it again somewhere else (the page of the working copy starts from it).
+  const snap = await agent('world.snapshot');
+  assert.equal(host.game.createWorld(snap).describe().split('\n')[1], host.world().describe().split('\n')[1]);
+
   assert.equal((await agent('world.drop', { room: 'box' })).dropped, true);
 });
 

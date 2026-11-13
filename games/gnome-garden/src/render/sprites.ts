@@ -10,7 +10,9 @@ const FINE = new Set<string>(['garden-cottage', 'gnome', 'garden-flowers', 'gard
 /** The frames of one animation of one look of a sheet, at the picture's resolution. `raw` keeps a half-size sheet as it is. */
 function frames(sheet: string, look: string, anim: string, raw = false): Frame[] {
   const s = ART[sheet];
-  const list = s?.looks[look]?.[anim];
+  // A drawing can gain looks (a cottage per season) before the game knows what to do with them: until it does,
+  // a look it does not have is its first one, which is the drawing as it was.
+  const list = (s?.looks[look] ?? (s && Object.values(s.looks)[0]))?.[anim];
   if (!list) throw new Error(`no drawing for ${sheet}/${look}/${anim}; run \`npm run art\``);
   const colors = s.pal.map(hex);
   const up = raw || FINE.has(sheet) ? 1 : 2;

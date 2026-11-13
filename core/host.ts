@@ -4,12 +4,14 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createCode, type Code, type FileChange } from './code.ts';
 import { CommandError, createRegistry, isAgent, type By, type CommandDef, type Registry } from './commands.ts';
 import { STAGES, createConcepts, type Concept, type Concepts } from './concepts.ts';
 import { createEventLog, type EventLog } from './events.ts';
 import type { GameModule, World } from './game.ts';
 import { runJob } from './jobs.ts';
 import { createLocks, type Locks } from './locks.ts';
+import { createPreview } from './preview.ts';
 import { encodePng } from './png.ts';
 import { createProposals, type Proposal, type Proposals } from './proposals.ts';
 import { createRecords, type RecordSet, type RecordValue, type Records } from './records.ts';
@@ -31,6 +33,12 @@ export interface Host {
   concepts: Concepts;
   locks: Locks;
   art: Art;
+  /** The agent's working copy of the game's code, when there is a repository to make one in. */
+  code?: Code;
+  /** After the agent worked: what its copy differs from the project becomes (or stops being) a proposal. */
+  proposeCode(by: By, note: string): void;
+  /** Things to stop before the core does. */
+  onStop: (() => void)[];
   dirs: { game: string; data: string; looks: string };
   /** Run a command as somebody. */
   run(name: string, input: Record<string, unknown> | undefined, by: By, round?: string): Promise<unknown>;
@@ -43,6 +51,8 @@ export interface HostOptions {
   gameDir?: string;
   /** Where what is not kept in git goes: the event log, proposals, pictures. */
   dataDir?: string;
+  /** The agent's working copy, when it is not the usual one (a test's). */
+  code?: Code;
 }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -61,6 +71,16 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   const proposals = createProposals(join(dataDir, 'proposals'));
   const concepts = createConcepts(join(gameDir, 'concepts'));
   const locks = createLocks(join(gameDir, 'locks.json'));
+  const onStop: (() => void)[] = [];
+
+  // Working files and project files: the agent codes in a copy of its own (code.ts). Only for the real game, in
+  // a repository; a scratch copy of a game has no working copy, and nobody codes there.
+  const candidate = gameDir === join(ROOT, 'games', id) && process.env.TANDEM_CODE !== 'off' ? createCode({ root: ROOT, gamePath: `games/${id}` }) : undefined;
+  const code = opts.code ?? (candidate?.usable() ? candidate : undefined);
+  const preview = code && createPreview(code.work);
+  if (preview) onStop.push(() => preview.stop());
+  /** The one round the working copy's change set is: there is one copy, so one change set at a time. */
+  const CODE = 'code';
 
   // The content in the code is where records start: whatever is not on disk yet is written out once.
   const builtIn = game.exportRecords() as RecordSet;
@@ -103,6 +123,27 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     game.applyRecords(records.all());
     const mine = rooms.get('mine');
     if (mine) mine.world = undefined;
+  }
+
+  /** Start the core again, when something looks after it that will (core/start.ts): its game code is from when it started. */
+  function restart() {
+    if (!process.env.TANDEM_SUPERVISED) return;
+    setTimeout(() => { for (const stop of onStop) stop(); process.exit(75); }, 600).unref?.();
+  }
+
+  function proposeCode(by: By, note: string) {
+    if (!code) return;
+    const files = code.changes();
+    const open = proposals.list({ status: 'pending', round: CODE });
+    if (!files.length) {
+      // The copy is the project again: whatever was proposed is no more.
+      if (open.length) { proposals.decide(CODE, 'rejected'); events.add({ type: 'proposal.decided', by, round: CODE, status: 'rejected', count: open.length, paths: ['code:working copy'] }); }
+      return;
+    }
+    const p = proposals.add({ round: CODE, by, kind: 'code', path: 'working copy', after: { files: files as never }, note });
+    // The whole list every time: a file the agent put back is not part of the change any more.
+    p.after = { files: files as never };
+    events.add({ type: 'proposal', by, round: CODE, id: p.id, kind: 'code', path: 'working copy', files, note });
   }
 
   // ------------------------------------------------------------ helpers
@@ -268,7 +309,17 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       about: 'Accept or reject a round of proposals as one. Accepting makes the changes real.',
       input: { round: 'string', accept: 'boolean' },
       async run(c, i) {
-        if (i.accept) art.acceptable(i.round);
+        const pending = proposals.list({ status: 'pending', round: i.round });
+        let taken: FileChange[] = [];
+        if (i.accept) {
+          art.acceptable(i.round);
+          // The working copy goes into the project first: if it does not go in cleanly, nothing is accepted.
+          if (code && pending.some((p) => p.kind === 'code')) {
+            try { taken = code.accept(pending.find((p) => p.kind === 'code')!.note.split('\n')[0].slice(0, 120) || 'Accepted from the working copy'); }
+            catch (e) { throw new CommandError('failed', e instanceof Error ? e.message : String(e)); }
+          }
+          await art.accepting(pending);
+        } else if (code && pending.some((p) => p.kind === 'code')) code.reject();
         const set = proposals.decide(i.round, i.accept ? 'accepted' : 'rejected');
         if (!set.length) throw new CommandError('missing', `nothing is pending in round ${i.round}`);
         if (i.accept) {
@@ -281,7 +332,12 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
           }
           contentChanged();
         }
-        await art.decide(i.round, i.accept, set);
+        art.decided(i.round);
+        if (taken.length) {
+          events.add({ type: 'code.changed', by: c.by, files: taken.map((f) => f.path) });
+          // The core has the game's code in it as it was when it started: it starts again with the new code.
+          restart();
+        }
         events.add({ type: 'proposal.decided', by: c.by, round: i.round, status: i.accept ? 'accepted' : 'rejected', count: set.length, paths: set.map((p) => `${p.kind}:${p.path}`) });
         return { decided: set.length };
       },
@@ -430,6 +486,32 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       },
     },
 
+    {
+      name: 'world.snapshot', kind: 'read',
+      about: 'A world as data, to start it again somewhere else: what the page of the working copy starts from, so a change is played where the person is.',
+      input: { room: 'string?' },
+      run: (_c, i) => world(i.room).snapshot() ?? null,
+    },
+
+    // ---- code: the agent's working copy
+    {
+      name: 'code.changes', kind: 'read',
+      about: 'What the agent\'s working copy of the game changes, against the project: the files, and how many lines came and went. With path, the change in that file to read.',
+      input: { path: 'string?' },
+      run(_c, i) {
+        if (!code) throw new CommandError('unsupported', 'there is no working copy here: the game is not in a repository');
+        return i.path ? { path: i.path, diff: code.diff(i.path) } : { files: code.changes() };
+      },
+    },
+    {
+      name: 'code.play', kind: 'write',
+      about: 'The address of the page of the working copy: the game with what the agent coded, to play before any of it is in the project. Starts that page if it is not running.',
+      async run() {
+        if (!preview) throw new CommandError('unsupported', 'there is no working copy here: the game is not in a repository');
+        try { return { url: await preview.url() }; } catch (e) { throw new CommandError('failed', e instanceof Error ? e.message : String(e)); }
+      },
+    },
+
     // ---- playtests
     {
       name: 'playtest.run', kind: 'read',
@@ -493,11 +575,21 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   const guarded = (defs: CommandDef[]): CommandDef[] => defs.map((d) => d.kind !== 'write' || d.name.startsWith('ecs.') ? d : {
     ...d, run: (c, i) => { sandboxOnly(i.room, c.by); return d.run(c, i); },
   });
-  const art = createArt({ game: id, root: ROOT, gameDir, dataDir, events, proposals, locks, newLookFile });
+  const art = createArt({
+    game: id, root: ROOT, gameDir, dataDir, events, proposals, locks, newLookFile,
+    // With an agent that codes, a drawing taken into the project is news for it: it is the one who brings it into the game.
+    accepted: code && ((drawings) => {
+      const what = drawings.map((d) => `${d.name} (${d.isNew ? 'new' : 'changed'}; ${d.w}×${d.h}; looks: ${d.looks.join(', ')}; animations: ${Object.entries(d.anims).map(([a, n]) => `${a} ×${n}`).join(', ')}${d.depth ? '; with a depth map' : ''})`).join('; ');
+      events.add({
+        type: 'message', by: 'engine', refs: drawings.map((d) => `drawing:${d.name}`),
+        text: `Art was accepted into the project: ${what}. It is in the project's art files and in your working copy, but not in the game yet. Bring it in: build the drawings in your working copy, make the game use what is new about ${drawings.length === 1 ? 'it' : 'them'}, run the tests, and say in a few words what you did and what is left.`,
+      });
+    }),
+  });
   registry.add(...core, ...guarded(game.commands(world)), ...ecsCommands(world, game, sandboxOnly), ...art.commands);
 
   return {
-    game, registry, events, records, proposals, concepts, locks, art,
+    game, registry, events, records, proposals, concepts, locks, art, code, proposeCode, onStop,
     dirs: { game: gameDir, data: dataDir, looks: looksDir },
     run: (name, input, by, round) => registry.run(name, input, { by, round }),
     world,

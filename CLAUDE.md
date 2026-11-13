@@ -9,4 +9,6 @@ A game engine for one person and an AI; see README.md for the idea and the layou
 - A game's numbers live in `games/<id>/content` as records, not in code. Tests use a scratch folder (`test/helpers.ts`) so they never write there.
 - `games/<id>/data/` is not in git: the event log, proposals, pictures, the agent's session.
 - `art/src`, `art/scripts` and `art/test` are pixeldraw's code as it is there (plain JavaScript); only `art/scripts/bus.js` is tandem's own. A game's drawings are text in `games/<id>/art` and `depth`; `npm run art` builds them into the game, and a test fails when that was forgotten.
+- The agent in the app never writes in the project: it codes in `.work/agent` (a worktree, branch `work/agent`), and accepting its change set squashes it into `main`. Changes the engine makes to a game's files (accepted content, concepts, art) are committed by themselves before the copy is brought up to date.
+- `npm start` runs the core under a small supervisor (`core/start.ts`) that starts it again when it exits with code 75, which it does after code is accepted. Before restarting it by hand, look at `agent.status` and `art.workers`: the agent and the workers are its children.
 - Heavy work that needs other content than the accepted one (a playtest of a proposal) runs in a child process (`core/job.ts`), because a game's content lives in its module.

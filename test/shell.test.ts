@@ -60,7 +60,10 @@ class FakeEventSource {
           buf = buf.slice(i + 2);
         }
       }
-    } catch { /* closed */ }
+    } catch (e) {
+      // A closed stream is how it ends; anything else is the page failing on an event, which must not pass silently.
+      if (!(e instanceof Error && e.name === 'AbortError')) console.log('THE PAGE FAILED ON AN EVENT', e);
+    }
   }
   close() { this.stop.abort(); }
 }
@@ -89,7 +92,8 @@ const button = (text: string | RegExp, root: ParentNode = $('#t-sheet')) => {
 const tab = (name: string) => click(all('.t-tab').find((t) => t.textContent === name)!);
 const type = (el: HTMLElement, value: string) => { (el as HTMLInputElement).value = value; el.dispatchEvent(new w.Event('input', { bubbles: true })); };
 
-async function until(what: () => unknown, says = 'it', ms = 8000) {
+// Patient: a phone under memory pressure can stall for seconds when a process starts.
+async function until(what: () => unknown, says = 'it', ms = 30000) {
   const t0 = Date.now();
   while (!what()) {
     if (Date.now() - t0 > ms) throw new Error(`waited too long for ${says}`);
@@ -236,14 +240,14 @@ test('art: the drawings are listed, one is looked at and locked, and a worker\'s
   tab('Art');
   await until(() => all('#t-body .item.drawing').length === 7, 'the drawings');
   assert.match(all('#t-body .item.drawing').at(-1)!.textContent!, /gnome.*32×32.*2 animations · 3 looks · depth map/);
-  assert.match($('.workers').textContent!, /No worker is drawing/);
+  await until(() => /No worker is drawing/.test($('.workers').textContent!), 'the workers, none');
   click(all('#t-body .item.drawing').at(-1)!);
-  await until(() => $('.sheet img'), 'the picture', 15000);
+  await until(() => $('.sheet img'), 'the picture', 90000);
   assert.match(($('.sheet img') as HTMLImageElement).src, /\/api\/file\/looks\/look-/);
   assert.deepEqual(all('.chips .t-chip').map((c) => c.textContent), ['all', 'stand', 'walk ×2', 'depth map', 'cozy', 'odd', 'hollow']);
   const first = ($('.sheet img') as HTMLImageElement).src;
   click(all('.chips .t-chip').find((c) => c.textContent === 'walk ×2')!);
-  await until(() => $('.sheet img') && ($('.sheet img') as HTMLImageElement).src !== first, 'the walk', 15000);
+  await until(() => $('.sheet img') && ($('.sheet img') as HTMLImageElement).src !== first, 'the walk', 90000);
 
   // Asking for a change needs words. With words a worker draws, and the tab shows it at work: the drawing as it
   // is typed, then its round with a picture before and after, to decide right there.
@@ -254,9 +258,9 @@ test('art: the drawings are listed, one is looked at and locked, and a worker\'s
   await until(() => $('canvas.live'), 'the worker, watched');
   assert.equal($('#t-body .bar b').textContent, 'gnome');
   // Every look of it: three looks, each two rows (stand, walk), the widest two frames of 32 across, a pixel between.
-  await until(() => ($('canvas.live') as HTMLCanvasElement).width === 67 && ($('canvas.live') as HTMLCanvasElement).height === 199, 'the drawing, live', 20000);
+  await until(() => ($('canvas.live') as HTMLCanvasElement).width === 67 && ($('canvas.live') as HTMLCanvasElement).height === 199, 'the drawing, live', 90000);
   assert.equal($('.t-hint.looks').textContent, 'Every look, top to bottom: cozy · odd · hollow');
-  await until(() => all('.worker-rest button').some((b) => b.textContent === 'Accept'), 'its round', 20000);
+  await until(() => all('.worker-rest button').some((b) => b.textContent === 'Accept'), 'its round', 60000);
   assert.deepEqual(all('.worker-rest button').map((b) => b.textContent), ['Send feedback', 'Accept', 'Reject']);
   assert.deepEqual(all('.pictures figcaption').map((f) => f.textContent), ['cozy, as it is', 'cozy, as proposed', 'odd, as it is', 'odd, as proposed', 'hollow, as it is', 'hollow, as proposed']);
   assert.match($('.worker-rest .said').textContent!, /Changed gnome\. Render ok/);
@@ -266,8 +270,8 @@ test('art: the drawings are listed, one is looked at and locked, and a worker\'s
   // Feedback sends it round again, from the same place.
   type($('textarea[aria-label="Feedback for the worker"]'), 'taller still');
   click(button('Send feedback'));
-  await until(() => host.events.since(0).filter((e) => e.type === 'art.round').length === 2, 'the second round', 20000);
-  await until(() => all('.worker-rest button').some((b) => b.textContent === 'Accept'), 'its buttons again');
+  await until(() => host.events.since(0).filter((e) => e.type === 'art.round').length === 2, 'the second round', 60000);
+  await until(() => all('.worker-rest button').some((b) => b.textContent === 'Accept'), 'its buttons again', 90000);
   assert.match($('.worker-rest').textContent!, /taller still/);
   click(button('Reject'));
   await until(() => /Rejected: the game was left as it is/.test($('.worker-rest').textContent!), 'the rejection');
@@ -287,7 +291,7 @@ test('art: the drawings are listed, one is looked at and locked, and a worker\'s
   assert.match($('.worker-rest').textContent!, /Rejected/);
   click(button('‹ Art'));
   await until(() => all('#t-body .item.drawing').length === 7, 'the drawings again');
-  assert.match($('.workers').textContent!, /No worker is drawing/);
+  await until(() => /No worker is drawing/.test($('.workers').textContent!), 'the workers, none');
   click(all('#t-body .item.drawing').at(-1)!);
 
   // A lock on a drawing: no worker gets it.
@@ -351,7 +355,7 @@ test('playtest: the buttons are there, and a look at a minute comes back as a pi
   type($('.look-at input'), '0');
   click(button('Look'));
   await until(() => $('.working'), 'it to say it is working');
-  await until(() => !$('#t-zoom').hidden, 'the picture', 20000);
+  await until(() => !$('#t-zoom').hidden, 'the picture', 90000);
   assert.match(($('#t-zoom img') as HTMLImageElement).src, /\/api\/file\/looks\/look-/);
   click($('#t-zoom'));
   assert.equal($('#t-zoom').hidden, true);
@@ -376,6 +380,37 @@ test('the agent shows things on the person\'s screen', async () => {
   tab('Chat');
   assert.ok(!$('#t-fab').classList.contains('news'), 'read is read');
   assert.match(all('.msg.agent').at(-1)!.textContent!, /Have a look at this one/);
+});
+
+test('a change to the game\'s code is a card: which files, a button to play the copy, and a decision', async () => {
+  tab('Chat');
+  const files = [{ path: 'games/gnome-garden/src/sim/seasons.ts', added: 40, removed: 0, status: 'new' }, { path: 'games/gnome-garden/src/sim/game.ts', added: 12, removed: 3, status: 'changed' }];
+  // What the engine tells the agent is shown, small; then what the agent's working copy changed.
+  host.events.add({ type: 'message', by: 'engine', text: 'Art was accepted into the project: garden-cottage. Bring it in.' });
+  host.events.add({ type: 'proposal', by: 'agent:main', round: 'code', id: 'pc1', kind: 'code', path: 'working copy', files, note: 'The cottage follows the season.' });
+  await until(() => all('.card.prop').some((c) => /change to the game's code/.test(c.textContent!)), 'the card');
+  assert.match(all('.sys.engine').at(-1)!.textContent!, /to the agent: Art was accepted/);
+  const card = all('.card.prop').find((c) => /change to the game's code/.test(c.textContent!))!;
+  assert.deepEqual(all('.field .k', card).map((k) => k.textContent), ['src/sim/seasons.ts', 'src/sim/game.ts']);
+  assert.match(card.textContent!, /new\+40/);
+  assert.match(card.textContent!, /\+12−3/);
+  assert.match($('.note', card).textContent!, /The cottage follows the season/);
+  assert.deepEqual(all('button', card).map((b) => b.textContent), ['Play the copy', 'Accept', 'Reject']);
+
+  // The agent works on: the same card, with what the copy changes now.
+  host.events.add({ type: 'proposal', by: 'agent:main', round: 'code', id: 'pc1', kind: 'code', path: 'working copy', files: files.slice(0, 1), note: 'Only the seasons.' });
+  await until(() => all('.field .k', card).length === 1, 'the card to follow');
+  host.events.add({ type: 'proposal.decided', by: 'me', round: 'code', status: 'accepted', count: 1, paths: ['code:working copy'] });
+  host.events.add({ type: 'code.changed', by: 'me', files: [files[0].path] });
+  await until(() => card.dataset.status === 'accepted', 'the decision');
+  assert.match(all('.chat .sys').at(-1)!.textContent!, /the working copy is the game now: 1 file changed/);
+
+  // The working copy is one round that comes back: what it proposes next is a card of its own.
+  host.events.add({ type: 'proposal', by: 'agent:main', round: 'code', id: 'pc2', kind: 'code', path: 'working copy', files, note: 'Bulbs.' });
+  await until(() => all('.card.prop').filter((c) => /change to the game's code/.test(c.textContent!)).length === 2, 'a second card');
+  assert.equal(card.dataset.status, 'accepted');
+  host.events.add({ type: 'proposal.decided', by: 'me', round: 'code', status: 'rejected', count: 1, paths: ['code:working copy'] });
+  await until(() => all('.card.prop').at(-1)!.dataset.status === 'rejected', 'the rejection');
 });
 
 test('a new conversation clears the chat and keeps what is still to be decided', async () => {

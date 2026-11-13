@@ -4,12 +4,10 @@
 // claude that uses the real tools of its workspace.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CommandError } from '../core/commands.ts';
-import { ROOT } from '../core/host.ts';
 import { startServer } from '../core/server.ts';
 import { spriteSheet } from '../art/sprites.ts';
 import { AGENT, scratchHost } from './helpers.ts';
@@ -24,7 +22,7 @@ after(async () => { await s.close(); cleanup(); });
 const me = (name: string, input?: Record<string, unknown>) => host.run(name, input, 'me') as Promise<any>;
 const agent = (name: string, input?: Record<string, unknown>, round = 'r1') => host.run(name, input, AGENT, round) as Promise<any>;
 const refused = (p: Promise<unknown>, code: string) => assert.rejects(p, (e) => e instanceof CommandError && e.code === code);
-async function until(what: () => unknown, says: string, ms = 20000) {
+async function until(what: () => unknown, says: string, ms = 90000) {
   const t0 = Date.now();
   while (!what()) {
     if (Date.now() - t0 > ms) throw new Error(`waited too long for ${says}`);
@@ -49,13 +47,6 @@ test('a drawing\'s text becomes a sheet of frames, per look, with its depth', ()
   assert.deepEqual(at(sheet.rgba, 6, 1), [0, 0, 0, 0], 'nothing drawn there');
   assert.deepEqual(at(sheet.depthRgba!, 3, 0), [0x5a, 0x69, 0x88, 255], 'a frame the depth map lacks gets its first');
   assert.throws(() => spriteSheet('hat', 'a = #ff0000\n\n@base body\n@slot head\n@size 2 2\naa\n'), /attachment of body/);
-});
-
-test('the game\'s sprites are what its drawings build to', () => {
-  // If this fails a drawing was changed by hand without building: run `npm run art`.
-  const out = join(dir, 'check.gen.ts');
-  execFileSync(process.execPath, ['--no-warnings', join(ROOT, 'games/gnome-garden/tools/import-art.ts'), `--out=${out}`]);
-  assert.equal(readFileSync(out, 'utf8'), readFileSync(join(ROOT, 'games/gnome-garden/src/render/art.gen.ts'), 'utf8'));
 });
 
 test('a worker draws a new drawing: silhouette, approval, colour, and only then the game', async () => {

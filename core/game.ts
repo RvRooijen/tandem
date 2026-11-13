@@ -55,7 +55,15 @@ export interface GameModule {
   commands(world: (room?: string) => World): CommandDef[];
 }
 
-/** A game running in a page, as the shell sees it. Every game has a page.ts whose mount() gives one. */
+/** How a page is to start a game. */
+export interface MountOptions {
+  /** Start from this world instead of the page's own save: the working copy is played where the person is. */
+  saved?: unknown;
+  /** Keep nothing of this session: it is a try-out, the person's own save is not to be touched. */
+  scratch?: boolean;
+}
+
+/** A game running in a page, as the shell sees it. Every game has a page.ts whose mount(root, options) gives one. */
 export interface GamePage {
   world: World;
   /** While set, a finger on the stage is handed here (in world units) instead of to the game. */

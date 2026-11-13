@@ -20,7 +20,7 @@ const post = async (name: string, input: unknown = {}, headers: Record<string, s
   return { status: res.status, ...(await res.json() as { ok: boolean; result?: any; code?: string; error?: string }) };
 };
 
-async function until(what: () => boolean, ms = 8000) {
+async function until(what: () => boolean, ms = 30000) {
   const t0 = Date.now();
   while (!what()) {
     if (Date.now() - t0 > ms) throw new Error('waited too long');

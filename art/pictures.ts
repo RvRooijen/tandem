@@ -22,11 +22,12 @@ export function createPictures(spaces: Workspaces, newLookFile: () => { file: st
     copyFileSync(await spaces.render(space, `art/${name}.txt`, flags), look.file);
     return look.url;
   }
-  /** A workspace holding the game's drawings, with this one as given. */
-  function stage(space: string, name: string, value: Value) {
-    const root = spaces.ensure(space, true);
+  /** A workspace of its own holding the game's drawings, with this one as given. */
+  function stage(name: string, value: Value) {
+    const space = spaces.scratch(), root = spaces.dir(space);
     if (value.text !== undefined) writeFileSync(join(root, 'art', `${name}.txt`), value.text);
     if (value.depth !== undefined) writeFileSync(join(root, 'depth', `${name}.txt`), value.depth);
+    return space;
   }
   const looksOf = (name: string, text: string | undefined) => {
     try { return text === undefined ? [] : describeDrawing(name, text).looks.filter((l) => l !== 'default'); } catch { return []; }
@@ -35,25 +36,25 @@ export function createPictures(spaces: Workspaces, newLookFile: () => { file: st
   return {
     /** Throws when the proposed drawing does not render. */
     async of(name: string, before: Value | undefined, after: Value): Promise<Pictures> {
-      const out: Pictures = {};
-      stage('_after', name, after);
-      out.after = await shot('_after', name);
       const was = before?.text !== undefined;
-      if (was) {
-        stage('_before', name, before!);
-        out.before = await shot('_before', name).catch(() => undefined);
-      }
       const now = looksOf(name, after.text), then = looksOf(name, before?.text);
-      if (now.length > 1 || then.length > 1) {
-        out.looks = [];
-        for (const look of [...new Set([...now, ...then])].slice(0, 12))
-          out.looks.push({
-            look,
-            after: now.includes(look) ? await shot('_after', name, [`--recolor=${look}`]).catch(() => undefined) : undefined,
-            before: then.includes(look) ? await shot('_before', name, [`--recolor=${look}`]).catch(() => undefined) : undefined,
-          });
-      }
-      return out;
+      const looks = now.length > 1 || then.length > 1 ? [...new Set([...now, ...then])].slice(0, 12) : [];
+      // The drawing as proposed and as it is are rendered side by side, each in a workspace of its own; within
+      // one, a render at a time (they all write the same file).
+      const side = async (value: Value, has: string[], must: boolean) => {
+        const space = stage(name, value);
+        try {
+          const plain = must ? await shot(space, name) : await shot(space, name).catch(() => undefined);
+          const per: Record<string, string | undefined> = {};
+          for (const look of looks) if (has.includes(look)) per[look] = await shot(space, name, [`--recolor=${look}`]).catch(() => undefined);
+          return { plain, per };
+        } finally { spaces.remove(space); }
+      };
+      const [a, b] = await Promise.all([side(after, now, true), was ? side(before!, then, false) : undefined]);
+      return {
+        after: a.plain, before: b?.plain,
+        ...(looks.length && { looks: looks.map((look) => ({ look, after: a.per[look], before: b?.per[look] })) }),
+      };
     },
   };
 }

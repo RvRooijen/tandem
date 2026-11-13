@@ -4,7 +4,7 @@
 // finger does on the garden goes through the game's commands, the same ones
 // the agent has.
 import './src/ui/style.css';
-import type { GamePage } from '../../core/game.ts';
+import type { GamePage, MountOptions } from '../../core/game.ts';
 import { adopt, game } from './module.ts';
 import { createGame, type Game } from './src/sim/game.ts';
 import { ZOOM, createScene, type Scene } from './src/render/scene.ts';
@@ -17,10 +17,11 @@ import type { Tab } from './src/sim/content.ts';
 
 export { game };
 
-export function mount(root: HTMLElement): GamePage {
+export function mount(root: HTMLElement, opts: MountOptions = {}): GamePage {
   root.innerHTML = MARKUP;
 
-  const SAVE_KEY = 'gnome-garden-save-v1';
+  // A try-out keeps its own save, so the real one is never written over.
+  const SAVE_KEY = opts.scratch ? 'gnome-garden-tryout' : 'gnome-garden-save-v1';
   const params = new URLSearchParams(location.search);
   const speed = Math.max(1, Number(params.get('speed')) || 1);     // ?speed=20 to watch the story go by
 
@@ -28,7 +29,7 @@ export function mount(root: HTMLElement): GamePage {
     try { return JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null'); } catch { return null; }
   }
 
-  const g: Game = createGame(params.has('new') ? undefined : readSave());
+  const g: Game = createGame(opts.saved !== undefined ? opts.saved : params.has('new') ? undefined : readSave());
   const world = adopt(g);
   const cmd = Object.fromEntries(game.commands(() => world).map((c) => [c.name, c]));
   const me = { by: 'me' };

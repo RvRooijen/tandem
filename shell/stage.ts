@@ -4,7 +4,7 @@
 // tandem the world being played and where things are; one that does not is
 // simply shown.
 import type { Info } from './api.ts';
-import { h } from './dom.ts';
+import { clear, h } from './dom.ts';
 
 export interface Stage {
   /** What the frame shows now. */
@@ -25,7 +25,13 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
     h('p', {}, 'Tandem shows a project\'s own page in this space. Say how it is started in tandem.json: "page": "npm run dev -- --port {port}".'),
     h('p', {}, 'The tools work without it: open them with the round button.'));
   root.append(frame, none);
-  if (info.page) frame.src = info.page; else { frame.hidden = true; none.hidden = false; }
+  if (info.page) frame.src = info.page;
+  else {
+    frame.hidden = true;
+    none.hidden = false;
+    // No project at all: the page is there to choose one.
+    if (!info.project) clear(none, h('b', {}, 'Which project?'), h('p', {}, 'Tandem works on a project: a folder with a git repository in it. Choose one from the list.'));
+  }
 
   /** The last world the project's page shared: what the copy is started from. */
   let world: unknown;

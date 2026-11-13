@@ -9,6 +9,8 @@ import { createReadStream, existsSync } from 'node:fs';
 import { join, normalize } from 'node:path';
 import { CommandError } from './commands.ts';
 import { createHost, type Host } from './host.ts';
+import { SWITCH, projectCommands, readState } from './projects.ts';
+import { createRegistry } from './commands.ts';
 import { createRunner } from './runner.ts';
 
 export const PORT = Number(process.env.TANDEM_PORT ?? 5201);
@@ -39,6 +41,12 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
   if (runner) host.registry.add(...runner.commands);
   // Whoever stops the core stops what it started: the agent and the workers are its children.
   host.onStop.push(() => runner?.stop(), () => host.art.workers.stopAll());
+  // Another project is opened from the page: the core ends, and whoever looks after it starts it on that one.
+  host.registry.add(...projectCommands({
+    current: host.project.root,
+    busy: () => (runner?.status().busy ? 'the agent is in the middle of something here; stop it or let it finish first' : host.art.workers.list().some((w) => w.state === 'running') ? 'a worker is drawing here; stop it or let it finish first' : undefined),
+    restart: process.env.TANDEM_SUPERVISED ? () => { for (const stop of host.onStop) stop(); process.exit(SWITCH); } : undefined,
+  }));
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://x');
@@ -49,6 +57,7 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
         return send(res, 200, {
           project: host.project.id, name: host.project.name, last: host.events.last(),
           // Where the project's own page is, and what the project offers: the shell is built from this.
+          root: host.project.root,
           page: host.project.pageCommand(0) ? `http://localhost:${PAGE_PORT}/` : null,
           senses: !!host.game, copy: !!host.code,
         });
@@ -96,8 +105,52 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
   return { server, host, runner, port, close: () => new Promise<void>((r) => { runner?.stop(); host.art.workers.stopAll(); for (const stop of host.onStop) stop(); server.closeAllConnections(); server.close(() => r()); }) };
 }
 
+/**
+ * The core with no project open: only what it takes to choose one. The page shows the list; opening one starts
+ * the core again, on it.
+ */
+export async function startLobby(opts: { port?: number } = {}) {
+  const registry = createRegistry();
+  registry.add(...projectCommands({ restart: process.env.TANDEM_SUPERVISED ? () => process.exit(SWITCH) : undefined }));
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url ?? '/', 'http://x');
+    try {
+      if (req.method === 'GET' && url.pathname === '/api/commands') return send(res, 200, registry.list());
+      if (req.method === 'GET' && url.pathname === '/api/info') return send(res, 200, { project: null, name: 'tandem', last: 0, page: null, senses: false, copy: false });
+      if (req.method === 'POST' && url.pathname.startsWith('/api/run/')) {
+        try {
+          return send(res, 200, { ok: true, result: await registry.run(url.pathname.slice('/api/run/'.length), await readBody(req), { by: String(req.headers['x-tandem-by'] ?? 'me') }) ?? null });
+        } catch (e) {
+          if (e instanceof CommandError) return send(res, e.code === 'missing' || e.code === 'unknown' ? 404 : 400, { ok: false, code: e.code, error: e.message });
+          throw e;
+        }
+      }
+      if (req.method === 'GET' && url.pathname === '/api/events') {
+        res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
+        const beat = setInterval(() => res.write(': still here\n\n'), 20_000);
+        req.on('close', () => clearInterval(beat));
+        return void res.write(': no project is open\n\n');
+      }
+      send(res, 404, { ok: false, error: 'no project is open; see projects.list' });
+    } catch (e) {
+      if (!res.headersSent) send(res, 500, { ok: false, code: 'crash', error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+  await new Promise<void>((resolve) => server.listen(opts.port ?? PORT, '127.0.0.1', resolve));
+  const port = (server.address() as { port: number }).port;
+  return { server, port, close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }) };
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const s = await startServer();
+  // The project is the one named when starting, or the one that was open last; without either, the page chooses.
+  const dir = process.env.TANDEM_PROJECT || readState().project;
+  if (!dir || !existsSync(dir)) {
+    const lobby = await startLobby();
+    for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, () => process.exit(0));
+    console.log(`tandem core: no project open; choose one in the page (http://127.0.0.1:${lobby.port}/api)`);
+    await new Promise(() => {});
+  }
+  const s = await startServer({ host: await createHost({ project: dir }) });
   // Stopped from outside: what the core started stops with it.
   for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, () => { void s.close().then(() => process.exit(0)); setTimeout(() => process.exit(0), 1500).unref(); });
   console.log(`tandem core: ${s.host.project.name} (${s.host.project.root}) on http://127.0.0.1:${s.port}/api  (${s.host.registry.list().length} commands${s.host.game ? ', with an adapter' : ''}${s.host.code ? ', working copy' : ''})`);

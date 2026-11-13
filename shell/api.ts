@@ -13,7 +13,10 @@ export async function run<T = any>(name: string, input: Record<string, unknown> 
 
 /** What the core says about the project it runs on. */
 export interface Info {
-  project: string;
+  /** The project that is open; null when none is, and the page is there to choose one. */
+  project: string | null;
+  /** Its folder. */
+  root?: string;
   name: string;
   last: number;
   /** Where the project's own page is; null when it has none set up. */

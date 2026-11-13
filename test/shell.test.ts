@@ -5,7 +5,8 @@
 // there, pressed, and ends in a command.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { registerHooks } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
@@ -20,7 +21,7 @@ registerHooks({
 });
 
 process.env.CLAUDE_BIN = fileURLToPath(new URL('./fake-claude.mjs', import.meta.url));
-const { host, cleanup } = await fixture({ code: false, page: true });
+const { host, dir, cleanup } = await fixture({ code: false, page: true });
 const s = await startServer({ port: 0, host });
 process.env.TANDEM_PORT = String(s.port);
 const origin = `http://127.0.0.1:${s.port}`;
@@ -122,7 +123,7 @@ test('the project\'s page is in a frame and the tools lie over it, shut', () => 
   assert.ok($('#t-nopage').hidden);
   assert.ok($('#t-fab'));
   assert.ok($('#t-sheet').classList.contains('shut'));
-  assert.deepEqual(all('.t-tab').map((t) => t.textContent), ['Chat', 'Concepts', 'Art']);
+  assert.deepEqual(all('.t-tab').map((t) => t.textContent), ['Chat', 'Concepts', 'Art', 'Projects']);
   assert.deepEqual(app.stage.can, { snapshot: false, point: false }, 'a page that says nothing is simply shown');
 });
 
@@ -426,6 +427,30 @@ test('a new conversation clears the chat and keeps what is still to be decided',
   await until(() => $('.msg.agent'), 'an answer in the new conversation');
   assert.doesNotMatch($('.msg.agent').textContent!, /^Again: /);
   await until(() => !app.agent.busy, 'the agent to be done');
+});
+
+test('projects: the folders that could be one are listed, and another is chosen from the page', async () => {
+  // Next to the project there is another one, and a folder that is not a repository yet.
+  const beside = join(dir, '..');
+  mkdirSync(join(beside, 'other-game/.git'), { recursive: true });
+  writeFileSync(join(beside, 'other-game/tandem.json'), JSON.stringify({ name: 'The Other Game', page: 'serve {port}' }));
+  mkdirSync(join(beside, 'loose-notes'));
+  tab('Projects');
+  await until(() => all('.item.project').length >= 3, 'the folders');
+  const item = (name: string) => all('.item.project').find((i) => $('b', i).textContent === name)!;
+  assert.equal(all('.item.project')[0], item('Fixture'), 'the one that is open comes first');
+  assert.match(item('Fixture').textContent!, /open now/);
+  assert.match(item('The Other Game').textContent!, /new to tandem · has a page/);
+  assert.match(item('loose-notes').textContent!, /not a git repository yet/);
+  // A folder without a repository cannot be opened; one with, is.
+  click(item('loose-notes'));
+  await new Promise((r) => setTimeout(r, 100));
+  assert.ok(!ran.includes('projects.open'));
+  click(item('The Other Game'));
+  await until(() => ran.includes('projects.open'), 'the other project to be asked for');
+  // (Nothing looks after this core, so it is only remembered; started as `tandem`, the core starts again on it and the page with it.)
+  await until(() => /It is chosen/.test($('#t-toast').textContent!), 'the answer');
+  assert.equal(JSON.parse(readFileSync(process.env.TANDEM_STATE!, 'utf8')).project, join(beside, 'other-game'));
 });
 
 test('parity: everything the shell does is a command the agent could name', async () => {

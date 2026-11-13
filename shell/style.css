@@ -121,6 +121,10 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 #tandem .count { color: var(--t-soft); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 #tandem .item.sys-row { cursor: default; }
 
+#tandem .item.project small { display: block; margin-top: 3px; font-family: var(--t-mono); font-size: 11px; word-break: break-all; }
+#tandem .item.project.open { outline: 1px solid var(--t-accent); }
+#tandem .item.project.off { opacity: 0.55; cursor: default; }
+
 /* ---- chat */
 .chat { display: flex; flex-direction: column; gap: 10px; }
 .msg { max-width: 88%; padding: 9px 12px; border-radius: 14px; position: relative; word-break: break-word; }

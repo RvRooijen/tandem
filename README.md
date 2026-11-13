@@ -1,7 +1,7 @@
 # tandem
 
 A tool for one person and an AI to build a project together: a game, or any
-web project. You start it in the project's folder. It shows the project's own
+web project. You start it once and choose a project. It shows the project's own
 page with a sheet of tools over it (a chat, concepts, art), and runs an agent
 that works on the project through the same commands your screen uses.
 
@@ -10,8 +10,11 @@ and, if you want, a `tandem.json`. The project stays what it was.
 
 ## Start
 
-    cd ~/projects/your-project
-    /path/to/tandem/bin/tandem          # or put tandem/bin on your PATH and type: tandem
+    /path/to/tandem/bin/tandem            # or put tandem/bin on your PATH and type: tandem
+    tandem ~/projects/your-project        # straight into one project
+
+Then open tandem's page and choose a project in the Projects tab: the folders next to tandem itself are listed (and
+any other folder you add there). What was open last is opened again the next time.
 
     tandem's page    http://localhost:5173    open this one
     the core         http://127.0.0.1:5201    commands, events, the agent

@@ -13,6 +13,9 @@ import { createCode, type Code } from '../core/code.ts';
 import { createHost, type Host } from '../core/host.ts';
 
 export const AGENT = 'agent:main';
+
+// Which project was open last is remembered in a file in the person's home; a test has its own.
+process.env.TANDEM_STATE ??= join(tmpdir(), `tandem-state-${process.pid}.json`);
 const FIXTURE = fileURLToPath(new URL('./fixture', import.meta.url));
 
 /** A fresh copy of the fixture project, as a git repository. `code: false` for a host without a working copy. */

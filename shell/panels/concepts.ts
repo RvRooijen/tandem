@@ -38,7 +38,7 @@ export function conceptsPanel(): Panel {
       h('div.adder', {}, name, h<'button'>('button.primary', { onclick: create }, 'Add')),
       all.length
         ? all.map((c) => h('div.item', { onclick: () => void detail(c.id) },
-          h('div.line', {}, h('b', {}, c.name), h('span.chip.firm', { data: { firmness: c.firmness } }, c.firmness)),
+          h('div.line', {}, h('b', {}, c.name), h('span.t-chip.firm', { data: { firmness: c.firmness } }, c.firmness)),
           h('p', {}, c.summary || 'No words yet.')))
         : h('div.empty', {}, h('b', {}, 'No concepts yet.'), h('p', {}, 'A concept is a name and a few words of your own: an idea for the game before it is anything concrete. Add one and talk it through with the agent.')));
   }
@@ -73,7 +73,7 @@ export function conceptsPanel(): Panel {
       oninput: () => { draft.text = text.value; touch(); fit(); } });
     const fit = () => { text.style.height = 'auto'; text.style.height = `${Math.max(120, text.scrollHeight + 2)}px`; };
 
-    const firmSays = h('p.hint');
+    const firmSays = h('p.t-hint');
     const firm = h('div.segments', {}, FIRM.map((f) => h<'button'>('button', { data: { id: f.id }, onclick: () => { draft.firmness = f.id; touch(); paintFirm(); } }, f.id)));
     const paintFirm = () => {
       firm.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.id === draft.firmness));
@@ -84,7 +84,7 @@ export function conceptsPanel(): Panel {
     const others = (all ?? []).filter((o) => o.id !== id);
     const paintLinks = () => clear(linksEl, draft.links.map((l, i) => h('div.check', {},
       h('span.k', {}, l.kind.replace('-', ' ')),
-      h('span.chip.tap', { onclick: () => void leave(() => detail(l.to)) }, others.find((o) => o.id === l.to)?.name ?? l.to),
+      h('span.t-chip.tap', { onclick: () => void leave(() => detail(l.to)) }, others.find((o) => o.id === l.to)?.name ?? l.to),
       h<'button'>('button.icon', { 'aria-label': 'Remove', onclick: () => { draft.links.splice(i, 1); touch(); paintLinks(); } }, '✕'))));
     const kind = h<'select'>('select', { 'aria-label': 'Kind of link' }, LINKS.map((k) => h<'option'>('option', { value: k }, k.replace('-', ' '))));
     const to = h<'select'>('select', { 'aria-label': 'Linked concept' }, h<'option'>('option', { value: '' }, 'another concept…'), others.map((o) => h<'option'>('option', { value: o.id }, o.name)));
@@ -103,7 +103,7 @@ export function conceptsPanel(): Panel {
       name, firm, firmSays, text,
       h('h3', {}, 'Links'), linksEl, h('div.adder', {}, kind, to),
       h('h3', {}, 'What makes it real'), realised,
-      h('div.row', {},
+      h('div.t-row', {},
         h<'button'>('button.primary', { onclick: () => void leave(() => app.attach(`concept:${id}`)) }, 'Talk about this'),
         h<'button'>('button.danger', { onclick: async () => { if (confirm(`Throw "${c.name}" away?`) && (await app.act('concepts.remove', { id })) !== undefined) void list(); } }, 'Delete')));
     paintFirm(); paintLinks();

@@ -48,12 +48,12 @@ export function playtestPanel(): Panel {
     const rows = Object.entries(run.minutes).sort((a, b) => a[1] - b[1]);
     clear(out,
       h('div.card.test', {},
-        h('div.head', {}, h('b', {}, `The ${run.profile} player${last.proposed ? ', as proposed' : ''}`), h('span.state', {}, `played in ${run.took}s`)),
+        h('div.t-head', {}, h('b', {}, `The ${run.profile} player${last.proposed ? ', as proposed' : ''}`), h('span.state', {}, `played in ${run.took}s`)),
         h('div.field', {}, h('span.k', {}, 'whole game'), h('span.now', {}, mins(run.length)))),
       h('h3', {}, 'Every milestone'),
       rows.map(([id, at]) => h('div.ms', { onclick: () => void lookAt(Math.max(0, Math.round(at) + 1), last!.proposed) },
         h('span.t', {}, mins(at)), h('span.k', {}, id))),
-      h('p.hint', {}, 'Touch a milestone to see the game just after it.'));
+      h('p.t-hint', {}, 'Touch a milestone to see the game just after it.'));
   }
 
   return {
@@ -63,12 +63,12 @@ export function playtestPanel(): Panel {
       body = b;
       const minute = h<'input'>('input.n', { type: 'number', inputMode: 'numeric', value: '30', min: '0', 'aria-label': 'Minute' });
       b.append(
-        h('div.row', {},
+        h('div.t-row', {},
           app.info.profiles.map((p) => h<'button'>('button', { onclick: () => void play(p, false) }, `Play it: ${p}`))),
-        h('div.row', {},
+        h('div.t-row', {},
           h<'button'>('button', { onclick: () => void play('eager', true) }, 'Play as proposed'),
           h<'button'>('button', { onclick: () => void compare() }, 'Compare with proposals')),
-        h('div.row.look-at', {}, h('span', {}, 'Look at minute'), minute, h<'button'>('button', { onclick: () => void lookAt(Number(minute.value) || 0, false) }, 'Look')),
+        h('div.t-row.look-at', {}, h('span', {}, 'Look at minute'), minute, h<'button'>('button', { onclick: () => void lookAt(Number(minute.value) || 0, false) }, 'Look')),
         out);
       paint();
     },

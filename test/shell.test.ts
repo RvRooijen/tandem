@@ -174,8 +174,8 @@ test('concepts: add one, work on it, and hand it to the agent', async () => {
   click(button('Talk about this'));
   assert.equal($('.t-tab.on').textContent, 'Chat');
   assert.deepEqual(app.refs, ['concept:night-roses']);
-  assert.match($('#t-foot .chip.ref').textContent!, /concept night-roses/);
-  click($('#t-foot .chip.ref button'));
+  assert.match($('#t-foot .t-chip.ref').textContent!, /concept night-roses/);
+  click($('#t-foot .t-chip.ref button'));
   assert.deepEqual(app.refs, []);
 
   // What the agent proposes about a concept shows up, and accepting it rewrites the concept.
@@ -222,9 +222,9 @@ test('art: the drawings are listed, one is looked at, and it can be handed to th
   click(all('#t-body .item')[0]);
   await until(() => $('.sheet img'), 'the sheet', 15000);
   assert.match(($('.sheet img') as HTMLImageElement).src, /\/api\/file\/looks\/look-/);
-  assert.match($('.sheet .hint').textContent!, /stand · walk/);
-  click(all('.chips .chip').find((c) => c.textContent === 'walk ×2')!);
-  await until(() => /walk 1 · walk 2/.test($('.sheet .hint')?.textContent ?? ''), 'the walk', 15000);
+  assert.match($('.sheet .t-hint').textContent!, /stand · walk/);
+  click(all('.chips .t-chip').find((c) => c.textContent === 'walk ×2')!);
+  await until(() => /walk 1 · walk 2/.test($('.sheet .t-hint')?.textContent ?? ''), 'the walk', 15000);
   // Asking for a change needs words.
   click(button('Ask a worker'));
   assert.equal($('#t-toast').textContent, 'Say what should change.');
@@ -237,7 +237,7 @@ test('inspect: the entities of the world being played, one of them live, and a f
   await until(() => all('#t-body h3').some((x) => /entities/.test(x.textContent!)), 'the summary');
   assert.match(all('#t-body h3')[0].textContent!, /^4 entities/);
   assert.deepEqual(all('.sys-row b').map((b) => b.textContent).slice(0, 3), ['1. grow', '2. ripe', '3. brain']);
-  assert.match($('.sys-row .chip.mode').textContent!, /kernel/);
+  assert.match($('.sys-row .t-chip.mode').textContent!, /kernel/);
 
   click(all('#t-body .item').find((i) => /Flower/.test(i.textContent!))!);
   await until(() => /4 with/.test($('#t-body .bar b')?.textContent ?? ''), 'the flowers');
@@ -325,6 +325,16 @@ test('a new conversation clears the chat and keeps what is still to be decided',
   await until(() => $('.msg.agent'), 'an answer in the new conversation');
   assert.doesNotMatch($('.msg.agent').textContent!, /^Again: /);
   await until(() => !app.agent.busy, 'the agent to be done');
+});
+
+test('the game\'s stylesheet and the shell\'s do not style each other', () => {
+  // Both are on one page. A class name they share makes the game's rules land on the engine's tools.
+  const classes = (css: string) => new Set([...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/\.([a-zA-Z][\w-]*)/g)].map((m) => m[1]));
+  const game = classes(readFileSync(new URL('../games/gnome-garden/src/ui/style.css', import.meta.url), 'utf8'));
+  const shell = classes(readFileSync(new URL('../shell/style.css', import.meta.url), 'utf8'));
+  // These the game only styles inside its own parts (.meter .bar, .job .count, .tab .dot, .set.danger, .tab.on).
+  const harmless = new Set(['bar', 'count', 'dot', 'danger', 'on']);
+  assert.deepEqual([...shell].filter((c) => game.has(c) && !harmless.has(c)), []);
 });
 
 test('parity: everything the shell does is a command the agent could name', async () => {

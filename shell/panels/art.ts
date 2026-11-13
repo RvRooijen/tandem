@@ -20,7 +20,7 @@ export function artPanel(): Panel {
       const w = await app.act<{ workers: string }>('art.workers');
       workers.textContent = w ? w.workers : 'pixeldraw is not answering.';
       const ids = [...(w?.workers ?? '').matchAll(/^(w[a-z0-9]+)\s/gm)].map((m) => m[1]);
-      clear(acts, ids.map((id) => h('div.row', {},
+      clear(acts, ids.map((id) => h('div.t-row', {},
         h('span.k', {}, id),
         h<'button'>('button', { onclick: async () => { await app.act('art.approve', { worker: id }); void refresh(); } }, 'Approve'),
         h<'button'>('button.primary', { onclick: async () => { if (await app.act('art.accept', { worker: id })) app.toast('Accepted. Bring it into the game below.'); void refresh(); } }, 'Accept'))));
@@ -35,13 +35,13 @@ export function artPanel(): Panel {
       !all.length && h('div.empty', {}, h('b', {}, 'This game does not say what its drawings are.')),
       h('h3', {}, 'A new drawing'),
       name, brief,
-      h('div.row', {}, h<'button'>('button', { onclick: async () => {
+      h('div.t-row', {}, h<'button'>('button', { onclick: async () => {
         if (!name.value.trim() || !brief.value.trim()) return app.toast('Give it a name and a few words.');
         if (await app.act('art.ask', { name: name.value.trim(), message: brief.value.trim(), new: true })) { name.value = brief.value = ''; app.toast('A worker is drawing it.'); void refresh(); }
       } }, 'Ask a worker')),
       h('h3', {}, 'Workers in pixeldraw'),
       workers, acts,
-      h('div.row', {},
+      h('div.t-row', {},
         h<'button'>('button', { onclick: () => void refresh() }, 'Look again'),
         h<'button'>('button', { onclick: async (ev: MouseEvent) => {
           const b = ev.currentTarget as HTMLButtonElement;
@@ -50,7 +50,7 @@ export function artPanel(): Panel {
           b.disabled = false; b.textContent = 'Bring drawings into the game';
           if (done) app.toast(`${done.imported} drawings brought in. The page reloads when it is rebuilt.`);
         } }, 'Bring drawings into the game')),
-      h('p.hint', {}, 'A worker draws in pixeldraw and waits there with a silhouette first. Its own viewer is the place to watch it.'));
+      h('p.t-hint', {}, 'A worker draws in pixeldraw and waits there with a silhouette first. Its own viewer is the place to watch it.'));
     void refresh();
   }
 
@@ -63,18 +63,18 @@ export function artPanel(): Panel {
     const show = async (lk: string, anim?: string) => {
       const got = await app.act<{ url: string; frames: string[] }>('art.look', { name: d.name, look: lk, ...(anim && { anim }) });
       if (!body || open !== d.name || !got) return;
-      clear(pic, h<'img'>('img', { src: got.url, alt: `${d.name}: ${got.frames.join(', ')}`, onclick: () => app.zoom(got.url) }), h('p.hint', {}, got.frames.join(' · ')));
+      clear(pic, h<'img'>('img', { src: got.url, alt: `${d.name}: ${got.frames.join(', ')}`, onclick: () => app.zoom(got.url) }), h('p.t-hint', {}, got.frames.join(' · ')));
     };
     clear(body,
       h('div.bar', {}, h<'button'>('button.link', { onclick: () => void list() }, '‹ Art'), h('b', {}, `${d.name} · ${d.w}×${d.h}`)),
       pic,
       Object.entries(d.looks).map(([lk, anims]) => h('div.chips', {},
         Object.keys(d.looks).length > 1 && h('span.k', {}, lk),
-        h('span.chip.tap', { onclick: () => void show(lk) }, 'all'),
-        Object.entries(anims).map(([a, n]) => h('span.chip.tap', { onclick: () => void show(lk, a) }, n > 1 ? `${a} ×${n}` : a)))),
+        h('span.t-chip.tap', { onclick: () => void show(lk) }, 'all'),
+        Object.entries(anims).map(([a, n]) => h('span.t-chip.tap', { onclick: () => void show(lk, a) }, n > 1 ? `${a} ×${n}` : a)))),
       h('h3', {}, 'Change it'),
       brief,
-      h('div.row', {},
+      h('div.t-row', {},
         h<'button'>('button', { onclick: async () => {
           if (!brief.value.trim()) return app.toast('Say what should change.');
           if (await app.act('art.ask', { name: d.name, message: brief.value.trim() })) { brief.value = ''; app.toast('A worker is on it.'); }

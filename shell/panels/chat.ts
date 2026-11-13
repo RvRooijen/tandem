@@ -17,7 +17,7 @@ export function refChip(app: App, ref: string, onRemove?: () => void): HTMLEleme
     else if (kind === 'drawing') app.open('art', rest);
     else if (kind === 'point') { const [x, y] = rest.split(',').map(Number); app.point(x, y); }
   };
-  return h('span.chip.ref', { data: { kind } },
+  return h('span.t-chip.ref', { data: { kind } },
     h('span', { onclick: open }, `${kind} ${rest}`),
     onRemove && h<'button'>('button', { 'aria-label': 'Take off', onclick: onRemove }, '✕'));
 }
@@ -102,13 +102,13 @@ export function chatPanel(): Panel {
     for (const c of r.changes) for (const t of c.touches ?? []) touched.set(t.id, t);
     const records = r.changes.some((c) => c.kind === 'record');
     clear(el,
-      h('div.head', {}, h('b', {}, r.changes.length === 1 ? 'A proposal' : `A proposal, ${r.changes.length} changes`), h('span.state', {}, r.status)),
+      h('div.t-head', {}, h('b', {}, r.changes.length === 1 ? 'A proposal' : `A proposal, ${r.changes.length} changes`), h('span.state', {}, r.status)),
       r.changes.map((c) => h('div.change', {},
         h('div.path', { onclick: () => app.open(c.kind === 'concept' ? 'concepts' : 'content', c.path) }, h('i', {}, c.kind), ' ', c.path),
         fieldLines(c),
         c.note && h('div.note', {}, c.note))),
-      touched.size > 0 && h('div.touches', {}, 'touches ', [...touched].map(([id, t]) => h('span.chip.firm', { data: { firmness: t.firmness }, onclick: () => app.open('concepts', id) }, `${t.name} · ${t.firmness}`))),
-      r.status === 'pending' && h('div.row', {},
+      touched.size > 0 && h('div.touches', {}, 'touches ', [...touched].map(([id, t]) => h('span.t-chip.firm', { data: { firmness: t.firmness }, onclick: () => app.open('concepts', id) }, `${t.name} · ${t.firmness}`))),
+      r.status === 'pending' && h('div.t-row', {},
         records && h<'button'>('button', { onclick: () => void app.play(r.round) }, app.playing === r.round ? 'Playing…' : 'Play it'),
         records && h<'button'>('button', { onclick: (ev: MouseEvent) => void compareRound(r, ev.currentTarget as HTMLButtonElement) }, 'Compare'),
         h<'button'>('button.primary', { onclick: () => void app.act('proposals.decide', { round: r.round, accept: true }) }, 'Accept'),
@@ -129,7 +129,7 @@ export function chatPanel(): Panel {
       const len = ev.length as { before?: number; after?: number };
       const moved = ev.moved as { milestone: string; before?: number; after?: number; change?: number }[];
       return h('div.card.test', {},
-        h('div.head', {}, h('b', {}, 'Played twice'), h('span.state', {}, `${ev.profile} player`)),
+        h('div.t-head', {}, h('b', {}, 'Played twice'), h('span.state', {}, `${ev.profile} player`)),
         h('div.field', {}, h('span.k', {}, 'whole game'), h('span.was', {}, mins(len.before)), h('span.arrow', {}, '→'), h('span.now', {}, mins(len.after))),
         moved.length ? moved.slice(0, 12).map((m) => h('div.field', {}, h('span.k', {}, m.milestone), h('span.was', {}, mins(m.before)), h('span.arrow', {}, '→'), h('span.now', {}, mins(m.after)),
           m.change !== undefined && h('span.pct', { data: { dir: m.change < 0 ? 'down' : 'up' } }, `${m.change > 0 ? '+' : ''}${Math.round(m.change)}%`)))
@@ -137,7 +137,7 @@ export function chatPanel(): Panel {
         moved.length > 12 && h('div.note', {}, `and ${moved.length - 12} more`));
     }
     return h('div.card.test', {},
-      h('div.head', {}, h('b', {}, 'Playtest'), h('span.state', {}, `${ev.profile} player${ev.proposed ? ', as proposed' : ''}`)),
+      h('div.t-head', {}, h('b', {}, 'Playtest'), h('span.state', {}, `${ev.profile} player${ev.proposed ? ', as proposed' : ''}`)),
       h('div.field', {}, h('span.k', {}, 'whole game'), h('span.now', {}, mins(ev.length as number | undefined))),
       h<'button'>('button.link', { onclick: () => app.open('playtest') }, 'Every milestone'));
   }

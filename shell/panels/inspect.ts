@@ -50,7 +50,7 @@ export function inspectPanel(): Panel {
     const [sum, sys] = await Promise.all([app.act<Summary>('ecs.summary'), app.act<Systems>('ecs.systems')]);
     if (!body || view.kind !== 'home' || !sum || !sys) return;
     const paint = (s: Summary, y: Systems) => clear(body!,
-      h('div.row', {}, pickBtn(),
+      h('div.t-row', {}, pickBtn(),
         h<'button'>(`button${y.profiling ? '.on' : ''}`, { onclick: async () => { await app.act('ecs.profile', { on: !y.profiling }); void home(); } }, y.profiling ? 'Timing on' : 'Time the systems')),
       h('h3', {}, `${s.entities} entities`),
       s.archetypes.map((a) => h('div.item', { onclick: () => void list(a.components.replace(/ \+ /g, ',')) },
@@ -60,7 +60,7 @@ export function inspectPanel(): Panel {
         const q = y.queries.find((x) => x.name === name);
         return h('div.item.sys-row', {},
           h('div.line', {}, h('b', {}, `${i + 1}. ${name}`),
-            h('span.chip.mode', { data: { mode: q?.mode ?? 'fn' } }, q ? (q.mode === 'kernel' ? `kernel · ${q.kernelOps} ops` : q.mode) : 'function'),
+            h('span.t-chip.mode', { data: { mode: q?.mode ?? 'fn' } }, q ? (q.mode === 'kernel' ? `kernel · ${q.kernelOps} ops` : q.mode) : 'function'),
             q?.ms !== undefined && h('span.count', {}, `${q.ms} ms${q.rows ? ` · ${q.rows} rows` : ''}`)),
           q?.inJs.map((s2) => h('p', {}, `in JS: ${s2.source}${s2.hint ? ` (${s2.hint})` : ''}`)));
       }),
@@ -84,7 +84,7 @@ export function inspectPanel(): Panel {
     clear(body,
       h('div.bar', {}, h<'button'>('button.link', { onclick: () => void home() }, '‹ Inspect'), h('b', {}, `${found.total} with ${withComponents.replace(/,/g, ' + ')}`)),
       found.entities.map(entityRow),
-      found.total > found.entities.length && h('p.hint', {}, `The first ${found.entities.length}.`));
+      found.total > found.entities.length && h('p.t-hint', {}, `The first ${found.entities.length}.`));
   }
 
   async function entity(id: number) {
@@ -101,7 +101,7 @@ export function inspectPanel(): Panel {
     };
     clear(body,
       h('div.bar', {}, h<'button'>('button.link', { onclick: () => void home() }, '‹ Inspect'), h('b', {}, `Entity #${id}`)),
-      h('div.row', {}, pickBtn(),
+      h('div.t-row', {}, pickBtn(),
         where() && h<'button'>('button', { onclick: () => { const p = where()!; app.point(p.x, p.y, `#${id}`); } }, 'Show it'),
         h<'button'>('button.primary', { onclick: () => app.attach(`entity:${id}`) }, 'Talk about this')),
       Object.entries(first.components).map(([name, row]) => h('div.comp', {},
@@ -111,7 +111,7 @@ export function inspectPanel(): Panel {
           cells.set(`${name}.${k}`, cell);
           return h('div.kv', { onclick: () => void poke(id, name, k, cell) }, h('span.k', {}, k), cell);
         }))),
-      h('p.hint', {}, 'Touch a value to change it in the running game.'));
+      h('p.t-hint', {}, 'Touch a value to change it in the running game.'));
     timer = window.setInterval(async () => {
       if (!body || view.kind !== 'entity' || view.id !== id) return stop();
       let now: EntityView | undefined;

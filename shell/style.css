@@ -4,11 +4,11 @@
    text selection off for the whole page; this turns it back on where words
    are typed or read. */
 #tandem {
-  --t-bg: #17161c;
-  --t-raise: #22212a;
-  --t-line: #34323f;
+  --t-bg: #1a1730;
+  --t-raise: #272346;
+  --t-line: #3d3768;
   --t-ink: #ecebf2;
-  --t-soft: #9c9aae;
+  --t-soft: #a9a4cc;
   --t-accent: #f2b84b;
   --t-accent-ink: #20170a;
   --t-good: #7ad08a;
@@ -66,8 +66,8 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 /* ---- things everything uses */
 #tandem button { font: inherit; color: var(--t-ink); cursor: pointer; }
 #tandem button:disabled { opacity: 0.5; }
-#tandem .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
-#tandem .row > button, #tandem .adder > button, #tandem .composer > button, #t-banner button, .agent-status button {
+#tandem .t-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+#tandem .t-row > button, #tandem .adder > button, #tandem .composer > button, #t-banner button, .agent-status button {
   min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--t-line); background: var(--t-raise); font-weight: 600;
 }
 #tandem button.primary { background: var(--t-accent); border-color: var(--t-accent); color: var(--t-accent-ink); }
@@ -83,25 +83,25 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 #tandem input:focus, #tandem textarea:focus, #tandem select:focus, #tandem button:focus-visible { outline: 2px solid var(--t-accent); outline-offset: 1px; }
 #tandem h2 { font-size: 17px; margin: 4px 0 10px; word-break: break-all; }
 #tandem h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--t-soft); margin: 18px 0 8px; font-weight: 700; }
-#tandem .hint { color: var(--t-soft); font-size: 13px; margin: 6px 0; }
+#tandem .t-hint { color: var(--t-soft); font-size: 13px; margin: 6px 0; }
 #tandem .bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -6px 0 8px; position: sticky; top: -12px; background: var(--t-bg); z-index: 1; padding: 2px 0; }
 #tandem .bar .primary { min-height: 38px; padding: 0 14px; border-radius: 10px; border: 0; font-weight: 600; }
 #tandem .adder { display: flex; gap: 8px; margin: 0 0 12px; }
 #tandem .adder > button { flex: none; }
 #tandem .empty { text-align: center; color: var(--t-soft); padding: 26px 16px; }
 #tandem .empty b { color: var(--t-ink); display: block; margin-bottom: 6px; }
-#tandem .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 20px; background: var(--t-raise); border: 1px solid var(--t-line); color: var(--t-soft); white-space: nowrap; }
-#tandem .chip.firm[data-firmness=loose] { color: #8fc7ff; border-color: #35506b; }
-#tandem .chip.firm[data-firmness=worked] { color: #c6a8ff; border-color: #4c3d70; }
-#tandem .chip.firm[data-firmness=playable] { color: var(--t-good); border-color: #32593a; }
-#tandem .chip.firm[data-firmness=fixed] { color: var(--t-accent); border-color: #6a5223; }
-#tandem .chip.mode[data-mode=kernel] { color: var(--t-good); }
-#tandem .chip.mode[data-mode=hybrid] { color: var(--t-accent); }
-#tandem .chip.mode[data-mode=js] { color: var(--t-bad); }
-#tandem .chip.ref button { border: 0; background: none; color: var(--t-soft); padding: 0 0 0 4px; font-size: 12px; min-width: 22px; min-height: 22px; }
+#tandem .t-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 20px; background: var(--t-raise); border: 1px solid var(--t-line); color: var(--t-soft); white-space: nowrap; }
+#tandem .t-chip.firm[data-firmness=loose] { color: #8fc7ff; border-color: #35506b; }
+#tandem .t-chip.firm[data-firmness=worked] { color: #c6a8ff; border-color: #4c3d70; }
+#tandem .t-chip.firm[data-firmness=playable] { color: var(--t-good); border-color: #32593a; }
+#tandem .t-chip.firm[data-firmness=fixed] { color: var(--t-accent); border-color: #6a5223; }
+#tandem .t-chip.mode[data-mode=kernel] { color: var(--t-good); }
+#tandem .t-chip.mode[data-mode=hybrid] { color: var(--t-accent); }
+#tandem .t-chip.mode[data-mode=js] { color: var(--t-bad); }
+#tandem .t-chip.ref button { border: 0; background: none; color: var(--t-soft); padding: 0 0 0 4px; font-size: 12px; min-width: 22px; min-height: 22px; }
 
 #tandem .item { padding: 11px 12px; border-radius: 12px; background: var(--t-raise); margin-bottom: 8px; cursor: pointer; }
-#tandem .item:active { background: #2b2a35; }
+#tandem .item:active { background: #322d59; }
 #tandem .item .line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 #tandem .item b { word-break: break-word; }
 #tandem .item p { color: var(--t-soft); font-size: 13px; margin-top: 3px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
@@ -112,15 +112,15 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 /* ---- chat */
 .chat { display: flex; flex-direction: column; gap: 10px; }
 .msg { max-width: 88%; padding: 9px 12px; border-radius: 14px; position: relative; word-break: break-word; }
-.msg.me { align-self: flex-end; background: #3a3320; border-bottom-right-radius: 4px; }
+.msg.me { align-self: flex-end; background: #4a3f8f; border-bottom-right-radius: 4px; }
 .msg.agent { align-self: flex-start; background: var(--t-raise); border-bottom-left-radius: 4px; }
 .msg.error { color: var(--t-bad); }
 .msg time { display: block; font-size: 11px; color: var(--t-soft); margin-top: 3px; }
 .msg .refs, #t-foot .refs { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
-.prose pre { font-family: var(--t-mono); font-size: 12px; background: #101014; padding: 8px; border-radius: 8px; overflow-x: auto; white-space: pre; margin: 6px 0; }
-.prose code { font-family: var(--t-mono); font-size: 13px; background: #101014; padding: 1px 5px; border-radius: 5px; }
+.prose pre { font-family: var(--t-mono); font-size: 12px; background: #120f24; padding: 8px; border-radius: 8px; overflow-x: auto; white-space: pre; margin: 6px 0; }
+.prose code { font-family: var(--t-mono); font-size: 13px; background: #120f24; padding: 1px 5px; border-radius: 5px; }
 .card { background: var(--t-raise); border: 1px solid var(--t-line); border-radius: 14px; padding: 11px 12px; }
-.card .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.card .t-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
 .card .state { font-size: 12px; color: var(--t-soft); }
 .card.prop { border-color: #6a5223; }
 .card.prop[data-status=accepted] { border-color: #32593a; }
@@ -141,8 +141,8 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 .field .pct[data-dir=up] { color: var(--t-accent); }
 .note { color: var(--t-soft); font-size: 13px; font-style: italic; margin-top: 3px; }
 .touches { font-size: 12px; color: var(--t-soft); display: flex; flex-wrap: wrap; gap: 5px; align-items: center; padding-top: 8px; border-top: 1px solid var(--t-line); }
-.card .row { margin-bottom: 0 !important; }
-.card .row > button { flex: 1 1 auto; padding: 0 10px !important; }
+.card .t-row { margin-bottom: 0 !important; }
+.card .t-row > button { flex: 1 1 auto; padding: 0 10px !important; }
 .fail { color: var(--t-bad); font-size: 14px; padding: 3px 0; }
 .pass { color: var(--t-good); font-size: 14px; padding: 3px 0; }
 figure.card.look { padding: 0; overflow: hidden; align-self: flex-start; max-width: 62%; cursor: zoom-in; }
@@ -198,7 +198,7 @@ figure.card.look figcaption { padding: 6px 10px; font-size: 12px; color: var(--t
 /* ---- art */
 .sheet img { display: block; width: 100%; image-rendering: pixelated; border-radius: 10px; cursor: zoom-in; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
-#tandem .chip.tap { cursor: pointer; min-height: 32px; padding: 3px 12px; color: var(--t-ink); }
+#tandem .t-chip.tap { cursor: pointer; min-height: 32px; padding: 3px 12px; color: var(--t-ink); }
 pre.workers { font-family: var(--t-mono); font-size: 12px; color: var(--t-soft); background: var(--t-raise); border-radius: 10px; padding: 10px; white-space: pre-wrap; word-break: break-word; margin-bottom: 8px; }
 
 /* ---- over the stage */

@@ -22,7 +22,7 @@ export function contentPanel(): Panel {
     const count = new Map<string, number>();
     for (const p of paths) count.set(p.split('/')[0], (count.get(p.split('/')[0]) ?? 0) + 1);
     clear(body,
-      h('p.hint', {}, 'Everything the game is tuned with. Change a field and the game in the page follows at once.'),
+      h('p.t-hint', {}, 'Everything the game is tuned with. Change a field and the game in the page follows at once.'),
       [...count].map(([kind, n]) => h('div.item', { onclick: () => void records(kind) }, h('div.line', {}, h('b', {}, kind), h('span.count', {}, String(n))))));
   }
 
@@ -93,7 +93,7 @@ export function contentPanel(): Panel {
       h('div.bar', {}, h<'button'>('button.link', { onclick: () => void leave(() => records(kind)) }, `‹ ${kind}`), saveBtn),
       h('h2', {}, path),
       Object.entries(rec).map(([k, v]) => field(k, v)),
-      h('div.row', {}, h<'button'>('button.primary', { onclick: () => void leave(() => app.attach(`record:${path}`)) }, 'Talk about this')));
+      h('div.t-row', {}, h<'button'>('button.primary', { onclick: () => void leave(() => app.attach(`record:${path}`)) }, 'Talk about this')));
 
     async function leave(then: () => unknown) {
       if (dirty) await save();

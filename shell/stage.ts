@@ -26,6 +26,11 @@ export interface Stage {
    * 'missing' when the page has no such thing, null when the page does not answer.
    */
   find(at: string): Promise<{ x: number; y: number; w: number; h: number } | 'missing' | null>;
+  /**
+   * Something done on the page as a person would (look, tap, type, go): what the page answers, with a place on this
+   * screen when it is about one thing; null when the page does not answer.
+   */
+  act(what: Record<string, unknown>): Promise<Record<string, unknown> | null>;
   /** What is at a place of this screen, on the project's page; null when nothing is, or the page does not answer. */
   pick(x: number, y: number): Promise<Picked | null>;
 }
@@ -67,6 +72,7 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
   let asked = 0;
   const waiting = new Map<number, (at: { x: number; y: number } | null) => void>();
   const picking = new Map<number, (got: Picked | null) => void>();
+  const acting = new Map<number, (got: Record<string, unknown> | null) => void>();
   const finding = new Map<number, (at: { x: number; y: number; w: number; h: number } | 'missing' | null) => void>();
   const send = (msg: Record<string, unknown>) => frame.contentWindow?.postMessage({ tandem: 1, ...msg }, '*');
 
@@ -93,6 +99,15 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
         waiting.set(id, resolve);
         send({ type: 'where', id, x, y });
         setTimeout(() => { if (waiting.delete(id)) resolve(null); }, 800);
+      });
+    },
+    act(what) {
+      if (!stage.can.find) return Promise.resolve(null);
+      const id = ++asked;
+      return new Promise((resolve) => {
+        acting.set(id, resolve);
+        send({ ...what, type: 'do', id });
+        setTimeout(() => { if (acting.delete(id)) resolve(null); }, 2500);
       });
     },
     pick(x, y) {
@@ -132,6 +147,13 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
     } else if (m.type === 'page') {
       // Tandem's own lines in the page: what is on it can be found.
       stage.can = { ...stage.can, find: !!m.can?.find };
+    } else if (m.type === 'did' && m.id !== undefined) {
+      const r = frame.getBoundingClientRect();
+      const { tandem: _t, type: _y, id: _i, ...got } = m as Record<string, unknown>;
+      // A place on the page is a place on this screen, moved by where the frame is.
+      if (typeof got.x === 'number' && typeof got.y === 'number') { got.x += r.left; got.y += r.top; }
+      acting.get(m.id)?.(got);
+      acting.delete(m.id);
     } else if (m.type === 'picked' && m.id !== undefined) {
       const r = frame.getBoundingClientRect();
       const p = m as unknown as Picked;

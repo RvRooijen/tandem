@@ -90,7 +90,7 @@ test('tandem\'s lines in a page find a thing by the words on it, or by a selecto
   frame.eval(readFileSync(new URL('../bridge/page.js', import.meta.url), 'utf8'));
   const wait = async (what: () => unknown) => { for (let i = 0; i < 100 && !what(); i++) await new Promise((r) => setTimeout(r, 20)); assert.ok(what(), 'the page answered'); };
   await wait(() => said.some((m) => m.type === 'page'));
-  assert.deepEqual(said.find((m) => m.type === 'page'), { tandem: 1, type: 'page', can: { find: true } });
+  assert.deepEqual(said.find((m) => m.type === 'page'), { tandem: 1, type: 'page', can: { find: true, act: true } });
 
   let n = 0;
   const find = async (words: string) => {
@@ -131,5 +131,39 @@ test('tandem\'s lines in a page find a thing by the words on it, or by a selecto
   assert.deepEqual([(await pick()).words, (await pick()).tag], ["Christmas at gran's", 'input'], 'a field is itself, named by what it shows');
   under = frame.document.body;
   assert.deepEqual(await pick(), { missing: true }, 'the bare page is nothing to point at');
+
+  // And the agent uses the page as a person would. What is on it, as lines:
+  const act = async (what: Record<string, unknown>) => {
+    const id = ++n;
+    frame.dispatchEvent(new (frame as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent('message', { data: { tandem: 1, type: 'do', id, ...what }, source: dom.window as never }));
+    await wait(() => said.some((m) => m.type === 'did' && m.id === id));
+    const { tandem: _t, type: _y, id: _i, ...rest } = said.find((m) => m.type === 'did' && m.id === id);
+    return rest;
+  };
+  const seen = await act({ do: 'look' });
+  assert.equal(seen.ok, true);
+  assert.deepEqual(seen.lines, [
+    '# Lots to draw',
+    'Make a group for the family, then share the link.',
+    '[field] Name of the group: empty (shows "Christmas at gran\'s")',
+    '[button] Make a group',
+    '[picture] A knitted band',
+  ], 'what a person would read it by; not what cannot be seen');
+  // A field is filled in by what it is called, in a way the page notices.
+  const input = frame.document.querySelector('input')!;
+  const noticed: string[] = [];
+  for (const type of ['input', 'change']) input.addEventListener(type, () => noticed.push(type));
+  const typed = await act({ do: 'type', at: 'name of the group', text: 'Gran and all' });
+  assert.deepEqual([typed.ok, typed.did, input.value, noticed], [true, 'filled in "Name of the group"', 'Gran and all', ['input', 'change']]);
+  assert.match((await act({ do: 'look' })).lines[2], /\[field\] Name of the group: "Gran and all"/);
+  assert.deepEqual(await act({ do: 'type', at: 'Surname', text: 'x' }), { ok: false, error: 'there is no field on the page called "Surname"' });
+  // A button is tapped by the words on it: the button, not the letters; a moment later, so the person sees which.
+  let tapped = 0;
+  frame.document.querySelector('button.go')!.addEventListener('click', () => { tapped++; });
+  const tap = await act({ do: 'tap', at: 'Make a group' });
+  assert.deepEqual([tap.ok, tap.did, tap.w, tapped], [true, 'tapped button "Make a group"', 120, 0]);
+  await wait(() => tapped === 1);
+  assert.equal((await act({ do: 'tap', at: 'Draw the names' })).ok, false);
+  assert.deepEqual(await act({ do: 'go', path: 'https://elsewhere.example/' }), { ok: false, error: 'a place in this app starts with / (or ? or #)' });
   dom.window.close();
 });

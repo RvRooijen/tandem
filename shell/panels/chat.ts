@@ -363,6 +363,8 @@ export function chatPanel(): Panel {
       case 'art.round':
         return h(`div.sys.tap${ev.state === 'failed' ? '.fail' : ''}`, { onclick: () => app.open('art', `worker:${ev.worker}`) },
           ev.state === 'failed' ? `🖌 the worker on ${ev.name} failed` : ev.state === 'stopped' ? `🖌 the worker on ${ev.name} was stopped` : `🖌 ${ev.name}: ${ev.phase === 'silhouette' ? 'a silhouette to approve' : 'a drawing to accept'}. Look in Art`);
+      case 'page.did':
+        return h('div.sys', {}, `◎ the agent ${ev.did || ev.what}${ev.showing === 'copy' ? ', in the working copy' : ''}`);
       case 'setup.changed':
         return h('div.sys', {}, `✓ how tandem runs the project was changed (${(ev.fields as string[]).join(', ')})${ev.restarting ? '. Its page starts again with it' : ''}`);
       case 'code.changed':

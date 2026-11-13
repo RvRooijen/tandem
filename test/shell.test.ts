@@ -497,6 +497,36 @@ test('the agent shows things on the person\'s screen', async () => {
   app.refs.length = 0;
   app.close();
 
+  // The agent uses the page as a person would: asked of this screen, done in the frame, and answered to it.
+  const doing = async (what: string, says: Record<string, unknown>) => {
+    await until(() => toFrame.some((m) => m.type === 'do' && m.do === what), `the page to be asked to ${what}`, 20000);
+    const m = toFrame.find((x) => x.type === 'do' && x.do === what);
+    toFrame.splice(toFrame.indexOf(m), 1);
+    fromFrame({ type: 'did', id: m.id, ...says });
+    return m;
+  };
+  const onPage = { ok: true, path: '/', title: 'Lots', lines: ['# Lots to draw', '[button] Make a group'] };
+  toFrame.length = 0;
+  const looking = host.run('page.look', {}, AGENT) as Promise<any>;
+  await doing('look', onPage);
+  assert.deepEqual(await looking, { showing: 'project', path: '/', title: 'Lots', page: '# Lots to draw\n[button] Make a group' });
+  // A tap: the thing is marked on the person's screen, and the agent is told what the page is like afterwards.
+  const tapping = host.run('page.tap', { at: 'Make a group' }, AGENT) as Promise<any>;
+  const tap = await doing('tap', { ok: true, did: 'tapped button "Make a group"', x: 40, y: 500, w: 200, h: 44 });
+  assert.equal(tap.at, 'Make a group');
+  await until(() => $('#t-ring span').textContent === 'the agent taps this', 'the mark on what it taps');
+  await doing('look', { ...onPage, path: '/group/abc', lines: ['# Gran and all'] });
+  assert.deepEqual(await tapping, { did: 'tapped button "Make a group"', showing: 'project', path: '/group/abc', title: 'Lots', page: '# Gran and all' });
+  const did = host.events.since(0).filter((e) => e.type === 'page.did').at(-1)!;
+  assert.deepEqual([did.what, did.at, did.did, did.by], ['tap', 'Make a group', 'tapped button "Make a group"', AGENT]);
+  tab('Chat');
+  await until(() => all('.chat .sys').some((x) => /the agent tapped button "Make a group"/.test(x.textContent!)), 'what it did, in the conversation');
+  app.close();
+  // What the page refuses, the agent is told as it is.
+  const typing = assert.rejects(host.run('page.type', { at: 'Surname', text: 'x' }, AGENT), /there is no field on the page called "Surname"/);
+  await doing('type', { ok: false, error: 'there is no field on the page called "Surname"' });
+  await typing;
+
   await host.run('stage.open', { tab: 'concepts', id: 'night-roses' }, AGENT);
   await until(() => $('input.title'), 'the concept to be opened');
   assert.ok(!$('#t-sheet').classList.contains('shut'));

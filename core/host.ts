@@ -131,6 +131,28 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     setTimeout(() => { for (const stop of onStop) stop(); process.exit(code); }, 600).unref?.();
   }
 
+  /**
+   * Something done on the project's page, on the person's own screen: asked of whatever screen has tandem open,
+   * which does it in the frame and answers (page.answer). What changes the page is kept as something that happened.
+   */
+  const asked = new Map<string, (result: Record<string, unknown>) => void>();
+  let asking = 0;
+  async function onPage(by: By, what: Record<string, unknown>) {
+    if (!project.pageCommand(0)) throw new CommandError('unsupported', 'this project has no page set up in tandem (project.configure: page)');
+    const id = `a${Date.now().toString(36)}${++asking}`;
+    const result = await new Promise<Record<string, unknown> | undefined>((resolve) => {
+      asked.set(id, resolve);
+      events.cast({ type: 'page.ask', by, id, ...what });
+      // Switching to the working copy can mean starting its page first.
+      setTimeout(() => { if (asked.delete(id)) resolve(undefined); }, what.copy === true ? 90_000 : 45_000).unref?.();
+    });
+    if (!result) throw new CommandError('unavailable', 'the person\'s screen did not answer: tandem has to be open on their device for this. Ask them to open it, or go by the code');
+    if (result.ok === false) throw new CommandError('failed', String(result.error ?? 'it did not work'));
+    if (what.do !== 'look') events.add({ type: 'page.did', by, what: what.do, ...(what.at !== undefined && { at: what.at }), ...(what.path !== undefined && { path: what.path }), did: result.did ?? '', showing: result.showing });
+    const { ok: _ok, lines, ...rest } = result;
+    return { ...rest, page: Array.isArray(lines) ? lines.join('\n') : '' };
+  }
+
   /** How the project is run, as tandem keeps it: in its own folder in the project, not among the project's files. */
   const SETUP_FIELDS = ['name', 'page', 'test', 'check', 'run', 'adapter', 'art', 'edit'] as const;
   function writeSetup(after: RecordValue) {
@@ -625,6 +647,45 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       name: 'playtest.milestones', kind: 'read',
       about: 'The milestones a playthrough reports, each with a few words: so that the names in a playtest mean something.',
       run: () => game.milestones(),
+    },
+
+    // ---- the project's page, used as a person would: asked of the person's own screen, where they see it happen
+    {
+      name: 'page.look', kind: 'read',
+      about: 'What is on the project\'s page on the person\'s screen now, as lines: headings, text, and what can be tapped or filled in. copy: true looks at the page of your working copy instead (false: the project\'s own), and their screen switches to it. Works while tandem is open on their device.',
+      input: { copy: 'boolean?' },
+      run: (c, i) => onPage(c.by, { do: 'look', ...(i.copy !== undefined && { copy: i.copy }) }),
+    },
+    {
+      name: 'page.tap', kind: 'write', agent: 'free',
+      about: 'Tap something on the project\'s page on the person\'s screen: at is the words on it (a button, a link, a checkbox by its label) or a CSS selector. They see it happen. Answers with what is on the page afterwards. copy as in page.look.',
+      input: { at: 'string', copy: 'boolean?' },
+      run: (c, i) => onPage(c.by, { do: 'tap', at: i.at, ...(i.copy !== undefined && { copy: i.copy }) }),
+    },
+    {
+      name: 'page.type', kind: 'write', agent: 'free',
+      about: 'Fill in a field on the project\'s page on the person\'s screen: at is what the field is called (its label, or what it shows when empty) or a CSS selector; text is what goes in it (for a list of choices: the choice). submit: true sends the form it is in afterwards, as Enter would. Answers with what is on the page afterwards. copy as in page.look.',
+      input: { at: 'string', text: 'string', submit: 'boolean?', copy: 'boolean?' },
+      run: (c, i) => onPage(c.by, { do: 'type', at: i.at, text: i.text, submit: !!i.submit, ...(i.copy !== undefined && { copy: i.copy }) }),
+    },
+    {
+      name: 'page.go', kind: 'write', agent: 'free',
+      about: 'Go to another place in the project\'s page on the person\'s screen: path starts with / (or ? or #). Answers with what is on the page there. copy as in page.look.',
+      input: { path: 'string', copy: 'boolean?' },
+      run: (c, i) => onPage(c.by, { do: 'go', path: i.path, ...(i.copy !== undefined && { copy: i.copy }) }),
+    },
+    {
+      name: 'page.answer', kind: 'write',
+      about: 'The person\'s screen answering what was asked of the project\'s page (page.look, page.tap, page.type, page.go). Sent by tandem\'s page, not by hand.',
+      input: { id: 'string', result: 'json' },
+      run(_c, i) {
+        const waiting = asked.get(i.id);
+        // (Two screens open: the first to answer is the one that is heard.)
+        if (!waiting) return { heard: false };
+        asked.delete(i.id);
+        waiting(i.result as Record<string, unknown>);
+        return { heard: true };
+      },
     },
 
     // ---- the stage: the agent shows the person something in the app

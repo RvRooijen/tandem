@@ -273,6 +273,8 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
         for (const p of panels) p.agent?.();
         return;
       }
+      // The agent uses the project's page as a person would: asked here, done in the frame, answered to the core.
+      if (ev.type === 'page.ask') { if (live) void onPage(ev); return; }
       // What is only told, not kept (what a worker is doing right now), goes to the panels and nowhere else.
       if (ev.n === 0) { bubbles.feed(ev, true); for (const p of panels) p.event?.(ev, true); return; }
       app.events.push(ev);
@@ -292,6 +294,41 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       for (const p of panels) p.event?.(ev, live);
     },
   };
+  /**
+   * Something the agent does on the project's page (look, tap, type, go). It is done on what this screen shows, the
+   * project or the working copy (`copy` switches to one or the other first); the thing it touches is marked, so
+   * the person sees it happen.
+   */
+  async function onPage(ev: Event) {
+    const answer = (result: Record<string, unknown>) => run('page.answer', { id: String(ev.id), result }).catch(() => {});
+    const wait = async (what: () => unknown, ms: number) => { for (let t = 0; t < ms && !what(); t += 150) await new Promise((r) => setTimeout(r, 150)); return !!what(); };
+    try {
+      if (!info.page) return void answer({ ok: false, error: 'this project has no page set up in tandem (project.configure: page)' });
+      if (typeof ev.copy === 'boolean' && ev.copy !== (stage.showing === 'copy')) {
+        if (ev.copy) { const got = await run<{ url: string }>('code.play'); stage.showCopy(got.url); } else stage.showProject();
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      if (!(await wait(() => stage.can.find, 20000))) return void answer({ ok: false, error: 'the page on the person\'s screen does not answer: it is still starting, or it did not come up' });
+      const what = String(ev.do);
+      let did: Record<string, unknown> | null = { ok: true };
+      if (what !== 'look') {
+        did = await stage.act({ do: what, at: ev.at, text: ev.text, submit: ev.submit, path: ev.path });
+        if (did && did.ok === false) return void answer({ ...did, showing: stage.showing });
+        if (did && typeof did.x === 'number') showRing(Number(did.x) + Number(did.w) / 2, Number(did.y) + Number(did.h) / 2, Number(did.w), Number(did.h), what === 'tap' ? 'the agent taps this' : 'the agent fills this in', true, true);
+        // What it did may have loaded the page anew: wait for it to be there again, and for the page to settle.
+        await new Promise((r) => setTimeout(r, 900));
+        await wait(() => stage.can.find, 15000);
+      }
+      // (A page that is loading anew does not answer at once: asked a few times.)
+      let now: Record<string, unknown> | null = null;
+      for (let i = 0; i < 4 && !now; i++) now = await stage.act({ do: 'look' });
+      if (!now) return void answer({ ok: false, error: 'the page did not answer', showing: stage.showing });
+      void answer({ ok: true, did: did?.did ?? (did ? undefined : 'done, as far as can be told: the page loaded anew'), showing: stage.showing, path: now.path, title: now.title, lines: now.lines });
+    } catch (e) {
+      void answer({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
   /** Wait for the core to be gone and back, then load this page again on what it is now. */
   async function again() {
     await new Promise((r) => setTimeout(r, 2500));

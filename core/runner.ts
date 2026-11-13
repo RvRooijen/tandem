@@ -57,11 +57,15 @@ export function createRunner(host: Host) {
   let context = 0;
   /** The commands this conversation was last told of: what tandem gained since is said at the next message. */
   let told: string[] | undefined;
+  /** The message it is answering right now, kept so that a turn that was cut off (tandem started again) is taken up again. */
+  let running: number | undefined;
+  let cutOff = false;
   try {
     const kept = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
     session = kept.session;
     context = session ? Number(kept.context) || 0 : 0;
     if (session && Array.isArray(kept.commands)) told = kept.commands.map(String);
+    cutOff = typeof kept.running === 'number';
   } catch { /* start a new conversation */ }
   const off = process.env.TANDEM_AGENT === 'off';
   const queue: Event[] = [];
@@ -79,7 +83,7 @@ export function createRunner(host: Host) {
   const beat = setInterval(() => { if (busy) cast(true); }, 5000);
   beat.unref?.();
 
-  const keep = () => writeFileSync(file, JSON.stringify({ session, context: session ? context : 0, ...(session && told && { commands: told }) }, null, 2));
+  const keep = () => writeFileSync(file, JSON.stringify({ session, context: session ? context : 0, ...(session && told && { commands: told }), ...(running !== undefined && { running }) }, null, 2));
   const forget = () => { session = undefined; context = 0; told = undefined; keep(); };
 
   /**
@@ -147,6 +151,8 @@ export function createRunner(host: Host) {
   function run(ev: Event, retry = false) {
     busy = true; doing = 'starting'; text = '';
     cast(true);
+    running = ev.n;
+    keep();
     const round = `r${ev.n}`;
     // Its working copy first takes in whatever the project gained since it last worked.
     let copy = '';
@@ -242,6 +248,9 @@ export function createRunner(host: Host) {
         say(`(The conversation reached ${Math.round(context / 1000)}k tokens; the next message starts a new one.)`);
         forget();
       }
+      // The turn is over, however it went: there is nothing to take up again.
+      running = undefined;
+      keep();
       busy = false; doing = ''; text = '';
       cast(true);
       next();
@@ -279,6 +288,16 @@ export function createRunner(host: Host) {
       } else cast(true);
     }
   });
+
+  // Tandem was started again in the middle of a turn (a change to tandem itself, another project opened and this
+  // one again, a crash): the turn was cut off with it. The agent is told, and carries on where it was.
+  if (cutOff && !off) {
+    const resume = setTimeout(() => host.events.add({
+      type: 'message', by: 'engine', kind: 'resume',
+      text: 'Tandem was started again while you were in the middle of your turn, and the turn was cut off. Whatever you had already proposed or changed still stands: look at what is there (proposals.list, and your working copy if you were coding), then carry on from where you were and finish. Do not start over, and do not propose again what is already waiting.',
+    }), 1200);
+    resume.unref?.();
+  }
 
   const commands: CommandDef[] = [
     {

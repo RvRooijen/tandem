@@ -407,6 +407,7 @@ export function chatPanel(): Panel {
         // What the engine tells the agent (art was accepted: bring it into the game) is shown, small: it is why the agent starts working.
         // Once the agent has been asked to read the project, the offer to do so is no longer one.
         if (ev.by === 'engine' && ev.kind === 'init') { asked = true; for (const w of welcomes) w.querySelector('.t-row')?.remove(); }
+        if (ev.by === 'engine' && ev.kind === 'resume') return h('div.sys.engine', {}, '⚙ Tandem was started again while the agent was at work: it carries on where it was.');
         if (ev.by === 'engine') return h('div.sys.engine', {}, ev.kind === 'init' ? '⚙ The agent was asked to read this project and set tandem up for it: its concepts, and how it is run.' : `⚙ to the agent: ${String(ev.text ?? '')}`);
         return h(`div.msg.${ev.by === 'me' ? 'me' : 'agent'}${ev.error ? '.error' : ''}`, {},
           Array.isArray(ev.refs) && h('div.refs', {}, (ev.refs as string[]).map((r) => refChip(app, r))),

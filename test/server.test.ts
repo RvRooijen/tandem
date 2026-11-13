@@ -2,7 +2,7 @@
 // agent answering a message through nothing but the command line.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startServer } from '../core/server.ts';
@@ -160,4 +160,25 @@ test('a message from the person is answered by the agent, whose only hands are c
   assert.equal((await post('agent.status')).result.busy, false);
   assert.equal((await post('agent.reset')).result.reset, true);
   assert.equal((await post('agent.stop', {}, { 'x-tandem-by': 'agent:main' })).code, 'permission');
+});
+
+test('a turn that was cut off because tandem was started again is taken up again', async () => {
+  // A project whose agent was in the middle of answering when the core went away: that is kept with its conversation.
+  const other = await fixture({ code: false });
+  writeFileSync(join(other.dir, '.tandem/data/agent.json'), JSON.stringify({ session: 'sess-7', context: 1000, running: 3 }));
+  const was = process.env.TANDEM_PORT;
+  const s2 = await startServer({ port: 0, host: other.host });
+  process.env.TANDEM_PORT = String(s2.port);
+  try {
+    await until(() => other.host.events.since(0).some((e) => e.type === 'message' && e.by === 'agent'));
+    await until(() => !s2.runner!.status().busy);
+    const told = other.host.events.since(0).find((e) => e.type === 'message' && e.by === 'engine')!;
+    assert.deepEqual([told.kind, /carry on from where you were/.test(String(told.text))], ['resume', true]);
+    assert.match(String(other.host.events.since(0).find((e) => e.by === 'agent')!.text), /^Again: /, 'in the conversation it was in');
+    assert.equal(JSON.parse(readFileSync(join(other.dir, '.tandem/data/agent.json'), 'utf8')).running, undefined, 'and when the turn is over there is nothing left to take up');
+  } finally {
+    process.env.TANDEM_PORT = was;
+    await s2.close();
+    other.cleanup();
+  }
 });

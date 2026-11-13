@@ -7,7 +7,7 @@
 import { CRITTER, Critter, Flower, Gnome, Move, Pos, Spark, ST, VS, Visitor } from '../sim/components.ts';
 import { ROLE } from '../sim/content.ts';
 import type { Game } from '../sim/game.ts';
-import { BASKET, COTTAGE_W, GATE, HOLE, HOLE_RY, JAR, PATH, PLOTS, WORLD_W } from '../sim/world.ts';
+import { BASKET, COTTAGE_W, GATE, HOLE, HOLE_RY, JAR, PATH, PLOTS, SIGN, WORLD_W } from '../sim/world.ts';
 import { clamp, hash01, lerp, smooth } from '../util.ts';
 import { FB, hex, rgb, text, textWidth, type Frame } from './fb.ts';
 import * as S from './sprites.ts';
@@ -48,6 +48,8 @@ export interface Scene {
   /** Garden coordinates of a point in the picture. */
   toWorld(fx: number, fy: number): { x: number; y: number };
   render(g: Game, time: number): void;
+  /** Show the cottage in one of its looks (summer, spring, autumn, winter); one it does not have is summer. */
+  setCottage(look: string): void;
 }
 
 export function createScene(w: number, h: number): Scene {
@@ -57,6 +59,7 @@ export function createScene(w: number, h: number): Scene {
   const Y = (y: number) => Math.round(y * Z);
   const bg = new Uint32Array(w * h);
   let bgKey = '';
+  let cottageLook = 'summer';
   // Light, the way testp does it: the night multiplies everything with an ambient colour, and every lamp lifts a
   // pool around it back toward its own colour, in hard bands. `hts` says what stands where and how near it is (the
   // drawings' depth maps), so the edges of things facing a lamp catch a rim of its light and the far sides stay darker.
@@ -317,8 +320,8 @@ export function createScene(w: number, h: number): Scene {
       stand(x, 23 * Z, 6, 15 * Z, 2);
     }
     for (const side of [-10, 8]) stand(X(GATE.x + side), 21 * Z, 4, 18 * Z, 3);
-    if (S.COTTAGE) {
-      const f = S.COTTAGE;
+    const f = S.cottage(cottageLook);
+    if (f) {
       for (let y = 0; y < Math.min(h, f.h); y++)
         for (let x = 0; x < f.w; x++) {
           const at = y * f.w + x;
@@ -330,9 +333,9 @@ export function createScene(w: number, h: number): Scene {
 
   function drawCottage(t: FB, dread: number) {
     const right = X(COTTAGE_W);
-    if (S.COTTAGE) {
+    const f = S.cottage(cottageLook);
+    if (f) {
       // The drawing covers the garden's own width; a wider screen gets more of the same wall and roof to the left.
-      const f = S.COTTAGE;
       for (let y = 0; y < f.h; y++) {
         const edge = f.px[y * f.w];
         if (edge) t.rect(0, y, ox, 1, edge);
@@ -933,7 +936,7 @@ export function createScene(w: number, h: number): Scene {
   function render(g: Game, time: number) {
     const s = g.s;
     const dread = Math.round((1 - s.peace / 100) * 8) / 8;
-    const key = `${s.plots}|${dread}|${g.holeR > 0 ? 1 : 0}`;
+    const key = `${s.plots}|${dread}|${g.holeR > 0 ? 1 : 0}|${cottageLook}`;
     if (key !== bgKey) { bgKey = key; buildBackground(g, dread); }
     fb.px.set(bg);
     hts.set(hbg);
@@ -943,6 +946,7 @@ export function createScene(w: number, h: number): Scene {
 
     // Props on the doorstep.
     stand(s.blooms > 0 ? S.BASKET_FULL : S.BASKET, BASKET.x, BASKET.y);
+    if (S.SIGN) stand(S.SIGN, SIGN.x, SIGN.y);
     if (s.flags.teeth) stand(S.JAR[s.teeth > 500 ? 3 : s.teeth > 40 ? 2 : s.teeth > 0 ? 1 : 0], JAR.x, JAR.y);
 
     gatherFlowers(g, time);
@@ -967,7 +971,7 @@ export function createScene(w: number, h: number): Scene {
     if (g.fx.scare > 0) scare(g);
   }
 
-  return { fb, toWorld: (fx, fy) => ({ x: (fx - ox) / Z, y: fy / Z }), render };
+  return { fb, toWorld: (fx, fy) => ({ x: (fx - ox) / Z, y: fy / Z }), render, setCottage: (look) => { cottageLook = look; } };
 }
 
 // How light behaves, after testp's: the bands a pool falls off in, how strongly a lamp lifts what it reaches, how fast

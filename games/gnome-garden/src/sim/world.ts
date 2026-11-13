@@ -12,6 +12,7 @@ export const DOOR = { x: 21, y: 40 };
 export const BASKET = { x: 38, y: 53 };
 export const JAR = { x: 14, y: 57 };
 export const GATE = { x: 126, y: 40 };
+export const SIGN = { x: 108, y: 45 };  // the wooden sign, on the lawn just left of the gate
 export const HOLE = { x: 70, y: 182 };
 
 export const BED = { x0: 20, y0: 76, cols: 8, rows: 6, dx: 14, dy: 13 };

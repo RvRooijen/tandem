@@ -5,14 +5,15 @@ import { ALPHABET, ART } from './art.gen.ts';
 import { hex, recolor, type Frame } from './fb.ts';
 
 /** Sheets drawn at the picture's own resolution. The rest are older drawings at half of it, shown doubled until they are redrawn. */
-const FINE = new Set<string>(['garden-cottage', 'gnome', 'garden-flowers', 'garden-props', 'garden-critters', 'garden-visitor']);
+const FINE = new Set<string>(['garden-cottage', 'garden-sign', 'gnome', 'garden-flowers', 'garden-props', 'garden-critters', 'garden-visitor']);
 
 /** The frames of one animation of one look of a sheet, at the picture's resolution. `raw` keeps a half-size sheet as it is. */
 function frames(sheet: string, look: string, anim: string, raw = false): Frame[] {
   const s = ART[sheet];
   // A drawing can gain looks (a cottage per season) before the game knows what to do with them: until it does,
   // a look it does not have is its first one, which is the drawing as it was.
-  const list = (s?.looks[look] ?? (s && Object.values(s.looks)[0]))?.[anim];
+  if (s && !s.looks[look]) look = Object.keys(s.looks)[0];
+  const list = s?.looks[look]?.[anim];
   if (!list) throw new Error(`no drawing for ${sheet}/${look}/${anim}; run \`npm run art\``);
   const colors = s.pal.map(hex);
   const up = raw || FINE.has(sheet) ? 1 : 2;
@@ -146,4 +147,20 @@ export const SPARK_COLOR = [
 ];
 
 /** The cottage, if it has been drawn; the renderer makes do with flat shapes until then. */
-export const COTTAGE: Frame | undefined = ART['garden-cottage'] ? frames('garden-cottage', 'default', 'main')[0] : undefined;
+export const COTTAGE: Frame | undefined = ART['garden-cottage'] ? frames('garden-cottage', 'summer', 'main')[0] : undefined;
+
+/** The looks the cottage has been drawn in: one per season. Summer is the cottage as it always was. */
+export const COTTAGE_LOOKS: string[] = Object.keys(ART['garden-cottage']?.looks ?? {});
+
+const cottages = new Map<string, Frame>();
+
+/** The cottage in one of its looks, by name; a look it does not have is summer. */
+export function cottage(look: string): Frame | undefined {
+  if (!COTTAGE || look === 'summer' || !COTTAGE_LOOKS.includes(look)) return COTTAGE;
+  let f = cottages.get(look);
+  if (!f) { f = frames('garden-cottage', look, 'main')[0]; cottages.set(look, f); }
+  return f;
+}
+
+/** The wooden sign by the gate, if it has been drawn. */
+export const SIGN: Frame | undefined = ART['garden-sign'] ? frames('garden-sign', 'default', 'main')[0] : undefined;

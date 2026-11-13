@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { createGame } from '../src/sim/game.ts';
 import { ZOOM, createScene } from '../src/render/scene.ts';
 import { FB, frame, hex, text } from '../src/render/fb.ts';
-import { FLOWER, GNOME, VISITOR } from '../src/render/sprites.ts';
+import { COTTAGE, COTTAGE_LOOKS, FLOWER, GNOME, SIGN, VISITOR, cottage } from '../src/render/sprites.ts';
 import { FLOWERS, VISITORS } from '../src/sim/content.ts';
-import { WORLD_H } from '../src/sim/world.ts';
+import { SIGN as WORLD_SIGN, WORLD_H } from '../src/sim/world.ts';
 
 test('blit clips at every edge and flips', () => {
   const fb = new FB(8, 8);
@@ -23,6 +23,29 @@ test('there is a sprite for everything the game can show', () => {
   assert.equal(VISITOR.length, VISITORS.length);
   assert.ok(GNOME.length >= 5 + VISITORS.length, 'a look for every visitor who stays');
   for (const looks of GNOME) assert.equal(looks.length, 3);
+});
+
+test('the sign stands by the gate, and the cottage shows a look by name', () => {
+  assert.ok(SIGN, 'the sign is drawn');
+  assert.deepEqual(COTTAGE_LOOKS, ['summer', 'spring', 'autumn', 'winter']);
+  assert.equal(cottage('summer'), COTTAGE);
+  assert.equal(cottage('no such season'), COTTAGE, 'a look it does not have is summer');
+  const g = createGame(undefined, { seed: 2, quiet: true });
+  const shot = (look?: string) => {
+    const scene = createScene(288, WORLD_H * ZOOM);
+    if (look) scene.setCottage(look);
+    scene.render(g, 1);
+    return scene.fb.px.slice();
+  };
+  const summer = shot();
+  assert.deepEqual(shot('summer'), summer, 'summer is what is shown when nothing is picked');
+  for (const look of ['spring', 'autumn', 'winter']) assert.notDeepEqual(shot(look), summer, `${look} looks different`);
+  // The sign: a pixel of its board is in the picture, where the sign stands.
+  const at = (x: number, y: number) => summer[y * 288 + x];
+  const left = WORLD_SIGN.x * ZOOM - (SIGN.w >> 1), top = WORLD_SIGN.y * ZOOM - SIGN.h + ZOOM;
+  // The daylight tints it a little, so the colour is near the drawing's, not equal to it.
+  const seen = at(left + 12, top + 12), drawn = SIGN.px[12 * SIGN.w + 12];
+  for (const shift of [0, 8, 16]) assert.ok(Math.abs(((seen >>> shift) & 255) - ((drawn >>> shift) & 255)) < 24, 'the board is where the sign stands');
 });
 
 test('the garden renders at every stage, by day and by night, at any width', () => {

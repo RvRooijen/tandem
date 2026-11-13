@@ -599,6 +599,15 @@ test('with the tools shut, tandem speaks in a bubble: what it says goes again, w
   // A change to the project says how many files; a drawing worker's round says what it waits for.
   host.events.add({ type: 'proposal', by: 'agent:main', round: 'code', id: 'pc9', kind: 'code', path: 'working copy', files: [{ path: 'a.ts' }, { path: 'b.ts' }], note: 'Seasons.' });
   await until(() => /A change to the project · 2 files/.test($('.bubble.waits b')?.textContent ?? ''), 'the change');
+  // Two things waiting are one bubble, a line each with its own two answers; not two bubbles over each other.
+  await host.run('concepts.create', { name: 'Ivy' }, AGENT, 'r973');
+  await until(() => $('.bubble.waits.many'), 'the one bubble for both');
+  assert.equal(all('.bubble.waits').length, 1);
+  assert.match($('.bubble.many .count').textContent!, /2 things wait for you/);
+  assert.deepEqual(all('.bubble.many .wait b').map((b) => b.textContent), ['A change to the project · 2 files', 'A proposal · concept ivy, new']);
+  click(button('Decline', all('.bubble.many .wait')[1]));
+  await until(() => !$('.bubble.many') && /A change to the project/.test($('.bubble.waits b')?.textContent ?? ''), 'the one that is left, said in full again');
+  assert.equal(host.concepts.get('ivy'), undefined);
   host.events.add({ type: 'proposal.decided', by: 'me', round: 'code', status: 'rejected', count: 1, paths: ['code:working copy'] });
   await until(() => !$('.bubble.waits'), 'it to be gone when decided elsewhere');
   host.events.add({ type: 'art.round', by: 'agent:w1', worker: 'w1', name: 'gnome', state: 'waiting', phase: 'silhouette', text: 'The silhouette is ready.' });

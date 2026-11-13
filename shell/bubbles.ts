@@ -47,12 +47,20 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
     if (el.hidden) return void clear(el);
     const list = [...waiting];
     clear(el,
-      list.slice(-3).map(([key, w]) => h('div.bubble.waits', { data: { key } },
+      // One thing waiting is said in full, with its two answers. Several are one bubble, a line each: what it is,
+      // and its own two answers beside it.
+      list.length === 1 && list.map(([key, w]) => h('div.bubble.waits', { data: { key } },
         h('div.say', { onclick: () => app.open(...w.open) }, h('b', {}, w.title), w.text && h('p', {}, w.text)),
         h('div.answers', {},
           h<'button'>('button.primary', { onclick: () => w.yes.run() }, w.yes.label),
           h<'button'>('button', { onclick: () => w.no.run() }, w.no.label)))),
-      list.length > 3 && h('div.bubble.more', { onclick: () => app.open('chat') }, `and ${list.length - 3} more waiting`),
+      list.length > 1 && h('div.bubble.waits.many', {},
+        h('div.count', { onclick: () => app.open('chat') }, `${list.length} things wait for you`),
+        list.map(([key, w]) => h('div.wait', { data: { key } },
+          h('div.say', { onclick: () => app.open(...w.open) }, h('b', {}, w.title)),
+          h('div.answers', {},
+            h<'button'>('button.primary', { onclick: () => w.yes.run() }, w.yes.label),
+            h<'button'>('button', { onclick: () => w.no.run() }, w.no.label))))),
       said.slice(-2).map((s) => h(`div.bubble.says${s.error ? '.error' : ''}`, { onclick: () => app.open('chat') }, h('p', {}, s.text))));
     if (said.length) timer = window.setTimeout(paint, Math.max(200, said[0].until - now));
   }

@@ -1,6 +1,6 @@
 // Proposals: what the agent wants to change, kept apart until the person
-// decides. One round of agent work is one change set, accepted or rejected as
-// one. Each proposal keeps the thing as it was, so the card can show before and after.
+// decides. One round of agent work is one change set, shown as one; it is decided
+// as one, or piece by piece. Each proposal keeps the thing as it was, so the card can show before and after.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -28,8 +28,8 @@ export interface Proposal {
 export interface Proposals {
   add(p: Omit<Proposal, 'id' | 'status' | 'ts'>): Proposal;
   list(filter?: { status?: Proposal['status']; round?: string }): Proposal[];
-  /** Mark every pending proposal of a round. Returns the ones it decided. */
-  decide(round: string, status: 'accepted' | 'rejected'): Proposal[];
+  /** Mark the pending proposals of a round: all of them, or only the ones named. Returns the ones it decided. */
+  decide(round: string, status: 'accepted' | 'rejected', only?: string[]): Proposal[];
 }
 
 export function createProposals(dir: string): Proposals {
@@ -54,8 +54,8 @@ export function createProposals(dir: string): Proposals {
       return full;
     },
     list: (filter = {}) => all.filter((p) => (!filter.status || p.status === filter.status) && (!filter.round || p.round === filter.round)),
-    decide(round, status) {
-      const set = all.filter((p) => p.round === round && p.status === 'pending');
+    decide(round, status, only) {
+      const set = all.filter((p) => p.round === round && p.status === 'pending' && (!only || only.includes(p.id)));
       for (const p of set) { p.status = status; write(p); }
       return set;
     },

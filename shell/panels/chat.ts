@@ -13,8 +13,11 @@ interface Change {
   /** Code: the files the working copy changes. */
   files?: { path: string; added: number; removed: number; status: string }[];
   phase?: string; isNew?: boolean; pictures?: { before?: string; after?: string; looks?: { look: string; before?: string; after?: string }[] };
+  /** Decided on its own or with the rest of its round; not set while it waits. */
+  status?: 'accepted' | 'rejected';
 }
-interface Round { round: string; by: string; changes: Change[]; status: 'pending' | 'accepted' | 'rejected'; el?: HTMLElement }
+/** A round is 'decided' when its pieces went different ways: some taken, some refused. */
+interface Round { round: string; by: string; changes: Change[]; status: 'pending' | 'accepted' | 'rejected' | 'decided'; el?: HTMLElement }
 
 export function refChip(app: App, ref: string, onRemove?: () => void): HTMLElement {
   const [kind, rest] = [ref.slice(0, ref.indexOf(':')), ref.slice(ref.indexOf(':') + 1)];
@@ -223,17 +226,30 @@ export function chatPanel(): Panel {
     const touched = new Map<string, { name: string; stage: string }>();
     for (const c of r.changes) for (const t of c.touches ?? []) touched.set(t.id, t);
     const coded = r.changes.some((c) => c.kind === 'code');
+    const total = r.changes.length;
+    const left = r.changes.filter((c) => !c.status).length;
+    const count = (st: string) => r.changes.filter((c) => c.status === st).length;
+    const state = r.status === 'decided' ? `${count('accepted')} accepted · ${count('rejected')} rejected`
+      : r.status === 'pending' && left < total ? `${left} of ${total} waiting` : r.status;
+    const decide = (accept: boolean, only?: Change) => void app.act('proposals.decide', { round: r.round, accept, ...(only && { only: [only.id] }) });
+    // A round of several is decided as one or piece by piece: each piece has its own yes and no.
+    const each = total > 1 && r.status === 'pending';
     clear(el,
-      h('div.t-head', {}, h('b', {}, coded ? 'A change to the project' : r.changes.length === 1 ? 'A proposal' : `A proposal, ${r.changes.length} changes`), h('span.state', {}, r.status)),
-      r.changes.map((c) => h('div.change', {},
-        h('div.path', { onclick: () => c.kind !== 'code' && app.open(c.kind === 'concept' ? 'concepts' : 'art', c.path) }, h('i', {}, c.kind), ' ', c.path),
+      h('div.t-head', {}, h('b', {}, coded ? 'A change to the project' : total === 1 ? 'A proposal' : `A proposal, ${total} changes`), h('span.state', {}, state)),
+      r.changes.map((c) => h('div.change', { data: { status: c.status ?? 'pending' } },
+        h('div.pathline', {},
+          h('div.path', { onclick: () => c.kind !== 'code' && app.open(c.kind === 'concept' ? 'concepts' : 'art', c.path) }, h('i', {}, c.kind), ' ', c.path),
+          total > 1 && c.status && h('span.state', {}, c.status),
+          each && !c.status && h('span.each', {},
+            h<'button'>('button.yes', { 'aria-label': `Accept ${c.path}`, onclick: () => decide(true, c) }, '✓'),
+            h<'button'>('button.no', { 'aria-label': `Reject ${c.path}`, onclick: () => decide(false, c) }, '✕'))),
         c.kind === 'drawing' ? pictures(c) : c.kind === 'code' ? codeFiles(c) : fieldLines(c),
         c.note && h('div.note', {}, c.note))),
       touched.size > 0 && h('div.touches', {}, 'touches ', [...touched].map(([id, t]) => h('span.t-chip.stage', { data: { stage: t.stage }, onclick: () => app.open('concepts', id) }, `${t.name} · ${t.stage}`))),
       r.status === 'pending' && h('div.t-row', {},
         coded && app.info.page && h<'button'>('button', { onclick: () => void app.playCopy() }, 'Play the copy'),
-        h<'button'>('button.primary', { onclick: () => void app.act('proposals.decide', { round: r.round, accept: true }) }, 'Accept'),
-        h<'button'>('button.danger', { onclick: () => void app.act('proposals.decide', { round: r.round, accept: false }) }, 'Reject')));
+        h<'button'>('button.primary', { onclick: () => decide(true) }, total === 1 ? 'Accept' : left < total ? 'Accept the rest' : 'Accept all'),
+        h<'button'>('button.danger', { onclick: () => decide(false) }, total === 1 ? 'Reject' : left < total ? 'Reject the rest' : 'Reject all')));
     return el;
   }
 
@@ -333,7 +349,14 @@ export function chatPanel(): Panel {
     }
     if (ev.type === 'proposal.decided') {
       const r = rounds.get(String(ev.round));
-      if (r) { r.status = ev.status as Round['status']; roundCard(r); }
+      if (r && r.status === 'pending') {
+        // All that was waiting, or only the pieces named.
+        const ids = ev.ids as string[] | undefined;
+        for (const c of r.changes) if (!c.status && (!ids || ids.includes(c.id))) c.status = ev.status as Change['status'];
+        const ways = new Set(r.changes.map((c) => c.status ?? 'pending'));
+        r.status = ways.has('pending') ? 'pending' : ways.size === 1 ? [...ways][0] as Round['status'] : 'decided';
+        roundCard(r);
+      }
       return;
     }
     const el = card(ev);

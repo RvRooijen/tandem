@@ -288,13 +288,16 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'proposals.decide', kind: 'write',
-      about: 'Accept or reject a round of proposals as one. Accepting makes the changes real.',
-      input: { round: 'string', accept: 'boolean' },
+      about: 'Accept or reject a round of proposals: all that is pending in it, or only some (only: the ids of the proposals). Accepting makes the changes real.',
+      input: { round: 'string', accept: 'boolean', only: 'json?' },
       async run(c, i) {
-        const pending = proposals.list({ status: 'pending', round: i.round });
+        const only = Array.isArray(i.only) && i.only.length ? (i.only as unknown[]).map(String) : undefined;
+        const open = proposals.list({ status: 'pending', round: i.round });
+        const pending = only ? open.filter((p) => only.includes(p.id)) : open;
+        if (!pending.length) throw new CommandError('missing', only ? `none of those is pending in round ${i.round}` : `nothing is pending in round ${i.round}`);
         let taken: FileChange[] = [];
         if (i.accept) {
-          art.acceptable(i.round);
+          if (pending.some((p) => p.kind === 'drawing')) art.acceptable(i.round);
           // The working copy goes into the project first: if it does not go in cleanly, nothing is accepted.
           if (code && pending.some((p) => p.kind === 'code')) {
             try { taken = code.accept(pending.find((p) => p.kind === 'code')!.note.split('\n')[0].slice(0, 120) || 'Accepted from the working copy'); }
@@ -302,8 +305,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
           }
           await art.accepting(pending);
         } else if (code && pending.some((p) => p.kind === 'code')) code.reject();
-        const set = proposals.decide(i.round, i.accept ? 'accepted' : 'rejected');
-        if (!set.length) throw new CommandError('missing', `nothing is pending in round ${i.round}`);
+        const set = proposals.decide(i.round, i.accept ? 'accepted' : 'rejected', only);
         if (i.accept) {
           for (const p of set) {
             if (p.kind === 'concept') {
@@ -312,14 +314,16 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
             }
           }
         }
-        art.decided(i.round);
+        // What was not named is still waiting: the round is over when nothing of it is.
+        const left = open.length - set.length;
+        if (!left) art.decided(i.round);
         if (taken.length) {
           events.add({ type: 'code.changed', by: c.by, files: taken.map((f) => f.path) });
           // The core has the game's code in it as it was when it started: it starts again with the new code.
           restart();
         }
-        events.add({ type: 'proposal.decided', by: c.by, round: i.round, status: i.accept ? 'accepted' : 'rejected', count: set.length, paths: set.map((p) => `${p.kind}:${p.path}`) });
-        return { decided: set.length };
+        events.add({ type: 'proposal.decided', by: c.by, round: i.round, status: i.accept ? 'accepted' : 'rejected', count: set.length, ids: set.map((p) => p.id), left, paths: set.map((p) => `${p.kind}:${p.path}`) });
+        return { decided: set.length, left };
       },
     },
 

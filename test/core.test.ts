@@ -68,7 +68,7 @@ test('the person changes a concept at once; the agent proposes, and the person d
   assert.deepEqual(pending.find((x: any) => x.path === 'tulips').after, { text: 'They matter much longer.', stage: 'design' });
 
   await refused(agent('proposals.decide', { round: 'r1', accept: true }), 'permission');
-  assert.deepEqual(await me('proposals.decide', { round: 'r1', accept: true }), { decided: 2 });
+  assert.deepEqual(await me('proposals.decide', { round: 'r1', accept: true }), { decided: 2, left: 0 });
   assert.equal((await me('concepts.get', { id: 'tulips' })).text, 'They matter much longer.');
   assert.equal((await me('concepts.get', { id: 'roses' })).stage, 'idea');
   await refused(me('proposals.decide', { round: 'r1', accept: true }), 'missing');
@@ -77,6 +77,26 @@ test('the person changes a concept at once; the agent proposes, and the person d
   await me('proposals.decide', { round: 'r2', accept: false });
   assert.equal((await me('concepts.get', { id: 'roses' })).text, '', 'a rejected round changes nothing');
   assert.equal((await me('proposals.list', { status: 'pending' })).length, 0);
+
+  // A round is shown as one, but it can be decided piece by piece: one taken, one refused, the rest still waiting.
+  await agent('concepts.create', { name: 'Lilies' }, 'r3');
+  await agent('concepts.create', { name: 'Daisies' }, 'r3');
+  await agent('concepts.update', { id: 'roses', text: 'Thorns, again.' }, 'r3');
+  const three = await me('proposals.list', { status: 'pending' });
+  const idOf = (path: string) => three.find((x: any) => x.path === path).id as string;
+  assert.deepEqual(await me('proposals.decide', { round: 'r3', accept: true, only: [idOf('lilies')] }), { decided: 1, left: 2 });
+  assert.equal((await me('concepts.get', { id: 'lilies' })).name, 'Lilies');
+  await refused(me('concepts.get', { id: 'daisies' }), 'missing');
+  assert.deepEqual(await me('proposals.decide', { round: 'r3', accept: false, only: [idOf('daisies')] }), { decided: 1, left: 1 });
+  await refused(me('proposals.decide', { round: 'r3', accept: true, only: [idOf('lilies')] }), 'missing');
+  const decided = (await me('events.since', { n: 0 })).filter((e: any) => e.type === 'proposal.decided' && e.round === 'r3');
+  assert.deepEqual(decided.map((e: any) => [e.status, e.ids, e.left]), [['accepted', [idOf('lilies')], 2], ['rejected', [idOf('daisies')], 1]]);
+  // Without naming any, what is left of the round is decided.
+  assert.deepEqual(await me('proposals.decide', { round: 'r3', accept: true }), { decided: 1, left: 0 });
+  assert.equal((await me('concepts.get', { id: 'roses' })).text, 'Thorns, again.');
+  await refused(me('concepts.get', { id: 'daisies' }), 'missing');
+  assert.equal((await me('proposals.list', { status: 'pending' })).length, 0);
+  await me('concepts.remove', { id: 'lilies' });
   await me('concepts.remove', { id: 'tulips' });
   await me('concepts.remove', { id: 'roses' });
 });

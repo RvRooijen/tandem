@@ -185,6 +185,37 @@ test('chat: a message goes out, the agent answers with a proposal, and it is acc
   await until(() => !app.agent.busy, 'the agent to be done');
 });
 
+test('chat: a round of several is one card, decided as one or piece by piece', async () => {
+  for (const name of ['Poppies', 'Thistles', 'Clover']) await host.run('concepts.create', { name, text: `${name} grow.` }, AGENT, 'r950');
+  await until(() => all('.card.prop').at(-1)?.querySelectorAll('.change').length === 3, 'the three in one card');
+  const card = all('.card.prop').at(-1)!;
+  assert.match($('.t-head', card).textContent!, /A proposal, 3 changes.*pending/);
+  assert.deepEqual(all('button', card).map((b) => b.getAttribute('aria-label') ?? b.textContent),
+    ['Accept poppies', 'Reject poppies', 'Accept thistles', 'Reject thistles', 'Accept clover', 'Reject clover', 'Accept all', 'Reject all']);
+  const piece = (path: string) => all('.change', card).find((c) => $('.path', c).textContent!.endsWith(path))!;
+
+  // One is taken: it is real now, and the others still wait.
+  click($('button[aria-label="Accept poppies"]', card));
+  await until(() => piece('poppies').dataset.status === 'accepted', 'the piece to say accepted');
+  assert.equal(host.concepts.get('poppies')!.text, 'Poppies grow.');
+  assert.equal(host.concepts.get('thistles'), undefined);
+  assert.equal(card.dataset.status, 'pending');
+  assert.match($('.t-head .state', card).textContent!, /2 of 3 waiting/);
+  assert.equal(all('button', piece('poppies')).length, 0, 'a decided piece has no buttons');
+
+  // One is refused, and what is left is taken with the button for the rest.
+  click($('button[aria-label="Reject thistles"]', card));
+  await until(() => piece('thistles').dataset.status === 'rejected', 'the piece to say rejected');
+  assert.deepEqual(all('.t-row button', card).map((b) => b.textContent), ['Accept the rest', 'Reject the rest']);
+  click(button('Accept the rest', card));
+  await until(() => card.dataset.status === 'decided', 'the card to be decided');
+  assert.match($('.t-head .state', card).textContent!, /2 accepted · 1 rejected/);
+  assert.equal(all('button', card).length, 0);
+  assert.equal(host.concepts.get('clover')!.text, 'Clover grow.');
+  assert.equal(host.concepts.get('thistles'), undefined, 'the refused one never came to be');
+  for (const id of ['poppies', 'clover']) await host.run('concepts.remove', { id }, 'me');
+});
+
 test('chat: @ points at a concept or a drawing, and a photo or a file goes along with a message', async () => {
   await until(() => !app.agent.busy, 'the agent to be done');
   await host.run('concepts.create', { name: 'Garden gate' }, 'me');
@@ -555,6 +586,15 @@ test('with the tools shut, tandem speaks in a bubble: what it says goes again, w
   click(button('Decline', $('.bubble.waits')));
   await until(() => !$('.bubble.waits'), 'the bubble to go');
   assert.equal(host.concepts.get('later-roses')!.text, 'Roses come later.', 'declined: nothing changed');
+
+  // A round of several that is decided piece by piece keeps waiting for what is left of it.
+  for (const name of ['Moss', 'Ferns']) await host.run('concepts.create', { name }, AGENT, 'r972');
+  await until(() => /A proposal · 2 changes/.test($('.bubble.waits b')?.textContent ?? ''), 'the two');
+  const moss = (await host.run('proposals.list', { status: 'pending' }, 'me') as { id: string; path: string }[]).find((x) => x.path === 'moss')!;
+  await host.run('proposals.decide', { round: 'r972', accept: false, only: [moss.id] }, 'me');
+  await until(() => /A proposal · concept ferns, new/.test($('.bubble.waits b')?.textContent ?? ''), 'the one that is left');
+  click(button('Decline', $('.bubble.waits')));
+  await until(() => !$('.bubble.waits'), 'the bubble to go');
 
   // A change to the project says how many files; a drawing worker's round says what it waits for.
   host.events.add({ type: 'proposal', by: 'agent:main', round: 'code', id: 'pc9', kind: 'code', path: 'working copy', files: [{ path: 'a.ts' }, { path: 'b.ts' }], note: 'Seasons.' });

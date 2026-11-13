@@ -107,10 +107,14 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
           proposal(round);
           break;
         }
-        case 'proposal.decided':
-          rounds.delete(String(ev.round));
-          waiting.delete(String(ev.round));
+        case 'proposal.decided': {
+          // Decided piece by piece, the round keeps waiting for what is left of it.
+          const round = String(ev.round), open = rounds.get(round);
+          for (const id of (ev.ids as string[] | undefined) ?? []) open?.delete(id);
+          if (open?.size && Number(ev.left) > 0) proposal(round);
+          else { rounds.delete(round); waiting.delete(round); }
           break;
+        }
         case 'art.round': {
           const id = String(ev.worker);
           if (ev.state !== 'waiting') {

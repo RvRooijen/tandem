@@ -1,0 +1,6 @@
+{
+  "dayLen": 30,
+  "nightBase": 45,
+  "nightPerPorch": 10,
+  "sleepSeconds": 6
+}

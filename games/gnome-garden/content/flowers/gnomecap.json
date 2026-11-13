@@ -1,0 +1,10 @@
+{
+  "name": "Gnomecaps",
+  "value": 3000000,
+  "grow": 11.5,
+  "depth": 65,
+  "cost": {
+    "blooms": 5000000000000000,
+    "whispers": 500000
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "tandem",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A game engine built to work with an AI: one set of commands for you and the agent.",
+  "scripts": {
+    "start": "node core/start.ts",
+    "server": "node core/server.ts",
+    "runner": "node core/runner.ts",
+    "shell": "vite --host",
+    "tandem": "node core/cli.ts",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --no-warnings --test --test-force-exit \"test/**/*.test.ts\"",
+    "game": "vite --config games/gnome-garden/vite.config.ts",
+    "game:build": "vite build --config games/gnome-garden/vite.config.ts"
+  },
+  "dependencies": {
+    "archetype-ecs": "file:../archetype-ecs"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@types/node": "^22.0.0",
+    "jsdom": "^26.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.0.0"
+  }
+}

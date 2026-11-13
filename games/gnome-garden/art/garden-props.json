@@ -1,0 +1,1 @@
+{"format":"pixeldraw-sprite","version":1,"name":"garden-props","image":"garden-props.png","width":32,"height":32,"looks":{"default":{"basket":[[0,0,300],[33,0,300]],"jar":[[66,0,300],[99,0,300],[132,0,300],[165,0,300]],"shovel":[[198,0,300]],"lantern":[[231,0,300]]}}}

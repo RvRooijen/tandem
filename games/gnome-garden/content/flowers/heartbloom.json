@@ -1,0 +1,10 @@
+{
+  "name": "Heartbloom",
+  "value": 400000,
+  "grow": 10.5,
+  "depth": 45,
+  "cost": {
+    "blooms": 50000000000000,
+    "whispers": 20000
+  }
+}

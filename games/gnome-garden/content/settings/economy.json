@@ -1,0 +1,8 @@
+{
+  "charmPerGnome": 0.03,
+  "charmPerLevel": 0.004,
+  "hatBonus": 0.1,
+  "jobBonus": 0.02,
+  "jobPaySeconds": 45,
+  "rainGrowth": 0.3
+}

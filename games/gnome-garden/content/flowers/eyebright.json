@@ -1,0 +1,10 @@
+{
+  "name": "Eyebright",
+  "value": 9000,
+  "grow": 8.5,
+  "depth": 20,
+  "cost": {
+    "blooms": 4000000000,
+    "teeth": 30000
+  }
+}

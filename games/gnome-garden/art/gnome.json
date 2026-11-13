@@ -1,0 +1,1 @@
+{"format":"pixeldraw-sprite","version":1,"name":"gnome","image":"gnome.png","width":32,"height":32,"looks":{"cozy":{"stand":[[0,0,400]],"walk":[[33,0,140],[66,0,140]]},"odd":{"stand":[[0,33,400]],"walk":[[33,33,140],[66,33,140]]},"hollow":{"stand":[[0,66,400]],"walk":[[33,66,140],[66,66,140]]}},"depth":"gnome-depth.png"}

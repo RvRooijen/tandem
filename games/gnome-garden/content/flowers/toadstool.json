@@ -1,0 +1,10 @@
+{
+  "name": "Toadstools",
+  "value": 1400,
+  "grow": 7.5,
+  "depth": 12,
+  "cost": {
+    "blooms": 40000000,
+    "teeth": 1500
+  }
+}

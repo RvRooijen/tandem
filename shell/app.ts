@@ -81,6 +81,21 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     tabs.append(b);
   }
 
+  /** The commands that set the agent to work. */
+  const STARTS = new Set(['chat.send', 'chat.answer', 'project.init']);
+  function setAgent(now: AgentStatus) {
+    app.agent = now;
+    bubbles.agent(now.busy);
+    paintBadges();
+    for (const p of panels) p.agent?.();
+  }
+  /** The button that was last pressed, and when: a command run right after is that button's. */
+  let pressed: HTMLButtonElement | null = null, pressedAt = 0;
+  root.addEventListener('click', (ev) => {
+    pressed = (ev.target as Element | null)?.closest?.('button') as HTMLButtonElement | null;
+    pressedAt = Date.now();
+  }, true);
+
   /** The ring: a round mark on a place in the world, or a box around a thing on the page; `stays` a few seconds, or until it is taken away. */
   function showRing(px: number, py: number, w: number, h: number, text: string, box: boolean, stays: boolean) {
     ring.style.left = `${px}px`;
@@ -233,11 +248,22 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     },
 
     async act<T>(name: string, input: Record<string, unknown> = {}) {
+      // What was pressed says at once that it was: the button works until the answer is there.
+      const button = pressed && Date.now() - pressedAt < 120 && pressed.isConnected ? pressed : null;
+      pressed = null;
+      const wasOff = button?.disabled ?? false;
+      if (button) { button.classList.add('working'); button.disabled = true; }
+      // And what sets the agent to work shows it at work at once, not when the core says so.
+      const before = app.agent;
+      if (STARTS.has(name) && !before.off && !before.busy) setAgent({ ...before, busy: true, doing: 'starting', text: '' });
       try {
         return await run<T>(name, input);
       } catch (e) {
+        if (app.agent.doing === 'starting' && !before.busy) setAgent(before);
         app.toast(e instanceof Error ? e.message : String(e));
         return undefined;
+      } finally {
+        if (button) { button.classList.remove('working'); button.disabled = wasOff; }
       }
     },
 
@@ -267,10 +293,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
 
     feed(ev, live) {
       if (ev.type === 'agent.status') {
-        app.agent = ev as unknown as AgentStatus;
-        bubbles.agent(app.agent.busy);
-        paintBadges();
-        for (const p of panels) p.agent?.();
+        setAgent(ev as unknown as AgentStatus);
         return;
       }
       // The agent uses the project's page as a person would: asked here, done in the frame, answered to the core.

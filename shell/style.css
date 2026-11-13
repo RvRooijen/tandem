@@ -104,6 +104,11 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 /* ---- things everything uses */
 #tandem button { font: inherit; color: var(--t-ink); cursor: pointer; }
 #tandem button:disabled { opacity: 0.5; }
+/* A button that was pressed and is being acted on: it says so itself, at once. */
+#tandem button.working { position: relative; color: transparent; opacity: 1; pointer-events: none; }
+#tandem button.working > * { visibility: hidden; }
+#tandem button.working::after { content: ''; position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -9px 0 0 -9px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: var(--t-ink); animation: t-spin 0.7s linear infinite; }
+#tandem button.primary.working::after { border-color: rgba(0, 0, 0, 0.25); border-top-color: #1b1a22; }
 #tandem .t-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
 #tandem .t-row > button, #tandem .adder > button, #tandem .composer > button, .agent-status button {
   min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--t-line); background: var(--t-raise); font-weight: 600;

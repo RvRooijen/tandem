@@ -270,8 +270,13 @@ export function createRunner(host: Host) {
     if (ev.n > 0 && ev.type === 'message' && (ev.by === 'me' || ev.by === 'engine')) {
       if (off) return void host.events.cast({ type: 'agent.status', ...status() });
       queue.push(ev);
-      cast(true);
-      next();
+      // It is said to be at work at once, and the work is started a moment later: getting its working copy ready can
+      // take seconds, and whoever sent the message (a tap on a button) should not wait for that to hear it was heard.
+      if (!busy) {
+        busy = true; doing = 'starting'; text = '';
+        cast(true);
+        setImmediate(() => { busy = false; next(); if (!busy) cast(true); });
+      } else cast(true);
     }
   });
 

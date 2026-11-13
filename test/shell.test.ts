@@ -164,8 +164,14 @@ test('chat: a message goes out, the agent answers with a proposal, and it is acc
   assert.match($('.chat .empty').textContent!, /Nothing said yet/);
 
   type($('.composer textarea'), 'make the tulips worth a bit more');
-  click(button('Send'));
+  // What is pressed says so at once, before the core has answered: the button works, and the agent is shown at work.
+  const sendBtn = button('Send') as HTMLButtonElement;
+  click(sendBtn);
+  assert.ok(sendBtn.classList.contains('working') && sendBtn.disabled, 'the button says it was pressed');
+  assert.deepEqual([app.agent.busy, app.agent.doing], [true, 'starting'], 'and the agent is at work, as far as the screen is concerned');
+  assert.ok($('#t-fab').classList.contains('busy'));
   await until(() => $('.msg.me'), 'my message');
+  await until(() => !sendBtn.classList.contains('working') && !sendBtn.disabled, 'the button to be itself again');
   assert.match($('.msg.me').textContent!, /make the tulips worth a bit more/);
   assert.equal(($('.composer textarea') as HTMLTextAreaElement).value, '');
   await until(() => $('.card.prop'), 'the proposal');

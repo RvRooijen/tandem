@@ -126,7 +126,8 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
           // remembers, per project); it is still the first line of the chat.
           if (ev.existing && !putOff(String(ev.name))) waiting.set('welcome', {
             title: `${ev.name} is new to tandem`, text: 'Shall I read the project and write down what it is made of, and how it is run?', open: ['chat'],
-            yes: { label: 'Yes, read it', run: () => void app.act('project.init') },
+            // (Said at once that it starts: the offer goes, and a line says what is happening.)
+            yes: { label: 'Yes, read it', run: () => { waiting.delete('welcome'); said.push({ text: 'I am reading the project. What I find comes here as one proposal.', error: false, until: Date.now() + 9000 }); paint(); void app.act('project.init'); } },
             no: { label: 'Not now', run: () => { putOff(String(ev.name), true); waiting.delete('welcome'); paint(); } },
           });
           break;

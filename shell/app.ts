@@ -70,6 +70,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
 
   let shown: string | null = null, last = 'chat';
   let ringTimer = 0, toastTimer = 0;
+  let pointed: { x: number; y: number; text: string } | undefined;
   const badges = new Set<string>();
 
   const tabEls = new Map<string, HTMLButtonElement>();
@@ -114,6 +115,8 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       sheet.classList.add('shut');
       fab.classList.remove('open');
       bubbles.shut(true);
+      // What was pointed at while the tools covered the page is shown now that the page can be seen.
+      if (pointed) { const p = pointed; pointed = undefined; app.point(p.x, p.y, p.text); }
     },
 
     attach(ref) {
@@ -122,6 +125,8 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     },
 
     point(x, y, text = '') {
+      // The tools are the whole screen while they are open: the pointing waits until the page is in view.
+      if (shown) { pointed = { x, y, text }; return app.toast(`The agent points at something on the page${text ? `: ${text}` : ''}. Shut the tools to see it.`); }
       void stage.where(x, y).then((at) => {
         if (!at) return app.toast(text ? `The agent points at something: ${text}` : 'The agent points at something, but this page does not say where things are.');
         ring.style.left = `${at.x}px`;

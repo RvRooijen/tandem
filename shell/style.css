@@ -41,6 +41,8 @@ body { overflow: hidden; -webkit-tap-highlight-color: transparent; }
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35); transition: transform 0.15s;
 }
 #t-fab:active { transform: scale(0.94); }
+/* The tools shut with the cross in their own bar; the round button would lie over it. */
+#t-fab.open { display: none; }
 #t-fab .mark { width: 16px; height: 16px; background: var(--t-accent); transform: rotate(45deg); border-radius: 3px; }
 #t-fab.open .mark { border-radius: 50%; transform: none; width: 12px; height: 12px; }
 #t-fab .badge { position: absolute; top: -3px; right: -3px; width: 13px; height: 13px; border-radius: 50%; background: var(--t-bad); border: 2px solid var(--t-bg); display: none; }
@@ -74,10 +76,10 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 /* ---- the sheet */
 #t-sheet {
   position: fixed; z-index: 25; left: 0; right: 0; bottom: 0; margin: 0 auto; max-width: 520px;
-  height: 62dvh; display: flex; flex-direction: column;
-  background: var(--t-bg); border-radius: 16px 16px 0 0; border-top: 1px solid var(--t-line);
-  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.4);
-  transition: transform 0.22s ease-out, height 0.22s ease-out;
+  /* Open, the tools are the whole screen: the project's page is behind them until they are shut. */
+  top: 0; height: 100dvh; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top);
+  background: var(--t-bg);
+  transition: transform 0.22s ease-out;
 }
 #t-sheet.shut { transform: translateY(105%); }
 #t-sheet > header { display: flex; align-items: center; gap: 2px; padding: 6px 6px 0 8px; border-bottom: 1px solid var(--t-line); flex: none; }
@@ -275,8 +277,9 @@ canvas.live { image-rendering: pixelated; display: block; }
 .field.file .k { color: var(--t-ink); text-decoration: underline; text-decoration-color: var(--t-line); text-underline-offset: 3px; word-break: break-all; }
 .field.file[aria-expanded=true] .k { color: var(--t-accent); }
 #tandem .tapfile { margin: 4px 0 0; }
-pre.diff { margin: 2px 0 8px; padding: 8px 10px; background: var(--t-bg); border: 1px solid var(--t-line); border-radius: 9px; font-family: var(--t-mono); font-size: 11.5px; line-height: 1.5; overflow-x: auto; max-height: 46vh; overflow-y: auto; white-space: pre; -webkit-overflow-scrolling: touch; }
-pre.diff span { display: inline-block; min-width: 100%; }
+pre.diff { margin: 2px 0 8px; padding: 8px 0; background: var(--t-bg); border: 1px solid var(--t-line); border-radius: 9px; font-family: var(--t-mono); font-size: 12px; line-height: 1.5; max-height: 60vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+/* A line each, under each other; a long line goes on below itself, so nothing is read sideways. */
+pre.diff span { display: block; padding: 0 10px 0 22px; text-indent: -12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 pre.diff span[data-how=in] { color: var(--t-good); background: rgba(122, 208, 138, 0.09); }
 pre.diff span[data-how=out] { color: var(--t-bad); background: rgba(255, 122, 112, 0.09); }
 pre.diff span[data-how=same] { color: var(--t-soft); }

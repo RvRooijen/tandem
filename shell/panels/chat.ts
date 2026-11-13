@@ -212,7 +212,7 @@ export function chatPanel(): Panel {
     while (body.length && !body.at(-1)) body.pop();
     if (!body.length) return h('div.note', {}, 'Nothing to read in it: it is not text, or it only moved.');
     return h('pre.diff', {}, body.map((l) => h('span', { data: { how: l.startsWith('@@') ? 'at' : l.startsWith('+') ? 'in' : l.startsWith('-') ? 'out' : 'same' } },
-      l.startsWith('@@') ? '⋯' : `${l || ' '}`, '\n')));
+      l.startsWith('@@') ? '⋯' : `${l || ' '}`)));
   }
 
   /** The files of a code change, and how much of each. One that is tapped opens: what changed in it. */

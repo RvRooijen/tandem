@@ -22,17 +22,27 @@ if (process.env.PIXEL_WORKER) {
   const isNew = prompt.startsWith('The user wants a new project');
   const approved = prompt.includes('approves phase "silhouette"');
   let phase = 'color';
+  let content;
   if (isNew) {
     phase = 'silhouette';
-    writeFileSync(file, '3 = #5a6988\n4 = #7d90ab\n\n@size 8 8\n// body\n@rect 2 3 4 5 3\n// head\n@rect 3 1 2 2 4\n');
+    content = '3 = #5a6988\n4 = #7d90ab\n\n@size 8 8\n// body\n@rect 2 3 4 5 3\n// head\n@rect 3 1 2 2 4\n';
   } else if (approved) {
-    writeFileSync(file, 'r = #d5392f\ns = #f2c9a0\n\n@size 8 8\n// body\n@rect 2 3 4 5 r\n// head\n@rect 3 1 2 2 s\n');
+    content = 'r = #d5392f\ns = #f2c9a0\n\n@size 8 8\n// body\n@rect 2 3 4 5 r\n// head\n@rect 3 1 2 2 s\n';
   } else {
     // Feedback on a drawing there is: one more shape, in its first colour.
     const text = readFileSync(file, 'utf8');
     const c = text.match(/^(\S) = #/m)[1];
-    writeFileSync(file, `${text.trimEnd()}\n@rect 0 0 1 1 ${c}\n`);
+    content = `${text.trimEnd()}\n@rect 0 0 1 1 ${c}\n`;
   }
+  // The Write call as it streams in: its input in pieces, so whoever watches sees the drawing grow.
+  const input = JSON.stringify({ file_path: `${process.cwd()}/${file}`, content });
+  const cutAt = input.lastIndexOf('@rect') + 9;
+  say({ type: 'stream_event', event: { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', name: 'Write' } } });
+  say({ type: 'stream_event', event: { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: input.slice(0, cutAt) } } });
+  await new Promise((r) => setTimeout(r, 350));
+  say({ type: 'stream_event', event: { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: input.slice(cutAt) } } });
+  say({ type: 'stream_event', event: { type: 'content_block_stop', index: 1 } });
+  writeFileSync(file, content);
   const tool = (...args) => spawnSync(process.execPath, args, { encoding: 'utf8' });
   const sent = tool('scripts/event.js', 'round', name, 'round 1: block it out', '+', 'phase', name, phase);
   const rendered = tool('scripts/render.js', file);

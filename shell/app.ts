@@ -216,7 +216,10 @@ export function createApp(root: HTMLElement, info: Info, game: GameModule, page:
           if (app.playing && (ev.type !== 'proposal.decided' || ev.round === app.playing)) void app.stopPlaying();
           else if (!app.playing) void run<RecordSet>('records.all').then(apply).catch(() => {});
         }
-        if (ev.by !== 'me' && ['message', 'proposal', 'look', 'playtest', 'art.round'].includes(ev.type)) app.badge('chat', true);
+        if (ev.by !== 'me' && ['message', 'look', 'playtest'].includes(ev.type)) app.badge('chat', true);
+        if (ev.type === 'proposal' && !ev.worker) app.badge('chat', true);
+        // A worker's round is ready: that is news in the Art tab.
+        if (ev.type === 'art.round') app.badge('art', true);
       }
       for (const p of panels) p.event?.(ev, live);
     },

@@ -8,8 +8,8 @@ import { ago, clear, h, mins, prose, short } from '../dom.ts';
 interface Change {
   id: string; kind: string; path: string; before?: Record<string, unknown>; after?: Record<string, unknown>; note: string;
   touches?: { id: string; name: string; stage: string }[];
-  /** A drawing: who drew it, how far it is, and what it looks like. */
-  worker?: string; phase?: string; isNew?: boolean; pictures?: { before?: string; after?: string };
+  /** A drawing: what it looks like. */
+  phase?: string; isNew?: boolean; pictures?: { before?: string; after?: string };
 }
 interface Round { round: string; by: string; changes: Change[]; status: 'pending' | 'accepted' | 'rejected'; el?: HTMLElement }
 
@@ -30,15 +30,6 @@ export function refChip(app: App, ref: string, onRemove?: () => void): HTMLEleme
 export function chatPanel(): Panel {
   let app!: App;
   const rounds = new Map<string, Round>();
-  /** What each drawing worker is doing right now. */
-  const working = new Map<string, { state: string; doing: string; name: string }>();
-  const drawingNow = h('div.drawing-now');
-  /** The workers that are drawing right now, above the composer. */
-  function paintWorkers() {
-    clear(drawingNow, [...working].filter(([, w]) => w.state === 'running').map(([id, w]) => h('div.agent-status', {},
-      h('i.spin'), h('div.doing', {}, h('b', {}, `A worker draws ${w.name}`), w.doing && h('p', {}, w.doing)),
-      h<'button'>('button', { onclick: () => void app.act('art.stop', { worker: id }) }, 'Stop'))));
-  }
   const list = h('div.chat');
   const status = h('div.agent-status', { hidden: true });
   const refsEl = h('div.refs');
@@ -121,11 +112,6 @@ export function chatPanel(): Panel {
     const touched = new Map<string, { name: string; stage: string }>();
     for (const c of r.changes) for (const t of c.touches ?? []) touched.set(t.id, t);
     const records = r.changes.some((c) => c.kind === 'record');
-    // A round a drawing worker made: it can be told more, and a silhouette is approved before anything is accepted.
-    const worker = r.changes.find((c) => c.worker)?.worker;
-    const silhouette = !!worker && r.changes.some((c) => c.phase === 'silhouette');
-    const live = worker ? working.get(worker) : undefined;
-    const drawing = live?.state === 'running';
     clear(el,
       h('div.t-head', {}, h('b', {}, r.changes.length === 1 ? 'A proposal' : `A proposal, ${r.changes.length} changes`), h('span.state', {}, r.status)),
       r.changes.map((c) => h('div.change', {},
@@ -133,15 +119,10 @@ export function chatPanel(): Panel {
         c.kind === 'drawing' ? pictures(c) : fieldLines(c),
         c.note && h('div.note', {}, c.note))),
       touched.size > 0 && h('div.touches', {}, 'touches ', [...touched].map(([id, t]) => h('span.t-chip.stage', { data: { stage: t.stage }, onclick: () => app.open('concepts', id) }, `${t.name} · ${t.stage}`))),
-      r.status === 'pending' && drawing && h('div.working', {}, h('i.spin'), h('span', {}, `The worker is drawing another round${live?.doing ? `: ${live.doing}` : ''}`),
-        h<'button'>('button', { onclick: () => void app.act('art.stop', { worker }) }, 'Stop')),
-      r.status === 'pending' && !drawing && h('div.t-row', {},
+      r.status === 'pending' && h('div.t-row', {},
         records && h<'button'>('button', { onclick: () => void app.play(r.round) }, app.playing === r.round ? 'Playing…' : 'Play it'),
         records && h<'button'>('button', { onclick: (ev: MouseEvent) => void compareRound(r, ev.currentTarget as HTMLButtonElement) }, 'Compare'),
-        worker && h<'button'>('button', { onclick: () => { const said = prompt('What should the worker change?'); if (said?.trim()) void app.act('art.tell', { worker, message: said.trim() }); } }, 'Feedback'),
-        silhouette
-          ? h<'button'>('button.primary', { onclick: () => void app.act('art.approve', { worker }) }, 'Approve silhouette')
-          : h<'button'>('button.primary', { onclick: () => void app.act('proposals.decide', { round: r.round, accept: true }) }, 'Accept'),
+        h<'button'>('button.primary', { onclick: () => void app.act('proposals.decide', { round: r.round, accept: true }) }, 'Accept'),
         h<'button'>('button.danger', { onclick: () => void app.act('proposals.decide', { round: r.round, accept: false }) }, 'Reject')));
     return el;
   }
@@ -191,12 +172,12 @@ export function chatPanel(): Panel {
         return h('div.sys.tap', { onclick: () => app.open(String(ev.tab), ev.id ? String(ev.id) : undefined) }, `↗ opened ${ev.tab}${ev.id ? ` · ${ev.id}` : ''}`);
       case 'record.changed':
         return h('div.sys.tap', { onclick: () => app.open('content', String(ev.path)) }, `✎ ${ev.path} changed: ${Object.entries(ev.after as object).map(([k, v]) => `${k} ${short(v, 24)}`).join(', ')}`);
+      // Drawing work lives in the Art tab; here it is one line that leads there.
       case 'art.asked':
-        return h('div.sys.tap', { onclick: () => app.open('art') }, `✎ ${ev.by === 'me' ? 'you' : 'the agent'} asked a worker (${ev.worker}) ${ev.isNew ? 'for a new drawing' : 'to change'} ${ev.name}: ${String(ev.message).slice(0, 160)}`);
-      case 'art.told':
-        return h('div.sys', {}, `✎ ${ev.by === 'me' ? 'you' : 'the agent'} to ${ev.worker} about ${ev.name}: ${String(ev.message).slice(0, 160)}`);
+        return h('div.sys.tap', { onclick: () => app.open('art', `worker:${ev.worker}`) }, `🖌 ${ev.by === 'me' ? 'you' : 'the agent'} asked a worker ${ev.isNew ? 'for a new drawing,' : 'to change'} ${ev.name}: ${String(ev.message).slice(0, 140)}`);
       case 'art.round':
-        return ev.state === 'failed' ? h('div.msg.agent.error', {}, prose(String(ev.text ?? '')), h('time', {}, `worker ${ev.worker}`)) : null;
+        return h(`div.sys.tap${ev.state === 'failed' ? '.fail' : ''}`, { onclick: () => app.open('art', `worker:${ev.worker}`) },
+          ev.state === 'failed' ? `🖌 the worker on ${ev.name} failed` : ev.state === 'stopped' ? `🖌 the worker on ${ev.name} was stopped` : `🖌 ${ev.name}: ${ev.phase === 'silhouette' ? 'a silhouette to approve' : 'a drawing to accept'}. Look in Art`);
       case 'art.changed':
         return (ev.names as string[]).length ? h('div.sys.tap', { onclick: () => app.open('art', (ev.names as string[])[0]) }, `✓ ${(ev.names as string[]).join(', ')} ${(ev.names as string[]).length === 1 ? 'is' : 'are'} in the game now`) : null;
       case 'lock.changed':
@@ -209,14 +190,8 @@ export function chatPanel(): Panel {
   }
 
   function addEvent(ev: Event) {
-    if (ev.type === 'art.status' || ev.type === 'art.round') {
-      // A worker started, moved on or finished: the card of its round shows it.
-      working.set(String(ev.worker), { state: String(ev.state), doing: String(ev.doing ?? ''), name: String(ev.name ?? '') });
-      paintWorkers();
-      const r = rounds.get(String(ev.worker));
-      if (r) roundCard(r);
-      if (ev.type === 'art.status') return;
-    }
+    // What a drawing worker proposes is looked at and decided in the Art tab, where it can be watched.
+    if (ev.type === 'art.status' || ev.type === 'art.draft' || (ev.type === 'proposal' && ev.worker)) return;
     if (ev.type === 'proposal') {
       const key = String(ev.round);
       let r = rounds.get(key);
@@ -251,7 +226,7 @@ export function chatPanel(): Panel {
       body = b;
       b.append(list);
       if (!list.children.length) list.append(EMPTY());
-      foot.append(drawingNow, status, usage, refsEl, h('div.composer', {}, newBtn, input, sendBtn));
+      foot.append(status, usage, refsEl, h('div.composer', {}, newBtn, input, sendBtn));
       paintRefs(); paintStatus();
       for (const r of rounds.values()) roundCard(r);
       requestAnimationFrame(toBottom);

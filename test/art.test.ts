@@ -32,6 +32,9 @@ async function until(what: () => unknown, says: string, ms = 20000) {
   }
 }
 const rounds = (worker: string) => host.events.since(0).filter((e) => e.type === 'art.round' && e.worker === worker);
+// What is only told, not kept: a worker's status and the drawing as it is typed.
+const told: any[] = [];
+host.events.subscribe((e) => { if (e.n === 0) told.push(e); });
 
 test('a drawing\'s text becomes a sheet of frames, per look, with its depth', () => {
   const sheet = spriteSheet('blob',
@@ -73,6 +76,16 @@ test('a worker draws a new drawing: silhouette, approval, colour, and only then 
   assert.deepEqual((await me('art.workers')).map((x: any) => [x.drawing, x.state, x.phase]), [['garden-sign', 'waiting', 'silhouette']]);
   assert.ok(!existsSync(join(dir, 'game/art/garden-sign.txt')), 'nothing is in the game yet');
 
+  // While it drew, the drawing was told as it was typed: first a part of it, then all of it.
+  const drafts = told.filter((e) => e.type === 'art.draft' && e.worker === w);
+  assert.ok(drafts.length >= 2, 'more than one version came by');
+  assert.equal(drafts[0].name, 'garden-sign');
+  assert.ok(drafts[0].text.length < drafts.at(-1).text.length && drafts.at(-1).text.startsWith(drafts[0].text.slice(0, 40)));
+  assert.match(drafts.at(-1).text, /@rect 3 1 2 2 4\n$/);
+  assert.ok(told.some((e) => e.type === 'art.status' && e.worker === w && e.doing === 'round: round 1: block it out'), 'and what it reported about its round');
+  // Its own copy can be read as text, to show where it is.
+  assert.match((await me('art.get', { name: 'garden-sign', worker: w })).text, /^3 = #5a6988/);
+
   // A silhouette is not a drawing: it cannot be accepted, only approved.
   await refused(me('proposals.decide', { round: w, accept: true }), 'input');
   assert.equal((await me('proposals.list', { status: 'pending' })).length, 1, 'and refusing that left the proposal as it was');
@@ -84,9 +97,13 @@ test('a worker draws a new drawing: silhouette, approval, colour, and only then 
   assert.match(String(second.note), /Coloured garden-sign\..*Depth kept: true/, 'the approved silhouette was kept as its depth map');
   await refused(me('art.approve', { worker: w }), 'busy');
 
-  // The worker's version can be looked at before deciding.
+  // The worker's version can be looked at before deciding. The agent's look is shown in the chat; the person's own is not news.
+  const n = host.events.last();
   const look = await me('art.look', { name: 'garden-sign', worker: w });
   assert.equal(readFileSync(look.file).subarray(1, 4).toString(), 'PNG');
+  assert.equal(host.events.last(), n);
+  await agent('art.look', { name: 'garden-sign', worker: w });
+  assert.equal(host.events.since(n)[0].type, 'look');
 
   // Accepted: the drawing and its depth map are the game's, the game is built with it, the worker is gone.
   await me('proposals.decide', { round: w, accept: true });

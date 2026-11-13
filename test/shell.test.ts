@@ -234,10 +234,10 @@ test('content: a record is changed by hand, and the game in the page follows', a
 
 test('art: the drawings are listed, one is looked at and locked, and a worker\'s drawing comes back as a card with pictures', async () => {
   tab('Art');
-  await until(() => all('#t-body .item').length === 7, 'the drawings');
-  assert.match(all('#t-body .item').at(-1)!.textContent!, /gnome.*32×32.*2 animations · 3 looks · depth map/);
+  await until(() => all('#t-body .item.drawing').length === 7, 'the drawings');
+  assert.match(all('#t-body .item.drawing').at(-1)!.textContent!, /gnome.*32×32.*2 animations · 3 looks · depth map/);
   assert.match($('.workers').textContent!, /No worker is drawing/);
-  click(all('#t-body .item').at(-1)!);
+  click(all('#t-body .item.drawing').at(-1)!);
   await until(() => $('.sheet img'), 'the picture', 15000);
   assert.match(($('.sheet img') as HTMLImageElement).src, /\/api\/file\/looks\/look-/);
   assert.deepEqual(all('.chips .t-chip').map((c) => c.textContent), ['all', 'stand', 'walk ×2', 'depth map', 'cozy', 'odd', 'hollow']);
@@ -245,32 +245,51 @@ test('art: the drawings are listed, one is looked at and locked, and a worker\'s
   click(all('.chips .t-chip').find((c) => c.textContent === 'walk ×2')!);
   await until(() => $('.sheet img') && ($('.sheet img') as HTMLImageElement).src !== first, 'the walk', 15000);
 
-  // Asking for a change needs words. With words, a worker draws, and its round is a card in the chat.
+  // Asking for a change needs words. With words a worker draws, and the tab shows it at work: the drawing as it
+  // is typed, then its round with a picture before and after, to decide right there.
   click(button('Ask a worker'));
   assert.equal($('#t-toast').textContent, 'Say what should change.');
   type($('textarea[aria-label="Brief for a worker"]'), 'a taller hat');
   click(button('Ask a worker'));
-  tab('Chat');
-  const cards = all('.card.prop').filter((c) => !/drawing gnome/.test(c.textContent!)).length;
-  await until(() => all('.card.prop').length === cards + 1 && all('.pictures img').length === 2, 'the worker\'s proposal', 20000);
-  const card = all('.card.prop').at(-1)!;
-  assert.match($('.change .path', card).textContent!, /drawing gnome/);
-  assert.deepEqual(all('.pictures figcaption', card).map((f) => f.textContent), ['as it is', 'as proposed']);
-  assert.equal(all('.pictures img', card).length, 2);
-  await until(() => all('button', card).some((b) => b.textContent === 'Accept'), 'its buttons');
-  assert.deepEqual(all('button', card).map((b) => b.textContent), ['Feedback', 'Accept', 'Reject']);
+  await until(() => $('canvas.live'), 'the worker, watched');
+  assert.equal($('#t-body .bar b').textContent, 'gnome');
+  // Two rows (stand, walk), the widest two frames of 32 across, a pixel between.
+  await until(() => ($('canvas.live') as HTMLCanvasElement).width === 67 && ($('canvas.live') as HTMLCanvasElement).height === 67, 'the drawing, live', 20000);
+  await until(() => all('.worker-rest button').some((b) => b.textContent === 'Accept'), 'its round', 20000);
+  assert.deepEqual(all('.worker-rest button').map((b) => b.textContent), ['Send feedback', 'Accept', 'Reject']);
+  assert.deepEqual(all('.pictures figcaption').map((f) => f.textContent), ['as it is', 'as proposed']);
+  assert.match($('.worker-rest .said').textContent!, /Changed gnome\. Render ok/);
+  assert.match($('.worker-rest').textContent!, /Asked.*a taller hat/);
+  assert.equal($('#t-body .bar .t-chip').textContent, 'to accept');
 
-  // Feedback sends it round again; the card says it is drawing, then offers the choice again.
-  asked = 'taller still';
-  click(button('Feedback', card));
+  // Feedback sends it round again, from the same place.
+  type($('textarea[aria-label="Feedback for the worker"]'), 'taller still');
+  click(button('Send feedback'));
   await until(() => host.events.since(0).filter((e) => e.type === 'art.round').length === 2, 'the second round', 20000);
-  await until(() => all('button', card).some((b) => b.textContent === 'Accept'), 'its buttons again');
-  click(button('Reject', card));
-  await until(() => card.dataset.status === 'rejected', 'the rejection');
+  await until(() => all('.worker-rest button').some((b) => b.textContent === 'Accept'), 'its buttons again');
+  assert.match($('.worker-rest').textContent!, /taller still/);
+  click(button('Reject'));
+  await until(() => /Rejected: the game was left as it is/.test($('.worker-rest').textContent!), 'the rejection');
+  assert.deepEqual(all('.worker-rest button').map((b) => b.textContent), [], 'a decided round has nothing left to press');
   assert.deepEqual(await host.run('art.workers', {}, 'me'), []);
 
+  // The conversation is not a feed of drawing work: no card, only a line that leads back to the Art tab.
+  tab('Chat');
+  assert.ok(!all('.card.prop').some((c) => /drawing gnome/.test(c.textContent!)));
+  assert.equal(all('figure.card.look').length, 0, 'and looking at a drawing put nothing in the chat');
+  const lines = all('.chat .sys').map((x) => x.textContent!).filter((t) => t.startsWith('🖌'));
+  assert.equal(lines.length, 3);
+  assert.match(lines[0], /you asked a worker to change gnome: a taller hat/);
+  assert.match(lines[1], /gnome: a drawing to accept\. Look in Art/);
+  click(all('.chat .sys').find((x) => x.textContent!.startsWith('🖌'))!);
+  await until(() => $('canvas.live'), 'the line to lead to the worker');
+  assert.match($('.worker-rest').textContent!, /Rejected/);
+  click(button('‹ Art'));
+  await until(() => all('#t-body .item.drawing').length === 7, 'the drawings again');
+  assert.match($('.workers').textContent!, /No worker is drawing/);
+  click(all('#t-body .item.drawing').at(-1)!);
+
   // A lock on a drawing: no worker gets it.
-  tab('Art');
   await until(() => $('button.lock'), 'the drawing, with its lock');
   click($('button.lock'));
   await until(() => host.locks.has('drawing:gnome'), 'the lock');

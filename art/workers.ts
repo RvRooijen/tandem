@@ -14,6 +14,21 @@ import type { Workspaces } from './workspace.ts';
 
 const GUIDE = fileURLToPath(new URL('./GUIDE.md', import.meta.url));
 
+/** A string of a tool call that is still being typed: as much of it as has arrived. (pixeldraw's.) */
+function partialString(json: string, key: string): { value: string; done: boolean } | null {
+  const start = json.match(new RegExp(`"${key}"\\s*:\\s*"`));
+  if (!start) return null;
+  let raw = json.slice(start.index! + start[0].length);
+  const end = raw.search(/(?<!\\)(?:\\\\)*"/);
+  const done = end >= 0;
+  if (done) raw = raw.slice(0, raw.slice(end).indexOf('"') + end);
+  // Drop a trailing incomplete escape sequence
+  for (let cut = 0; cut <= 6; cut++) {
+    try { return { value: JSON.parse(`"${raw.slice(0, raw.length - cut)}"`), done }; } catch { /* a shorter one */ }
+  }
+  return null;
+}
+
 export interface Worker {
   id: string;
   /** The drawings it may change; the first is the one it was asked about. */
@@ -113,6 +128,30 @@ export function createWorkers(o: WorkersOptions) {
       w.doing = text;
       if (Date.now() - lastCast > 400) { lastCast = Date.now(); cast(w); }
     };
+    // Write and Edit calls on a drawing are told as they are typed: the file as it will be with what has arrived
+    // so far, so whoever watches sees it being drawn. (The way pixeldraw's viewer is fed.)
+    const blocks: Record<number, { name: string; json: string; base?: string }> = {};
+    let lastDraft = 0;
+    const draft = (block: { name: string; json: string; base?: string }, force = false) => {
+      const now = Date.now();
+      if (!force && now - lastDraft < 300) return;
+      const m = block.json.match(/"file_path"\s*:\s*"[^"]*\/(art|depth)\/([\w-]+)\.txt"/);
+      if (!m) return;
+      let text: string | undefined;
+      if (block.name === 'Write') text = partialString(block.json, 'content')?.value;
+      else {
+        const from = partialString(block.json, 'old_string'), to = partialString(block.json, 'new_string');
+        if (!from?.done || !to) return;
+        const path = join(spaces.dir(w.id), m[1], `${m[2]}.txt`);
+        block.base ??= existsSync(path) ? readFileSync(path, 'utf8') : '';
+        if (!block.base.includes(from.value)) return;
+        text = block.base.replace(from.value, () => to.value);
+      }
+      if (text === undefined) return;
+      lastDraft = now;
+      events.cast({ type: 'art.draft', worker: w.id, name: m[2], depth: m[1] === 'depth', text });
+    };
+
     proc.stderr!.on('data', (d) => { err = (err + d).slice(-2000); });
     proc.stdout!.on('data', (d) => {
       buf += d;
@@ -122,10 +161,20 @@ export function createWorkers(o: WorkersOptions) {
         let msg: any;
         try { msg = JSON.parse(line); } catch { continue; }
         if (msg.session_id) w.session = msg.session_id;
-        if (msg.type === 'stream_event' && msg.event?.type === 'content_block_start') {
-          const kind = msg.event.content_block?.type;
-          if (kind === 'thinking') doing('thinking');
-          else if (kind === 'text') doing('writing');
+        if (msg.type === 'stream_event') {
+          const e = msg.event;
+          if (e?.type === 'content_block_start') {
+            const kind = e.content_block?.type;
+            if (kind === 'thinking') doing('thinking');
+            else if (kind === 'text') doing('writing');
+            else if (kind === 'tool_use' && (e.content_block.name === 'Write' || e.content_block.name === 'Edit')) blocks[e.index] = { name: e.content_block.name, json: '' };
+          } else if (e?.type === 'content_block_delta' && e.delta?.type === 'input_json_delta' && blocks[e.index]) {
+            blocks[e.index].json += e.delta.partial_json;
+            draft(blocks[e.index]);
+          } else if (e?.type === 'content_block_stop' && blocks[e.index]) {
+            draft(blocks[e.index], true);
+            delete blocks[e.index];
+          }
         } else if (msg.type === 'assistant') {
           for (const block of msg.message?.content ?? []) {
             if (block.type === 'text' && block.text.trim()) w.said = block.text.trim();

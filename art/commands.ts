@@ -93,9 +93,15 @@ export function createArt(o: ArtOptions) {
     },
     {
       name: 'art.get', kind: 'read',
-      about: 'A drawing as it is written: its text (palette, shapes, frames) and its depth map. This is the drawing itself; a picture of it comes from art.look.',
-      input: { name: 'string' },
+      about: 'A drawing as it is written: its text (palette, shapes, frames) and its depth map. This is the drawing itself; a picture of it comes from art.look. With worker, as that worker has it in its own copy.',
+      input: { name: 'string', worker: 'string?' },
       run(_c, i) {
+        if (i.worker) {
+          const root = spaces.dir(worker(i.worker).id);
+          const at = (d: string) => join(root, d, `${i.name}.txt`);
+          if (!validName(i.name) || !existsSync(at('art'))) return { name: i.name, text: '', worker: i.worker };
+          return { name: i.name, text: readFileSync(at('art'), 'utf8'), depth: existsSync(at('depth')) ? readFileSync(at('depth'), 'utf8') : undefined, worker: i.worker };
+        }
         need(i.name);
         return { name: i.name, text: readFileSync(artFile(i.name), 'utf8'), depth: existsSync(depthFile(i.name)) ? readFileSync(depthFile(i.name), 'utf8') : undefined, locked: o.locks.has(`drawing:${i.name}`) };
       },
@@ -123,7 +129,8 @@ export function createArt(o: ArtOptions) {
           throw new CommandError('failed', e instanceof Error ? e.message : String(e));
         }
         const caption = `drawing ${i.name}${i.depth ? ', depth map' : ''}${i.anim ? `, ${i.anim}` : ''}${i.worker ? `, as ${i.worker} has it` : ''}`;
-        o.events.add({ type: 'look', by: c.by, url: look.url, caption, text: caption });
+        // What the agent looks at is shown in the conversation; the person browsing their own drawings is not news.
+        if (isAgent(c.by)) o.events.add({ type: 'look', by: c.by, url: look.url, caption, text: caption });
         return look;
       },
     },

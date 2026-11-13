@@ -43,7 +43,9 @@ export function projectsPanel(): Panel {
       got.projects.map((p) => h(`div.item.project${p.open ? '.open' : ''}${p.git ? '' : '.off'}`, { onclick: () => p.git && void open(p) },
         h('div.line', {}, h('b', {}, p.name), p.open && h('span.t-chip', {}, 'open')),
         h('p', {}, what(p)),
-        h('small', {}, p.dir))),
+        h('small', {}, p.dir),
+        // The open project can be set up from here: the agent reads it and proposes its concepts and how it is run.
+        p.open && h('div.t-row', {}, h<'button'>('button', { onclick: async (ev: MouseEvent) => { ev.stopPropagation(); if (await app.act('project.init')) app.open('chat'); } }, 'Set tandem up for it')))),
       !got.projects.length && h('div.empty', {}, h('b', {}, 'No folders found.'), h('p', {}, 'Tell tandem where your projects are, below.')),
       h('h3', {}, 'Look somewhere else too'),
       h('div.adder', {}, other, h<'button'>('button', { onclick: async () => {

@@ -161,7 +161,7 @@ export function chatPanel(): Panel {
     switch (ev.type) {
       case 'message':
         // What the engine tells the agent (art was accepted: bring it into the game) is shown, small: it is why the agent starts working.
-        if (ev.by === 'engine') return h('div.sys.engine', {}, `⚙ to the agent: ${String(ev.text ?? '')}`);
+        if (ev.by === 'engine') return h('div.sys.engine', {}, ev.kind === 'init' ? '⚙ The agent was asked to read this project and set tandem up for it: its concepts, and how it is run.' : `⚙ to the agent: ${String(ev.text ?? '')}`);
         return h(`div.msg.${ev.by === 'me' ? 'me' : 'agent'}${ev.error ? '.error' : ''}`, {},
           Array.isArray(ev.refs) && h('div.refs', {}, (ev.refs as string[]).map((r) => refChip(app, r))),
           prose(String(ev.text ?? '')),

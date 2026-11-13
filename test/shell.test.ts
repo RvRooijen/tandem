@@ -188,6 +188,13 @@ test('chat: a message goes out, the agent answers with a proposal, and it is acc
 test('concepts: add one, work on it, and hand it to the agent', async () => {
   tab('Concepts');
   await until(() => $('#t-body .empty'), 'the empty list');
+  // A project that exists already: the agent can be asked to read it and write its ideas down.
+  click(button('Let the agent read the project'));
+  await until(() => ran.includes('project.init'), 'the agent to be asked');
+  await until(() => $('.t-tab.on').textContent === 'Chat' && all('.sys.engine').some((x) => /asked to read this project/.test(x.textContent!)), 'the chat to say so');
+  await until(() => !app.agent.busy && all('.msg.agent').length >= 2, 'the agent to have answered');
+  tab('Concepts');
+  await until(() => $('#t-body .empty'), 'the empty list again');
   type($('.adder input'), 'Night roses');
   click(button('Add'));
   await until(() => $('input.title'), 'the concept to open');
@@ -214,8 +221,9 @@ test('concepts: add one, work on it, and hand it to the agent', async () => {
 
   // What the agent proposes about a concept shows up, and accepting it rewrites the concept.
   await host.run('concepts.update', { id: 'night-roses', text: 'A rose that only opens after dark, and closes if you look.' }, AGENT, 'r900');
-  await until(() => all('.card.prop').length === 2, 'the second proposal');
-  click(button('Accept', all('.card.prop')[1]));
+  const about = () => all('.card.prop').find((c) => /concept night-roses/.test(c.textContent!) && c.dataset.status === 'pending');
+  await until(about, 'the proposal about it');
+  click(button('Accept', about()!));
   await until(() => host.concepts.get('night-roses')!.text.endsWith('if you look.'), 'the concept to change');
 
   tab('Concepts');

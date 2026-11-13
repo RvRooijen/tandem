@@ -201,6 +201,21 @@ test('art: a drawing is a thing of the engine: listed, read, looked at, changed 
   await refused(agent('art.build'), 'permission');
 });
 
+test('setting tandem up for a project that exists already: the engine puts the agent to work on it', async () => {
+  await refused(agent('project.init'), 'permission');
+  const before = host.events.last();
+  assert.equal((await me('project.init', { note: 'the server notes are in docs/' })).asked, true);
+  const ev = host.events.since(before)[0];
+  assert.deepEqual([ev.type, ev.by, ev.kind], ['message', 'engine', 'init']);
+  const text = String(ev.text);
+  assert.match(text, /^Set tandem up for this project\./);
+  assert.match(text, /concepts\.create/, 'the ideas it is made of, as concepts to accept');
+  assert.match(text, /tandem\.json/, 'and how it is run');
+  assert.match(text, /\{port\}.*\{project\}|\{project\}.*\{port\}/s);
+  assert.match(text, /make nothing up/);
+  assert.match(text, /The person adds: the server notes are in docs\/$/);
+});
+
 test('the conversation and the stage are events like everything else', async () => {
   const before = host.events.last();
   await me('chat.send', { text: 'what about the tulips?', refs: ['drawing:garden-flowers'] });

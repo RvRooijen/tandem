@@ -41,7 +41,11 @@ export function conceptsPanel(): Panel {
         ? all.map((c) => h('div.item', { onclick: () => void detail(c.id) },
           h('div.line', {}, h('b', {}, c.locked && '🔒 ', c.name), h('span.t-chip.stage', { data: { stage: c.stage } }, c.stage)),
           h('p', {}, c.summary || 'No words yet.')))
-        : h('div.empty', {}, h('b', {}, 'No concepts yet.'), h('p', {}, 'A concept is a name and a few words of your own: an idea for the game before it is anything concrete. Add one and talk it through with the agent.')));
+        : h('div.empty', {}, h('b', {}, 'No concepts yet.'),
+          h('p', {}, 'A concept is a name and a few words of your own: an idea before it is anything concrete. Add one and talk it through with the agent.'),
+          // A project that exists already has its ideas in its code and notes: the agent can write them down.
+          h('p', {}, 'Or, for a project that exists already:'),
+          h('div.t-row.center', {}, h<'button'>('button.primary', { onclick: async () => { if (await app.act('project.init')) app.open('chat'); } }, 'Let the agent read the project'))));
   }
 
   async function detail(id: string) {

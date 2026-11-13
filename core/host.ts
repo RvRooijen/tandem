@@ -216,6 +216,17 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       run: (c) => events.add({ type: 'chat.new', by: c.by }),
     },
     {
+      name: 'project.init', kind: 'write',
+      about: 'Set tandem up for a project that exists already: the agent reads it and proposes the concepts it is made of and a tandem.json that says how it is run. note adds anything it should know. Only the person asks for this.',
+      input: { note: 'string?' },
+      run(c, i) {
+        const text = readFileSync(join(ROOT, 'core/agent-init.md'), 'utf8').trim();
+        // It is the engine that sets the agent to work; what the person added goes with it.
+        events.add({ type: 'message', by: 'engine', kind: 'init', text: i.note?.trim() ? `${text}\n\nThe person adds: ${i.note.trim()}` : text, asked: c.by });
+        return { asked: true, says: 'the agent is reading the project; what it proposes comes in the chat' };
+      },
+    },
+    {
       name: 'events.since', kind: 'read',
       about: 'Everything that happened after event number n: messages, proposals, pictures, playtests.',
       input: { n: 'number' },

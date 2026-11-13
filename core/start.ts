@@ -14,7 +14,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadProject } from './project.ts';
+import { loadProject, stopTree } from './project.ts';
 import { SWITCH, readState, writeState } from './projects.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -33,12 +33,12 @@ function startProject() {
 
   // The project's page, when it has one; it stays up while the core starts again on the same project.
   if (paging !== project?.root) {
-    page?.kill();
+    stopTree(page);
     page = undefined;
     paging = project?.root;
     const command = project?.pageCommand(PAGE_PORT);
     if (project && command) {
-      const mine = spawn('sh', ['-c', `exec ${command}`], { cwd: project.root, stdio: 'inherit', env });
+      const mine = spawn('sh', ['-c', `exec ${command}`], { cwd: project.root, stdio: 'inherit', env, detached: true });
       page = mine;
       mine.on('exit', (code) => { if (!stopping && page === mine) console.log(`the project's page stopped (${code}): ${command}`); });
     } else if (project) console.log('the project has no page to show: say how it is started in tandem.json ("page"), with {port} where the port goes');
@@ -58,14 +58,14 @@ function stop(code = 0) {
   if (stopping) return;
   stopping = true;
   core?.kill();
-  page?.kill();
-  shell.kill();
+  stopTree(page);
+  stopTree(shell);
   setTimeout(() => process.exit(code), 300);
 }
 process.on('SIGINT', () => stop());
 process.on('SIGTERM', () => stop());
 
 // Tandem's own page.
-const shell = spawn('npx', ['vite'], { cwd: ROOT, stdio: 'inherit', env: process.env });
+const shell = spawn('npx', ['vite'], { cwd: ROOT, stdio: 'inherit', env: process.env, detached: true });
 shell.on('exit', (code) => { if (!stopping) { console.log(`tandem's page stopped (${code})`); stop(code ?? 0); } });
 startProject();

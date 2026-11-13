@@ -3,7 +3,7 @@
 // the agent coded before any of it is in the project. Started when first asked
 // for.
 import { spawn, type ChildProcess } from 'node:child_process';
-import type { Project } from './project.ts';
+import { stopTree, type Project } from './project.ts';
 
 export const COPY_PORT = Number(process.env.TANDEM_COPY_PORT ?? 5211);
 
@@ -17,17 +17,17 @@ export function createPreview(copy: () => Project) {
     /** The address of the working copy's page; starts it if it is not running. */
     async url(): Promise<string> {
       if (!(await up())) {
-        proc?.kill();
+        stopTree(proc);
         const at = copy();
         const command = at.pageCommand(COPY_PORT);
         if (!command) throw new Error('the project has no page to start');
-        proc = spawn('sh', ['-c', `exec ${command}`], { cwd: at.root, stdio: 'ignore', env: { ...process.env, TANDEM_COPY: '1' } });
+        proc = spawn('sh', ['-c', `exec ${command}`], { cwd: at.root, stdio: 'ignore', env: { ...process.env, TANDEM_COPY: '1' }, detached: true });
         for (let i = 0; i < 60 && !(await up()); i++) await new Promise((r) => setTimeout(r, 500));
         if (!(await up())) throw new Error(`the page of the working copy did not start (${command})`);
       }
       return `http://localhost:${COPY_PORT}/`;
     },
-    stop() { proc?.kill(); proc = undefined; },
+    stop() { stopTree(proc); proc = undefined; },
   };
 }
 

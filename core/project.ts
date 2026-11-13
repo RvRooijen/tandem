@@ -81,6 +81,17 @@ export function loadProject(dir: string, opts: { data?: string; tandem?: string 
   return project;
 }
 
+/**
+ * Stop a page that was started with a command line: the command and everything it started. A page command is a
+ * shell line (npx vite …) whose real server is a grandchild; stopping only the first process leaves that one
+ * running, holding the port. So such a command is started in a process group of its own (spawn with
+ * `detached: true`), and stopped as a group.
+ */
+export function stopTree(child: { pid?: number; kill(): boolean } | undefined) {
+  if (!child?.pid) return;
+  try { process.kill(-child.pid, 'SIGTERM'); } catch { child.kill(); }
+}
+
 /** Make tandem's folder in a project, with what is not to be kept in git left out of it. */
 export function prepare(project: Project) {
   mkdirSync(project.dirs.concepts, { recursive: true });

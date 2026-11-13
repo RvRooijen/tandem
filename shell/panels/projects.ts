@@ -7,7 +7,7 @@ import { clear, h } from '../dom.ts';
 
 interface Found { dir: string; name: string; git: boolean; known: boolean; page: boolean; adapter: boolean; open: boolean }
 interface Listing { open: string | null; roots: string[]; projects: Found[] }
-interface Folder { dir: string; parent: string | null; folders: string[]; home: string }
+interface Folder { dir: string; parent: string | null; folders: string[]; home: string; git: boolean }
 
 /** Wait for the core to be back on the project that was asked for, then load the page again on it. */
 export async function reopen(dir: string) {
@@ -25,17 +25,35 @@ export function projectsPanel(): Panel {
   /** The new project being filled in: kept while the folders are walked. */
   let draft = { name: '', in: '' };
 
-  /** Walk the folders, to say where a new project goes. */
-  async function browse(dir?: string) {
+  /** Open the project in a folder: the core starts again on it, and the page with it. */
+  async function openDir(dir: string, name: string) {
+    const ok = await app.act<{ opening: string; restarting: boolean }>('projects.open', { dir });
+    if (!ok) return;
+    if (!ok.restarting) { app.toast('It is chosen. Start tandem again to open it.'); return void paint(); }
+    opening = name;
+    void paint();
+    void reopen(ok.opening);
+  }
+
+  /**
+   * Walk the folders. For a new project: to say where it goes. For finding one that is there already: to say which
+   * folder the projects are in, or, standing in a repository, to open that one.
+   */
+  async function browse(why: 'new' | 'find', dir?: string) {
     const got = await app.act<Folder>('projects.browse', dir ? { dir } : {});
     if (!body || !got) return;
+    const into = (d: string) => () => void browse(why, d);
     clear(body,
-      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void paint() }, '‹ Projects'), h('b', {}, 'Where does it go?')),
+      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void paint() }, '‹ Projects'), h('b', {}, why === 'new' ? 'Where does it go?' : 'Where are they?')),
       h('p.k.here', {}, got.dir),
-      h('div.t-row', {}, h<'button'>('button.primary', { onclick: () => { draft.in = got.dir; void paint(); } }, 'Here')),
-      got.dir !== got.home && h('div.item.folder', { onclick: () => void browse(got.home) }, h('b', {}, '⌂ home'), h('small', {}, got.home)),
-      got.parent && h('div.item.folder', { onclick: () => void browse(got.parent!) }, h('b', {}, '↑ up'), h('small', {}, got.parent)),
-      got.folders.map((n) => h('div.item.folder', { onclick: () => void browse(`${got.dir === '/' ? '' : got.dir}/${n}`) }, h('b', {}, `📁 ${n}`))),
+      why === 'new'
+        ? h('div.t-row', {}, h<'button'>('button.primary', { onclick: () => { draft.in = got.dir; void paint(); } }, 'Here'))
+        : h('div.t-row', {},
+          h<'button'>('button.primary', { onclick: async () => { if (await app.act('projects.look', { dir: got.dir })) void paint(); } }, 'My projects are in here'),
+          got.git && h<'button'>('button', { onclick: () => void openDir(got.dir, got.dir.split('/').pop() || got.dir) }, 'Open this one')),
+      got.dir !== got.home && h('div.item.folder', { onclick: into(got.home) }, h('b', {}, '⌂ home'), h('small', {}, got.home)),
+      got.parent && h('div.item.folder', { onclick: into(got.parent) }, h('b', {}, '↑ up'), h('small', {}, got.parent)),
+      got.folders.map((n) => h('div.item.folder', { onclick: into(`${got.dir === '/' ? '' : got.dir}/${n}`) }, h('b', {}, `📁 ${n}`))),
       !got.folders.length && h('p.t-hint', {}, 'No folders in here.'));
     body.scrollTop = 0;
   }
@@ -45,15 +63,7 @@ export function projectsPanel(): Panel {
     if (opening) return clear(body, h('div.working', {}, h('i.spin'), h('span', {}, `Opening ${opening}…`)));
     const got = await app.act<Listing>('projects.list');
     if (!body || !got) return;
-    const open = async (p: Found) => {
-      if (p.open) return app.close();
-      const ok = await app.act<{ opening: string; restarting: boolean }>('projects.open', { dir: p.dir });
-      if (!ok) return;
-      if (!ok.restarting) return app.toast('It is chosen. Start tandem again to open it.');
-      opening = p.name;
-      void paint();
-      void reopen(ok.opening);
-    };
+    const open = (p: Found) => (p.open ? app.close() : void openDir(p.dir, p.name));
     const what = (p: Found) => [p.open ? 'open now' : p.known ? 'been here before' : 'new to tandem', p.page && 'has a page', p.adapter && 'can be seen inside',
       !p.git && 'no git repository yet: tandem starts one when you open it'].filter(Boolean).join(' · ');
     // A new project: what it is called, and where it goes. Where is always the person's to choose: the folders of
@@ -65,7 +75,7 @@ export function projectsPanel(): Panel {
       createBtn.disabled = !draft.in;
       clear(whereEl,
         h('span.k', {}, draft.in ? `In ${draft.in}` : 'Where? Not chosen yet.'),
-        h<'button'>('button', { onclick: () => void browse(draft.in || undefined) }, draft.in ? 'Somewhere else' : 'Choose a folder'));
+        h<'button'>('button', { onclick: () => void browse('new', draft.in || undefined) }, draft.in ? 'Somewhere else' : 'Choose a folder'));
     };
     const create = async () => {
       if (!fresh.value.trim()) return app.toast('Give it a name.');
@@ -79,7 +89,6 @@ export function projectsPanel(): Panel {
       void reopen(ok.opening);
     };
     fresh.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') void create(); });
-    const other = h<'input'>('input', { placeholder: '/path/to/a/folder/with/projects', 'aria-label': 'Another folder to look for projects in', spellcheck: false });
     clear(body,
       h('h3', {}, 'A new project'),
       fresh, whereEl,
@@ -92,12 +101,9 @@ export function projectsPanel(): Panel {
         h('small', {}, p.dir),
         // The open project can be set up from here: the agent reads it and proposes its concepts and how it is run.
         p.open && h('div.t-row', {}, h<'button'>('button', { onclick: async (ev: MouseEvent) => { ev.stopPropagation(); if (await app.act('project.init')) app.open('chat'); } }, 'Set tandem up for it')))),
-      !got.projects.length && h('div.empty', {}, h('b', {}, 'No folders found.'), h('p', {}, 'Tell tandem where your projects are, below.')),
+      !got.projects.length && h('div.empty', {}, h('b', {}, 'No folders found.'), h('p', {}, 'Show tandem where your projects are, below.')),
       h('h3', {}, 'Look somewhere else too'),
-      h('div.adder', {}, other, h<'button'>('button', { onclick: async () => {
-        if (!other.value.trim()) return;
-        if (await app.act('projects.look', { dir: other.value.trim() })) void paint();
-      } }, 'Add')),
+      h('div.t-row', {}, h<'button'>('button', { onclick: () => void browse('find') }, 'Find a folder')),
       h('p.t-hint', {}, `Looking in: ${got.roots.join(', ')}`));
     paintWhere();
   }

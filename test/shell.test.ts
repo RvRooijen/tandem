@@ -602,6 +602,25 @@ test('projects: the folders that could be one are listed, and another is chosen 
   click(item('loose-notes'));
   await until(() => existsSync(join(beside, 'loose-notes/.git')), 'the repository to be started');
 
+  // Projects that are somewhere else are found by walking the folders too, not by typing a path: the folder they
+  // are in is pointed at, and standing in a repository that one can be opened.
+  click($('button[aria-label="Open another project"]'));
+  const has = (text: string) => all('button', $('#t-sheet')).some((x) => x.textContent === text);
+  await until(() => has('Find a folder'), 'the chooser');
+  mkdirSync(join(beside, 'elsewhere/far-game'), { recursive: true });
+  writeFileSync(process.env.TANDEM_STATE!, JSON.stringify({ ...JSON.parse(readFileSync(process.env.TANDEM_STATE!, 'utf8')), lastIn: join(beside, 'other-game') }));
+  click(button('Find a folder'));
+  await until(() => $('.here')?.textContent === join(beside, 'other-game'), 'the folders');
+  assert.ok(has('Open this one'), 'a repository can be opened where you stand');
+  click(all('.item.folder').find((f) => /up/.test(f.textContent!))!);
+  await until(() => $('.here')?.textContent === beside, 'the folder above');
+  assert.equal(has('Open this one'), false, 'a folder that is no repository is not offered to open');
+  click(all('.item.folder').find((f) => /elsewhere/.test(f.textContent!))!);
+  await until(() => $('.here')?.textContent === join(beside, 'elsewhere'), 'the folder');
+  click(button('My projects are in here'));
+  await until(() => item('far-game'), 'the project found there');
+  app.close();
+
   // And a project that does not exist yet is made from here. Where it goes is the person's to choose, every time:
   // until a folder is chosen it cannot be made.
   click($('button[aria-label="Open another project"]'));

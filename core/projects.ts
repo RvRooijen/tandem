@@ -167,7 +167,7 @@ export function projectCommands(o: ProjectsOptions): CommandDef[] {
     },
     {
       name: 'projects.browse', kind: 'read',
-      about: 'Walk the folders of this machine, to choose where a new project goes: the folders inside dir, and the one above it. Without dir, it starts where a project was last made, or in the home folder (on Android: the home of Termux).',
+      about: 'Walk the folders of this machine, to choose where a new project goes: the folders inside dir, the one above it, and whether dir is a git repository itself. Without dir, it starts where a project was last made, or in the home folder (on Android: the home of Termux).',
       input: { dir: 'string?' },
       run(_c, i) {
         const last = readState().lastIn;
@@ -176,7 +176,7 @@ export function projectCommands(o: ProjectsOptions): CommandDef[] {
         let names: string[] = [];
         try { names = readdirSync(dir); } catch { throw new CommandError('permission', `${dir} cannot be looked into`); }
         const folders = names.filter((n) => !n.startsWith('.') && n !== 'node_modules' && (() => { try { return statSync(join(dir, n)).isDirectory(); } catch { return false; } })()).sort((a, b) => a.localeCompare(b));
-        return { dir, parent: dirname(dir) === dir ? null : dirname(dir), folders, home: home() };
+        return { dir, parent: dirname(dir) === dir ? null : dirname(dir), folders, home: home(), git: existsSync(join(dir, '.git')) };
       },
     },
     {

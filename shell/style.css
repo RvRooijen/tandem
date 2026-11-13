@@ -50,8 +50,10 @@ body { overflow: hidden; -webkit-tap-highlight-color: transparent; }
 #t-fab.open .mark { border-radius: 50%; transform: none; width: 12px; height: 12px; }
 #t-fab .badge { position: absolute; top: -3px; right: -3px; width: 13px; height: 13px; border-radius: 50%; background: var(--t-bad); border: 2px solid var(--t-bg); display: none; }
 #t-fab.news .badge { display: block; }
-#t-fab.busy { animation: t-pulse 1.4s ease-in-out infinite; }
-@keyframes t-pulse { 50% { box-shadow: 0 0 0 9px rgba(242, 184, 75, 0.22), 0 3px 10px rgba(0, 0, 0, 0.35); } }
+/* While the agent works the mark turns a quarter and shrinks on the way, then rests a moment; a square a quarter on
+   looks the same, so it goes round without a jump. */
+#t-fab.busy .mark { animation: t-turn 1.3s ease-in-out infinite; }
+@keyframes t-turn { 0% { transform: rotate(45deg) scale(1); } 35% { transform: rotate(90deg) scale(0.6); } 70%, 100% { transform: rotate(135deg) scale(1); } }
 body.t-offline #t-fab { border-color: var(--t-bad); }
 body.t-offline #t-fab .mark { background: var(--t-bad); }
 
@@ -306,5 +308,5 @@ pre.diff span[data-how=at] { color: var(--t-soft); opacity: 0.6; }
 
 @media (prefers-reduced-motion: reduce) {
   #t-sheet, #t-fab { transition: none; }
-  #t-fab.busy, #t-ring.go i { animation: none; }
+  #t-fab.busy .mark, #t-ring.go i { animation: none; }
 }

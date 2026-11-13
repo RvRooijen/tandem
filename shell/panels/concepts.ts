@@ -1,20 +1,21 @@
 // Concepts: the layer the person works in. A list of them, and one opened up:
-// its words, how firm it is, what it is linked to and what makes it real.
+// its words, its stage, what it is linked to and what makes it real, and a
+// lock to keep the agent off it.
 // From here a concept is handed to the agent to talk about.
-import type { Concept, Firmness } from '../../core/concepts.ts';
+import type { Concept, Stage } from '../../core/concepts.ts';
 import type { Event } from '../../core/events.ts';
 import type { App, Panel } from '../app.ts';
 import { clear, h } from '../dom.ts';
 
-const FIRM: { id: Firmness; says: string }[] = [
-  { id: 'loose', says: 'An invitation: the agent may explore and offer directions.' },
-  { id: 'worked', says: 'The words are agreed: the agent stays inside them.' },
-  { id: 'playable', says: 'It is in the game: changes are tuning, proposed and played first.' },
-  { id: 'fixed', says: 'Settled: the agent leaves it alone unless you ask.' },
+const FIRM: { id: Stage; says: string }[] = [
+  { id: 'idea', says: 'A thought: the agent explores and offers directions.' },
+  { id: 'design', says: 'Being worked out in words: the agent helps settle what it is, and leaves the game alone.' },
+  { id: 'build', says: 'Being made real: the agent proposes the content and asks for the art.' },
+  { id: 'playtest', says: 'In the game: the agent plays it, measures it and tunes it with small proposals.' },
 ];
 const LINKS = ['part-of', 'leads-to', 'clashes-with'];
 
-type Brief = { id: string; name: string; firmness: Firmness; summary: string };
+type Brief = { id: string; name: string; stage: Stage; locked: boolean; summary: string };
 
 export function conceptsPanel(): Panel {
   let app!: App;
@@ -38,7 +39,7 @@ export function conceptsPanel(): Panel {
       h('div.adder', {}, name, h<'button'>('button.primary', { onclick: create }, 'Add')),
       all.length
         ? all.map((c) => h('div.item', { onclick: () => void detail(c.id) },
-          h('div.line', {}, h('b', {}, c.name), h('span.t-chip.firm', { data: { firmness: c.firmness } }, c.firmness)),
+          h('div.line', {}, h('b', {}, c.locked && '🔒 ', c.name), h('span.t-chip.stage', { data: { stage: c.stage } }, c.stage)),
           h('p', {}, c.summary || 'No words yet.')))
         : h('div.empty', {}, h('b', {}, 'No concepts yet.'), h('p', {}, 'A concept is a name and a few words of your own: an idea for the game before it is anything concrete. Add one and talk it through with the agent.')));
   }
@@ -47,7 +48,7 @@ export function conceptsPanel(): Panel {
     if (!body) return;
     open = id;
     const [c, all] = await Promise.all([
-      app.act<Concept>('concepts.get', { id }),
+      app.act<Concept & { locked: boolean }>('concepts.get', { id }),
       app.act<Brief[]>('concepts.list'),
     ]);
     if (!body || open !== id) return;
@@ -59,7 +60,7 @@ export function conceptsPanel(): Panel {
 
     async function save() {
       const input: Record<string, unknown> = { id };
-      for (const k of ['name', 'text', 'firmness', 'links', 'realised'] as const)
+      for (const k of ['name', 'text', 'stage', 'links', 'realised'] as const)
         if (JSON.stringify(draft[k]) !== JSON.stringify(c![k])) input[k] = draft[k];
       if (Object.keys(input).length > 1 && (await app.act('concepts.update', input)) === undefined) return;
       Object.assign(c!, JSON.parse(JSON.stringify(draft)));
@@ -74,10 +75,10 @@ export function conceptsPanel(): Panel {
     const fit = () => { text.style.height = 'auto'; text.style.height = `${Math.max(120, text.scrollHeight + 2)}px`; };
 
     const firmSays = h('p.t-hint');
-    const firm = h('div.segments', {}, FIRM.map((f) => h<'button'>('button', { data: { id: f.id }, onclick: () => { draft.firmness = f.id; touch(); paintFirm(); } }, f.id)));
+    const firm = h('div.segments', {}, FIRM.map((f) => h<'button'>('button', { data: { id: f.id }, onclick: () => { draft.stage = f.id; touch(); paintFirm(); } }, f.id)));
     const paintFirm = () => {
-      firm.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.id === draft.firmness));
-      firmSays.textContent = FIRM.find((f) => f.id === draft.firmness)!.says;
+      firm.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.id === draft.stage));
+      firmSays.textContent = FIRM.find((f) => f.id === draft.stage)!.says;
     };
 
     const linksEl = h('div.rows');
@@ -99,7 +100,7 @@ export function conceptsPanel(): Panel {
       oninput: () => { draft.realised = realised.value.split('\n').map((s) => s.trim()).filter(Boolean); touch(); } });
 
     clear(body,
-      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void leave(list) }, '‹ Concepts'), saveBtn),
+      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void leave(list) }, '‹ Concepts'), h('span.grow'), app.lockButton(`concept:${id}`, c.locked), saveBtn),
       name, firm, firmSays, text,
       h('h3', {}, 'Links'), linksEl, h('div.adder', {}, kind, to),
       h('h3', {}, 'What makes it real'), realised,

@@ -1,7 +1,7 @@
 ---
 {
   "name": "Gnomes are ornaments first",
-  "firmness": "fixed",
+  "stage": "playtest",
   "links": [
     {
       "to": "slow-burn",

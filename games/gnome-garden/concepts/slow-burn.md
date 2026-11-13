@@ -1,7 +1,7 @@
 ---
 {
   "name": "The slow burn",
-  "firmness": "fixed",
+  "stage": "playtest",
   "links": [],
   "realised": [
     "beats/*",

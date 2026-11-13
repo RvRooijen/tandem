@@ -159,14 +159,15 @@ test('concepts: add one, work on it, and hand it to the agent', async () => {
   click(button('Add'));
   await until(() => $('input.title'), 'the concept to open');
   assert.equal(($('input.title') as HTMLInputElement).value, 'Night roses');
-  assert.ok($('.segments button.on').textContent === 'loose');
+  assert.ok($('.segments button.on').textContent === 'idea');
+  assert.deepEqual(all('.segments button').map((b) => b.textContent), ['idea', 'design', 'build', 'playtest']);
 
-  click(all('.segments button').find((b) => b.textContent === 'worked')!);
+  click(all('.segments button').find((b) => b.textContent === 'design')!);
   type($('textarea.words'), 'A rose that only opens after dark.');
   assert.ok(!all('#t-body h3').some((x) => /promise/i.test(x.textContent!)), 'a concept has no timings to fill in');
   type($('textarea[aria-label="What makes it real"]'), 'flowers/rose\nabilities/nap');
   click(button('Save'));
-  await until(() => host.concepts.get('night-roses')?.firmness === 'worked', 'the concept to be saved');
+  await until(() => host.concepts.get('night-roses')?.stage === 'design', 'the concept to be saved');
   const c = host.concepts.get('night-roses')!;
   assert.equal(c.text, 'A rose that only opens after dark.');
   assert.deepEqual(c.realised, ['flowers/rose', 'abilities/nap']);
@@ -188,7 +189,24 @@ test('concepts: add one, work on it, and hand it to the agent', async () => {
   await until(() => $('textarea.words') && ($('textarea.words') as HTMLTextAreaElement).value.endsWith('if you look.'), 'the open concept to follow');
   click(button('‹ Concepts'));
   await until(() => $('#t-body .item'), 'the list');
-  assert.match($('#t-body .item').textContent!, /Night roses.*worked/);
+  assert.match($('#t-body .item').textContent!, /Night roses.*design/);
+
+  // A lock: from then on the agent is refused, whatever it is asked.
+  click($('#t-body .item'));
+  await until(() => $('button.lock'), 'the concept, with its lock');
+  assert.equal($('button.lock').getAttribute('aria-pressed'), 'false');
+  click($('button.lock'));
+  await until(() => host.locks.has('concept:night-roses'), 'the lock');
+  assert.equal($('button.lock').getAttribute('aria-pressed'), 'true');
+  assert.match($('#t-toast').textContent!, /even if you ask it to/);
+  await assert.rejects(host.run('concepts.update', { id: 'night-roses', text: 'x' }, AGENT, 'r901'), /locked/);
+  click(button('‹ Concepts'));
+  await until(() => $('#t-body .item'), 'the list');
+  assert.match($('#t-body .item b').textContent!, /^🔒 Night roses/);
+  click($('#t-body .item'));
+  await until(() => $('button.lock'), 'the concept again');
+  click($('button.lock'));
+  await until(() => !host.locks.has('concept:night-roses'), 'the lock to come off');
 });
 
 test('content: a record is changed by hand, and the game in the page follows', async () => {

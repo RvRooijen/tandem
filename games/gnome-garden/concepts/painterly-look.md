@@ -1,7 +1,7 @@
 ---
 {
   "name": "Small and painterly",
-  "firmness": "worked",
+  "stage": "design",
   "links": [],
   "realised": [
     "drawing:gnome",

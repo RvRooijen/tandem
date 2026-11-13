@@ -1,7 +1,7 @@
 ---
 {
   "name": "The hole",
-  "firmness": "playable",
+  "stage": "playtest",
   "links": [
     {
       "to": "slow-burn",

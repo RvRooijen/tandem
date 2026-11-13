@@ -5,7 +5,7 @@ import type { Event } from '../../core/events.ts';
 import type { App, Panel } from '../app.ts';
 import { ago, clear, h, mins, prose, short } from '../dom.ts';
 
-interface Change { id: string; kind: string; path: string; before?: Record<string, unknown>; after: Record<string, unknown>; note: string; touches?: { id: string; name: string; firmness: string }[] }
+interface Change { id: string; kind: string; path: string; before?: Record<string, unknown>; after: Record<string, unknown>; note: string; touches?: { id: string; name: string; stage: string }[] }
 interface Round { round: string; by: string; changes: Change[]; status: 'pending' | 'accepted' | 'rejected'; el?: HTMLElement }
 
 export function refChip(app: App, ref: string, onRemove?: () => void): HTMLElement {
@@ -98,7 +98,7 @@ export function chatPanel(): Panel {
     const el = r.el ?? h('div.card.prop');
     r.el = el;
     el.dataset.status = r.status;
-    const touched = new Map<string, { name: string; firmness: string }>();
+    const touched = new Map<string, { name: string; stage: string }>();
     for (const c of r.changes) for (const t of c.touches ?? []) touched.set(t.id, t);
     const records = r.changes.some((c) => c.kind === 'record');
     clear(el,
@@ -107,7 +107,7 @@ export function chatPanel(): Panel {
         h('div.path', { onclick: () => app.open(c.kind === 'concept' ? 'concepts' : 'content', c.path) }, h('i', {}, c.kind), ' ', c.path),
         fieldLines(c),
         c.note && h('div.note', {}, c.note))),
-      touched.size > 0 && h('div.touches', {}, 'touches ', [...touched].map(([id, t]) => h('span.t-chip.firm', { data: { firmness: t.firmness }, onclick: () => app.open('concepts', id) }, `${t.name} · ${t.firmness}`))),
+      touched.size > 0 && h('div.touches', {}, 'touches ', [...touched].map(([id, t]) => h('span.t-chip.stage', { data: { stage: t.stage }, onclick: () => app.open('concepts', id) }, `${t.name} · ${t.stage}`))),
       r.status === 'pending' && h('div.t-row', {},
         records && h<'button'>('button', { onclick: () => void app.play(r.round) }, app.playing === r.round ? 'Playing…' : 'Play it'),
         records && h<'button'>('button', { onclick: (ev: MouseEvent) => void compareRound(r, ev.currentTarget as HTMLButtonElement) }, 'Compare'),
@@ -167,6 +167,8 @@ export function chatPanel(): Panel {
         return h('div.sys.tap', { onclick: () => app.open('art') }, `✓ worker ${ev.worker} accepted in pixeldraw`);
       case 'art.imported':
         return h('div.sys', {}, `✓ ${ev.drawings} drawings brought into the game`);
+      case 'lock.changed':
+        return h('div.sys', {}, `${ev.locked ? '🔒 locked' : '🔓 unlocked'}: ${ev.ref}`);
       case 'concept.changed':
         return h('div.sys.tap', { onclick: () => ev.what !== 'removed' && app.open('concepts', String(ev.id)) }, `✎ concept ${ev.id} ${ev.what}`);
       default:

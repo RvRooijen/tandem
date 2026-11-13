@@ -1,7 +1,7 @@
 ---
 {
   "name": "Always something to do",
-  "firmness": "playable",
+  "stage": "playtest",
   "links": [],
   "realised": [
     "abilities/*",

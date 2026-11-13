@@ -1,7 +1,7 @@
 ---
 {
   "name": "Peace of mind",
-  "firmness": "worked",
+  "stage": "design",
   "links": [
     {
       "to": "slow-burn",

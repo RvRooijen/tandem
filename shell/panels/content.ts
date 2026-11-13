@@ -28,21 +28,22 @@ export function contentPanel(): Panel {
 
   async function records(kind: string) {
     at = { kind };
-    const all = (await app.act<Record<string, Rec>>('records.get', { path: `${kind}/*` })) ?? {};
+    const [all = {}, locks = []] = await Promise.all([app.act<Record<string, Rec>>('records.get', { path: `${kind}/*` }), app.act<string[]>('locks.list')]);
     if (!body || at.kind !== kind || at.path) return;
     clear(body,
       h('div.bar', {}, h<'button'>('button.link', { onclick: () => void kinds() }, '‹ Content'), h('b', {}, kind)),
       Object.entries(all).map(([path, rec]) => h('div.item', { onclick: () => void record(path) },
-        h('div.line', {}, h('b', {}, String(rec.name ?? path.split('/')[1]))),
+        h('div.line', {}, h('b', {}, locks.includes(`record:${path}`) && '🔒 ', String(rec.name ?? path.split('/')[1]))),
         h('p', {}, Object.entries(rec).filter(([k]) => k !== 'name').slice(0, 4).map(([k, v]) => `${k} ${short(v, 22)}`).join(' · ')))));
   }
 
   async function record(path: string) {
     const kind = path.split('/')[0];
     at = { kind, path };
-    const [rec, pending] = await Promise.all([
+    const [rec, pending, locks] = await Promise.all([
       app.act<Rec>('records.get', { path }),
       app.act<Pending[]>('proposals.list', { status: 'pending' }),
+      app.act<string[]>('locks.list'),
     ]);
     if (!body || at.path !== path) return;
     if (!rec) return void records(kind);
@@ -90,7 +91,7 @@ export function contentPanel(): Panel {
     };
 
     clear(body,
-      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void leave(() => records(kind)) }, `‹ ${kind}`), saveBtn),
+      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void leave(() => records(kind)) }, `‹ ${kind}`), h('span.grow'), app.lockButton(`record:${path}`, !!locks?.includes(`record:${path}`)), saveBtn),
       h('h2', {}, path),
       Object.entries(rec).map(([k, v]) => field(k, v)),
       h('div.t-row', {}, h<'button'>('button.primary', { onclick: () => void leave(() => app.attach(`record:${path}`)) }, 'Talk about this')));

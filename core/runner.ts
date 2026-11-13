@@ -72,15 +72,15 @@ export function createRunner(host: Host) {
       try {
         if (kind === 'concept') {
           const c = host.concepts.get(rest);
-          if (c) out.push(`Concept "${c.name}" (${c.id}, ${c.firmness}):\n${c.text || '(no description yet)'}`);
+          if (c) out.push(`Concept "${c.name}" (${c.id}, stage ${c.stage}${host.locks.has(`concept:${c.id}`) ? ', LOCKED' : ''}):\n${c.text || '(no description yet)'}`);
         } else if (kind === 'record') {
           const r = host.records.get(rest);
-          if (r) out.push(`Record ${rest}: ${JSON.stringify(r)}`);
+          if (r) out.push(`Record ${rest}${host.locks.has(`record:${rest}`) ? ' (LOCKED)' : ''}: ${JSON.stringify(r)}`);
         } else if (kind === 'entity') {
           const e = entityView(host.world(), host.game, Number(rest));
           out.push(e ? `Entity ${rest} in the world being played: ${JSON.stringify(e.components)}` : `Entity ${rest} (no longer there)`);
         } else if (kind === 'drawing') {
-          out.push(`Drawing ${rest}: one of the game's drawings, made in pixeldraw. See it with art.look.`);
+          out.push(`Drawing ${rest}${host.locks.has(`drawing:${rest}`) ? ' (LOCKED)' : ''}: one of the game's drawings, made in pixeldraw. See it with art.look.`);
         } else if (kind === 'point') {
           out.push(`A point in the game's world: ${rest} (world units)`);
         } else out.push(ref);

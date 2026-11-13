@@ -1,7 +1,7 @@
 ---
 {
   "name": "Owners and red hats",
-  "firmness": "playable",
+  "stage": "playtest",
   "links": [
     {
       "to": "the-hole",

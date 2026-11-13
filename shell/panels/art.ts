@@ -2,9 +2,11 @@
 // a pixeldraw worker to change it; what the workers are doing; and bringing
 // accepted drawings into the game.
 import type { Event } from '../../core/events.ts';
-import type { Drawing } from '../../core/game.ts';
+import type { Drawing as Plain } from '../../core/game.ts';
 import type { App, Panel } from '../app.ts';
 import { clear, h } from '../dom.ts';
+
+type Drawing = Plain & { locked?: boolean };
 
 export function artPanel(): Panel {
   let app!: App;
@@ -30,7 +32,7 @@ export function artPanel(): Panel {
     const brief = h<'textarea'>('textarea.small', { rows: 2, placeholder: 'What should it be? In plain words.', 'aria-label': 'Brief for a new drawing' });
     clear(body,
       all.map((d) => h('div.item', { onclick: () => void detail(d) },
-        h('div.line', {}, h('b', {}, d.name), h('span.count', {}, `${d.w}×${d.h}`)),
+        h('div.line', {}, h('b', {}, d.locked && '🔒 ', d.name), h('span.count', {}, `${d.w}×${d.h}`)),
         h('p', {}, Object.entries(d.looks).map(([look, anims]) => `${Object.keys(d.looks).length > 1 ? `${look}: ` : ''}${Object.keys(anims).length} animations`).slice(0, 3).join(' · ')))),
       !all.length && h('div.empty', {}, h('b', {}, 'This game does not say what its drawings are.')),
       h('h3', {}, 'A new drawing'),
@@ -66,7 +68,7 @@ export function artPanel(): Panel {
       clear(pic, h<'img'>('img', { src: got.url, alt: `${d.name}: ${got.frames.join(', ')}`, onclick: () => app.zoom(got.url) }), h('p.t-hint', {}, got.frames.join(' · ')));
     };
     clear(body,
-      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void list() }, '‹ Art'), h('b', {}, `${d.name} · ${d.w}×${d.h}`)),
+      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void list() }, '‹ Art'), h('b', {}, `${d.name} · ${d.w}×${d.h}`), h('span.grow'), app.lockButton(`drawing:${d.name}`, !!d.locked, (on) => { d.locked = on; })),
       pic,
       Object.entries(d.looks).map(([lk, anims]) => h('div.chips', {},
         Object.keys(d.looks).length > 1 && h('span.k', {}, lk),

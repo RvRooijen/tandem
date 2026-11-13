@@ -26,7 +26,8 @@ line. `npm start -- --host` puts the page on the network if you want that.
 
 - **Everything is a command.** `core/commands.ts` is the only door. A button in the page, the agent's command line, the bot and the tests call the same named commands; the only difference is who is asking. `test/shell.test.ts` checks that the page uses nothing else.
 - **The person's change is made; the agent's is proposed.** An agent's write to content or a concept becomes a proposal. Everything proposed while answering one message is one round, played, accepted or rejected as one.
-- **Concepts** (`games/<game>/concepts/*.md`) are a name and a description in the person's words, with links to each other, what makes them real, and a firmness (loose, worked, playable, fixed) that says how much freedom the agent has. A concept holds words, not numbers to be met: a playtest reports timings, it never judges them.
+- **Concepts** (`games/<game>/concepts/*.md`) are a name and a description in the person's words, with links to each other, what makes them real, and a stage (idea, design, build, playtest) that says where they are on the way into the game. A concept holds words, not numbers to be met: a playtest reports timings, it never judges them.
+- **Locks.** Anything can be locked: a concept, a record, a drawing. A locked thing is the person's alone; the engine refuses the agent any change or proposal to it, even when the person asks the agent for one.
 - **Content is records** (`games/<game>/content/<kind>/<id>.json`): every number and line the game is tuned with. The game reads them; nothing is tuned in code.
 - **The agent has senses**: `game.state` (words), `game.look` / `game.lookAt` (pictures), `ecs.*` (entities and systems), `playtest.run` / `playtest.compare` (a bot plays the whole game in ten seconds, as it is and as proposed), `art.list` / `art.look` (the drawings).
 
@@ -52,7 +53,7 @@ Works, and is tested:
 
 - the command layer, permissions (person / agent / proposal), the event log, SSE
 - records with a proposal overlay; proposals per round; accept and reject
-- concepts with firmness, links and what makes them real
+- concepts with a stage, links and what makes them real; locks on concepts, records and drawings
 - worlds: a mirror of the one being played, sandboxes the agent can play and poke in
 - the ECS inspector, in the page (live, on the world being played) and for the agent
 - playtests: a run, a before/after comparison of a proposal, a look at any minute

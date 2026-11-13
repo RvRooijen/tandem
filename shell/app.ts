@@ -44,6 +44,8 @@ export interface App {
   /** Run a command for a button: failures are said, not thrown. */
   act<T>(name: string, input?: Record<string, unknown>): Promise<T | undefined>;
   badge(tab: string, on: boolean): void;
+  /** A button that locks or unlocks something ("concept:<id>", "record:<path>", "drawing:<name>") against the agent. */
+  lockButton(ref: string, locked: boolean, changed?: (locked: boolean) => void): HTMLButtonElement;
 }
 
 export function createApp(root: HTMLElement, info: Info, game: GameModule, page: GamePage, panels: Panel[]): App & { feed(ev: Event, live: boolean): void } {
@@ -169,6 +171,25 @@ export function createApp(root: HTMLElement, info: Info, game: GameModule, page:
         app.toast(e instanceof Error ? e.message : String(e));
         return undefined;
       }
+    },
+
+    lockButton(ref, locked, changed) {
+      const b = h<'button'>('button.icon.lock', { onclick: async () => {
+        const done = await app.act<{ locked: boolean }>('locks.set', { ref, locked: !locked });
+        if (!done) return;
+        locked = done.locked;
+        paint();
+        app.toast(locked ? 'Locked: the agent cannot change this, even if you ask it to.' : 'Unlocked: the agent may propose changes again.');
+        changed?.(locked);
+      } });
+      const paint = () => {
+        b.textContent = locked ? '🔒' : '🔓';
+        b.classList.toggle('on', locked);
+        b.setAttribute('aria-label', locked ? 'Locked against the agent. Unlock' : 'Not locked. Lock against the agent');
+        b.setAttribute('aria-pressed', String(locked));
+      };
+      paint();
+      return b;
     },
 
     badge(tab, on) {

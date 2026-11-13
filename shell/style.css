@@ -91,10 +91,13 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 #tandem .empty { text-align: center; color: var(--t-soft); padding: 26px 16px; }
 #tandem .empty b { color: var(--t-ink); display: block; margin-bottom: 6px; }
 #tandem .t-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 20px; background: var(--t-raise); border: 1px solid var(--t-line); color: var(--t-soft); white-space: nowrap; }
-#tandem .t-chip.firm[data-firmness=loose] { color: #8fc7ff; border-color: #35506b; }
-#tandem .t-chip.firm[data-firmness=worked] { color: #c6a8ff; border-color: #4c3d70; }
-#tandem .t-chip.firm[data-firmness=playable] { color: var(--t-good); border-color: #32593a; }
-#tandem .t-chip.firm[data-firmness=fixed] { color: var(--t-accent); border-color: #6a5223; }
+#tandem .t-chip.stage[data-stage=idea] { color: #8fc7ff; border-color: #35506b; }
+#tandem .t-chip.stage[data-stage=design] { color: #c6a8ff; border-color: #4c3d70; }
+#tandem .t-chip.stage[data-stage=build] { color: var(--t-accent); border-color: #6a5223; }
+#tandem .t-chip.stage[data-stage=playtest] { color: var(--t-good); border-color: #32593a; }
+#tandem .grow { flex: 1; }
+#tandem button.lock { font-size: 18px; width: 44px; height: 44px; opacity: 0.55; }
+#tandem button.lock.on { opacity: 1; }
 #tandem .t-chip.mode[data-mode=kernel] { color: var(--t-good); }
 #tandem .t-chip.mode[data-mode=hybrid] { color: var(--t-accent); }
 #tandem .t-chip.mode[data-mode=js] { color: var(--t-bad); }

@@ -1,7 +1,7 @@
 ---
 {
   "name": "Nights you sleep through",
-  "firmness": "playable",
+  "stage": "playtest",
   "links": [
     {
       "to": "slow-burn",

@@ -10,12 +10,14 @@ import { CommandError, type CommandDef } from './commands.ts';
 import type { EventLog } from './events.ts';
 import type { Drawing } from './game.ts';
 import { runJob } from './jobs.ts';
+import type { Locks } from './locks.ts';
 
 export interface ArtOptions {
   game: string;
   root: string;
   events: EventLog;
   newLookFile(): { file: string; url: string };
+  locks: Locks;
 }
 
 export const PIXELDRAW = process.env.PIXELDRAW ?? resolve(import.meta.dirname, '../../pixeldraw');
@@ -45,7 +47,7 @@ export function artCommands(o: ArtOptions): CommandDef[] {
     {
       name: 'art.list', kind: 'read',
       about: 'The drawings the game is made of: the size of each, its looks, and its animations with how many frames they have.',
-      run: async () => (await runJob<{ drawings: Drawing[] }>({ game: o.game, do: 'art' })).drawings,
+      run: async () => (await runJob<{ drawings: Drawing[] }>({ game: o.game, do: 'art' })).drawings.map((d) => ({ ...d, locked: o.locks.has(`drawing:${d.name}`) })),
     },
     {
       name: 'art.look', kind: 'look',
@@ -66,6 +68,7 @@ export function artCommands(o: ArtOptions): CommandDef[] {
       input: { name: 'string', message: 'string', new: 'boolean?' },
       async run(c, i) {
         if (!/^[a-z0-9][a-z0-9-]*$/.test(i.name)) throw new CommandError('input', 'a drawing is named in lower-case words with dashes');
+        o.locks.guard(`drawing:${i.name}`, c.by);
         const out = await pixeldraw('start', JSON.stringify({ kind: i.new ? 'new' : 'feedback', name: i.name, message: i.message }));
         const id = out.split('\n')[0].trim();
         o.events.add({ type: 'art.asked', by: c.by, name: i.name, message: i.message, worker: id });

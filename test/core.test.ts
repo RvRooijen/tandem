@@ -91,11 +91,13 @@ test('concepts: the person writes them, the agent proposes, and nothing in one i
   const made = await me('concepts.create', { name: 'The Slow Burn', text: 'It starts as a seed packet and takes hours to turn.' });
   assert.equal(made.id, 'the-slow-burn');
   await refused(me('concepts.create', { name: 'The slow burn' }), 'exists');
-  await me('concepts.update', { id: made.id, firmness: 'fixed', realised: ['beats/*', 'settings/day'], links: [{ to: 'ornaments', kind: 'part-of' }] });
+  await me('concepts.update', { id: made.id, stage: 'playtest', realised: ['beats/*', 'settings/day'], links: [{ to: 'ornaments', kind: 'part-of' }] });
   await refused(me('concepts.update', { id: made.id, checks: [{ milestone: 'awake', min: 60 }] }), 'input');
-  await refused(me('concepts.update', { id: made.id, firmness: 'solid' }), 'input');
+  await refused(me('concepts.update', { id: made.id, stage: 'finished' }), 'input');
+  await refused(me('concepts.update', { id: made.id, firmness: 'fixed' }), 'input');
   const c = await me('concepts.get', { id: made.id });
-  assert.equal(c.firmness, 'fixed');
+  assert.equal(c.stage, 'playtest');
+  assert.equal(c.locked, false);
   assert.deepEqual(c.links, [{ to: 'ornaments', kind: 'part-of' }]);
   assert.ok(!('checks' in c), 'a concept holds words, not windows of minutes');
   assert.match(readFileSync(join(dir, 'game/concepts/the-slow-burn.md'), 'utf8'), /It starts as a seed packet/);
@@ -103,7 +105,7 @@ test('concepts: the person writes them, the agent proposes, and nothing in one i
 
   // A record that a concept says is its own carries the concept's name on the proposal.
   await agent('records.set', { path: 'settings/day', value: { dayLen: 40 } }, 'r3');
-  assert.deepEqual(host.events.since(0).at(-1)!.touches, [{ id: 'the-slow-burn', name: 'The Slow Burn', firmness: 'fixed' }]);
+  assert.deepEqual(host.events.since(0).at(-1)!.touches, [{ id: 'the-slow-burn', name: 'The Slow Burn', stage: 'playtest' }]);
   await me('proposals.decide', { round: 'r3', accept: false });
 
   const p = await agent('concepts.create', { name: 'Blue rose', text: 'A rose that only opens at night.' }, 'r4');
@@ -111,13 +113,49 @@ test('concepts: the person writes them, the agent proposes, and nothing in one i
   await refused(me('concepts.get', { id: 'blue-rose' }), 'missing');
   await agent('concepts.update', { id: made.id, text: 'Slower still.' }, 'r4');
   await me('proposals.decide', { round: 'r4', accept: true });
-  assert.equal((await me('concepts.get', { id: 'blue-rose' })).firmness, 'loose');
+  assert.equal((await me('concepts.get', { id: 'blue-rose' })).stage, 'idea');
   assert.equal((await me('concepts.get', { id: made.id })).text, 'Slower still.');
-  assert.equal((await me('concepts.get', { id: made.id })).firmness, 'fixed', 'the rest of the concept is kept');
+  assert.equal((await me('concepts.get', { id: made.id })).stage, 'playtest', 'the rest of the concept is kept');
 
   await refused(agent('concepts.remove', { id: 'blue-rose' }), 'permission');
   await me('concepts.remove', { id: 'blue-rose' });
   assert.equal((await me('concepts.list')).length, 1);
+});
+
+test('a lock keeps the agent off a thing, even when it is asked to change it', async () => {
+  await refused(agent('locks.set', { ref: 'record:flowers/rose', locked: true }), 'permission');
+  await refused(me('locks.set', { ref: 'flowers/rose', locked: true }), 'input');
+  const before = host.events.last();
+  await me('locks.set', { ref: 'record:flowers/rose', locked: true });
+  await me('locks.set', { ref: 'concept:the-slow-burn', locked: true });
+  await me('locks.set', { ref: 'drawing:gnome', locked: true });
+  await me('locks.set', { ref: 'drawing:gnome', locked: true });
+  assert.deepEqual(host.events.since(before).map((e) => `${e.type} ${e.ref}`), ['lock.changed record:flowers/rose', 'lock.changed concept:the-slow-burn', 'lock.changed drawing:gnome']);
+  assert.deepEqual(await agent('locks.list'), ['concept:the-slow-burn', 'drawing:gnome', 'record:flowers/rose']);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, 'game/locks.json'), 'utf8')), ['concept:the-slow-burn', 'drawing:gnome', 'record:flowers/rose']);
+
+  // The agent cannot change it and cannot propose a change to it.
+  const pending = (await me('proposals.list', { status: 'pending' })).length;
+  await refused(agent('records.set', { path: 'flowers/rose', value: { value: 1 } }, 'r7'), 'locked');
+  await refused(agent('concepts.update', { id: 'the-slow-burn', text: 'Faster.' }, 'r7'), 'locked');
+  await refused(agent('art.ask', { name: 'gnome', message: 'a taller hat' }, 'r7'), 'locked');
+  assert.equal((await me('proposals.list', { status: 'pending' })).length, pending, 'nothing was proposed');
+  assert.match(await agent('records.set', { path: 'flowers/rose', value: { value: 1 } }).catch((e: Error) => e.message), /even if they ask you to/);
+  assert.equal((await agent('concepts.list')).find((c: any) => c.id === 'the-slow-burn').locked, true);
+  assert.equal((await agent('art.list'))[0].locked, true);
+
+  // What is next to it is not locked, and the person is never locked out.
+  assert.ok((await agent('records.set', { path: 'flowers/tulip', value: { grow: 5 } }, 'r7')).proposed);
+  await me('proposals.decide', { round: 'r7', accept: false });
+  assert.deepEqual(await me('records.set', { path: 'flowers/rose', value: { value: 260 } }), { changed: true });
+  await me('concepts.update', { id: 'the-slow-burn', stage: 'design' });
+
+  await me('locks.set', { ref: 'record:flowers/rose', locked: false });
+  assert.ok((await agent('records.set', { path: 'flowers/rose', value: { value: 270 } }, 'r8')).proposed);
+  await me('proposals.decide', { round: 'r8', accept: false });
+  await me('locks.set', { ref: 'concept:the-slow-burn', locked: false });
+  await me('locks.set', { ref: 'drawing:gnome', locked: false });
+  assert.deepEqual(await me('locks.list'), []);
 });
 
 test('the world being played is mirrored; a sandbox can be played and poked in', async () => {

@@ -6,10 +6,11 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { artCommands } from './art.ts';
 import { CommandError, createRegistry, isAgent, type By, type CommandDef, type Registry } from './commands.ts';
-import { FIRMNESS, createConcepts, type Concept, type Concepts } from './concepts.ts';
+import { STAGES, createConcepts, type Concept, type Concepts } from './concepts.ts';
 import { createEventLog, type EventLog } from './events.ts';
 import type { GameModule, World } from './game.ts';
 import { runJob } from './jobs.ts';
+import { createLocks, type Locks } from './locks.ts';
 import { encodePng } from './png.ts';
 import { createProposals, type Proposal, type Proposals } from './proposals.ts';
 import { createRecords, type RecordSet, type RecordValue, type Records } from './records.ts';
@@ -28,6 +29,7 @@ export interface Host {
   records: Records;
   proposals: Proposals;
   concepts: Concepts;
+  locks: Locks;
   dirs: { game: string; data: string; looks: string };
   /** Run a command as somebody. */
   run(name: string, input: Record<string, unknown> | undefined, by: By, round?: string): Promise<unknown>;
@@ -57,6 +59,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   const records = createRecords(join(gameDir, 'content'));
   const proposals = createProposals(join(dataDir, 'proposals'));
   const concepts = createConcepts(join(gameDir, 'concepts'));
+  const locks = createLocks(join(gameDir, 'locks.json'));
 
   // The content in the code is where records start: whatever is not on disk yet is written out once.
   const builtIn = game.exportRecords() as RecordSet;
@@ -119,7 +122,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     const kind = path.split('/')[0];
     return concepts.list()
       .filter((c) => c.realised.some((r) => r === path || r === `${kind}/*` || r === `record:${path}`))
-      .map((c) => ({ id: c.id, name: c.name, firmness: c.firmness }));
+      .map((c) => ({ id: c.id, name: c.name, stage: c.stage }));
   }
 
   /** The records as a set of pending proposals would leave them. */
@@ -129,7 +132,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   }
 
   function conceptBrief(c: Concept) {
-    return { id: c.id, name: c.name, firmness: c.firmness, summary: c.text.split('\n').find((l) => l.trim())?.slice(0, 140) ?? '', links: c.links, realised: c.realised };
+    return { id: c.id, name: c.name, stage: c.stage, locked: locks.has(`concept:${c.id}`), summary: c.text.split('\n').find((l) => l.trim())?.slice(0, 140) ?? '', links: c.links, realised: c.realised };
   }
 
   const checkList = (v: unknown, what: string) => {
@@ -213,6 +216,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         const now = records.get(i.path);
         if (!now) throw new CommandError('missing', `there is no record ${i.path}; see records.list. New kinds of thing need code, which is not a record's to add`);
         if (!i.value || typeof i.value !== 'object' || Array.isArray(i.value)) throw new CommandError('input', 'value is an object with the fields that change');
+        locks.guard(`record:${i.path}`, c.by);
         const after: RecordValue = {};
         for (const k in i.value) {
           if (!(k in now)) throw new CommandError('input', `${i.path} has no field ${k}; it has: ${Object.keys(now).join(', ')}`);
@@ -230,6 +234,24 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         contentChanged();
         events.add({ type: 'record.changed', by: c.by, path: i.path, after });
         return { changed: true };
+      },
+    },
+
+    // ---- locks
+    {
+      name: 'locks.list', kind: 'read',
+      about: 'What is locked: things that are the person\'s alone. The agent cannot change a locked thing or propose a change to it, even when asked.',
+      run: () => locks.list(),
+    },
+    {
+      name: 'locks.set', kind: 'write',
+      about: 'Lock or unlock something: ref is "concept:<id>", "record:<path>" or "drawing:<name>". Only the person does this.',
+      input: { ref: 'string', locked: 'boolean' },
+      run(c, i) {
+        if (locks.has(i.ref) === i.locked) return { locked: i.locked };
+        locks.set(i.ref, i.locked);
+        events.add({ type: 'lock.changed', by: c.by, ref: i.ref, locked: i.locked });
+        return { locked: i.locked };
       },
     },
 
@@ -252,7 +274,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
             if (p.kind === 'record') records.set(p.path, { ...(records.get(p.path) ?? {}), ...p.after });
             else {
               const now = concepts.get(p.path);
-              concepts.save({ id: p.path, name: p.path, firmness: 'loose', links: [], realised: [], text: '', ...now, ...(p.after as Partial<Concept>) });
+              concepts.save({ id: p.path, name: p.path, stage: 'idea', links: [], realised: [], text: '', ...now, ...(p.after as Partial<Concept>) });
             }
           }
           contentChanged();
@@ -265,28 +287,28 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     // ---- concepts: the layer the person works in
     {
       name: 'concepts.list', kind: 'read',
-      about: 'Every concept: its name, how firm it is (loose, worked, playable, fixed) and its first line.',
+      about: 'Every concept: its name, its stage (idea, design, build, playtest), whether it is locked, and its first line.',
       run: () => concepts.list().map(conceptBrief),
     },
     {
       name: 'concepts.get', kind: 'read',
-      about: 'One concept in full: the words, how firm it is, its links and what makes it real.',
+      about: 'One concept in full: the words, its stage, whether it is locked, its links and what makes it real.',
       input: { id: 'string' },
       run(_c, i) {
         const c = concepts.get(i.id);
         if (!c) throw new CommandError('missing', `there is no concept ${i.id}; see concepts.list`);
-        return c;
+        return { ...c, locked: locks.has(`concept:${c.id}`) };
       },
     },
     {
       name: 'concepts.create', kind: 'write', agent: 'proposes',
-      about: 'A new concept: a name and a description in plain words. It starts loose unless said otherwise. The agent\'s becomes a proposal.',
-      input: { name: 'string', text: 'string?', firmness: 'string?' },
+      about: 'A new concept: a name and a description in plain words. It starts as an idea unless said otherwise. The agent\'s becomes a proposal.',
+      input: { name: 'string', text: 'string?', stage: 'string?' },
       run(c, i) {
         const cid = concepts.slug(i.name);
         if (concepts.get(cid)) throw new CommandError('exists', `there already is a concept ${cid}`);
-        const firmness = FIRMNESS.includes(i.firmness) ? i.firmness : 'loose';
-        const fresh: Concept = { id: cid, name: i.name, firmness, links: [], realised: [], text: i.text ?? '' };
+        const stage = STAGES.includes(i.stage) ? i.stage : 'idea';
+        const fresh: Concept = { id: cid, name: i.name, stage, links: [], realised: [], text: i.text ?? '' };
         if (isAgent(c.by)) {
           const round = c.round ?? 'loose';
           const { id: _id, ...after } = fresh;
@@ -301,22 +323,23 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'concepts.update', kind: 'write', agent: 'proposes',
-      about: 'Change a concept: its name, text, firmness, links ([{to, kind}], kind is part-of, leads-to or clashes-with), realised (record paths, drawings, tests). The agent\'s becomes a proposal.',
-      input: { id: 'string', name: 'string?', text: 'string?', firmness: 'string?', links: 'json?', realised: 'json?', note: 'string?' },
+      about: 'Change a concept: its name, text, stage (idea, design, build, playtest), links ([{to, kind}], kind is part-of, leads-to or clashes-with), realised (record paths, drawings, tests). The agent\'s becomes a proposal.',
+      input: { id: 'string', name: 'string?', text: 'string?', stage: 'string?', links: 'json?', realised: 'json?', note: 'string?' },
       run(c, i) {
         const now = concepts.get(i.id);
         if (!now) throw new CommandError('missing', `there is no concept ${i.id}; see concepts.list`);
-        if (i.firmness !== undefined && !FIRMNESS.includes(i.firmness)) throw new CommandError('input', `firmness is one of ${FIRMNESS.join(', ')}`);
+        if (i.stage !== undefined && !STAGES.includes(i.stage)) throw new CommandError('input', `stage is one of ${STAGES.join(', ')}`);
+        locks.guard(`concept:${i.id}`, c.by);
         for (const k of ['links', 'realised'] as const) checkList(i[k], k);
         const after: Record<string, unknown> = {};
-        for (const k of ['name', 'text', 'firmness', 'links', 'realised'] as const)
+        for (const k of ['name', 'text', 'stage', 'links', 'realised'] as const)
           if (i[k] !== undefined && !same(i[k], now[k])) after[k] = i[k];
         if (!Object.keys(after).length) return { changed: false };
         if (isAgent(c.by)) {
           const round = c.round ?? 'loose';
           const before = Object.fromEntries(Object.keys(after).map((k) => [k, now[k as keyof Concept]]));
           const p = proposals.add({ round, by: c.by, kind: 'concept', path: i.id, before: before as RecordValue, after: after as RecordValue, note: i.note ?? '' });
-          events.add({ type: 'proposal', by: c.by, round, id: p.id, kind: 'concept', path: i.id, before: p.before, after: p.after, note: p.note, touches: [{ id: now.id, name: now.name, firmness: now.firmness }] });
+          events.add({ type: 'proposal', by: c.by, round, id: p.id, kind: 'concept', path: i.id, before: p.before, after: p.after, note: p.note, touches: [{ id: now.id, name: now.name, stage: now.stage }] });
           return { proposed: p.id, round };
         }
         concepts.save({ ...now, ...(after as Partial<Concept>) });
@@ -467,10 +490,10 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   const guarded = (defs: CommandDef[]): CommandDef[] => defs.map((d) => d.kind !== 'write' || d.name.startsWith('ecs.') ? d : {
     ...d, run: (c, i) => { sandboxOnly(i.room, c.by); return d.run(c, i); },
   });
-  registry.add(...core, ...guarded(game.commands(world)), ...ecsCommands(world, game, sandboxOnly), ...artCommands({ game: id, root: ROOT, events, newLookFile }));
+  registry.add(...core, ...guarded(game.commands(world)), ...ecsCommands(world, game, sandboxOnly), ...artCommands({ game: id, root: ROOT, events, newLookFile, locks }));
 
   return {
-    game, registry, events, records, proposals, concepts,
+    game, registry, events, records, proposals, concepts, locks,
     dirs: { game: gameDir, data: dataDir, looks: looksDir },
     run: (name, input, by, round) => registry.run(name, input, { by, round }),
     world,

@@ -15,6 +15,7 @@ export default defineConfig({
     strictPort: true,
     fs: { strict: false },
     watch: { usePolling: true, interval: 500 },
-    proxy: { '/api': { target: 'http://127.0.0.1:5201', changeOrigin: false } },
+    // With the slash: the shell has a module called api.ts, which is not the core's to answer.
+    proxy: { '/api/': { target: `http://127.0.0.1:${process.env.TANDEM_PORT ?? 5201}`, changeOrigin: false } },
   },
 });

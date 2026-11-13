@@ -143,17 +143,19 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     if (!code) return;
     const files = code.changes();
     const open = proposals.list({ status: 'pending', round: CODE });
-    // What it said the change is, when it said so; otherwise what it answered.
-    const note = about() || said;
+    // What it said the change is (code.describe). Its answer is not repeated on the card: it is in the chat, right above.
+    const note = about();
     if (!files.length) {
       about('');
       // The copy is the project again: whatever was proposed is no more.
       if (open.length) { proposals.decide(CODE, 'rejected'); events.add({ type: 'proposal.decided', by, round: CODE, status: 'rejected', count: open.length, paths: ['code:working copy'] }); }
       return;
     }
-    const p = proposals.add({ round: CODE, by, kind: 'code', path: 'working copy', after: { files: files as never }, note });
+    // (The first line of its answer is kept for the commit, for when it did not say what the change is.)
+    const after = { files: files as never, said: said.split('\n')[0].slice(0, 120) };
+    const p = proposals.add({ round: CODE, by, kind: 'code', path: 'working copy', after, note });
     // The whole list every time: a file the agent put back is not part of the change any more.
-    p.after = { files: files as never };
+    p.after = after;
     events.add({ type: 'proposal', by, round: CODE, id: p.id, kind: 'code', path: 'working copy', files, note });
   }
 
@@ -311,7 +313,10 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
           if (pending.some((p) => p.kind === 'drawing')) art.acceptable(i.round);
           // The working copy goes into the project first: if it does not go in cleanly, nothing is accepted.
           if (code && pending.some((p) => p.kind === 'code')) {
-            try { taken = code.accept(pending.find((p) => p.kind === 'code')!.note.split('\n')[0].slice(0, 120) || 'Accepted from the working copy'); }
+            try {
+              const p = pending.find((x) => x.kind === 'code')!;
+              taken = code.accept(p.note.split('\n')[0].slice(0, 120) || String(p.after.said ?? '') || 'Accepted from the working copy');
+            }
             catch (e) { throw new CommandError('failed', e instanceof Error ? e.message : String(e)); }
           }
           await art.accepting(pending);

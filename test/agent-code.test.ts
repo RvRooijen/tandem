@@ -48,7 +48,7 @@ test('asked to code, the agent works in its copy, and what the copy changed is a
   const p = host.events.since(0).filter((e) => e.type === 'proposal').at(-1)!;
   assert.deepEqual([p.kind, p.round, p.by], ['code', 'code', 'agent:main']);
   assert.deepEqual(p.files, [{ path: 'src/seasons.js', added: 1, removed: 0, status: 'new' }]);
-  assert.match(String(p.note), /Seasons added/);
+  assert.equal(p.note, '', 'its answer is in the chat, not said again on the card; the card says what the change is once the agent has said so');
   assert.deepEqual((await me('code.changes')).files, p.files);
   assert.match((await me('code.changes', { path: 'src/seasons.js' })).diff, /\+export const SEASONS = 4;/);
   assert.equal((await me('proposals.list', { status: 'pending' })).length, 1);

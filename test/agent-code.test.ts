@@ -81,8 +81,15 @@ test('when the copy is the project again, the proposal is gone; rejected, the co
   assert.match(again.says, /the whole change set \(1 file\)/);
   assert.equal(host.events.since(0).filter((e) => e.type === 'proposal').at(-1)!.note, 'The year has four seasons now.\nNothing uses them yet.');
   assert.equal((await me('proposals.list', { status: 'pending' })).length, 1, 'still the one proposal');
+  // Where the change shows goes with the change set: the way there, and the thing itself.
+  await refused(host.run('code.show', { steps: [{ press: 'Shop' }] }, 'agent:main'), 'input');
+  await refused(host.run('code.show', { steps: [{ go: 'https://elsewhere.example/' }] }, 'agent:main'), 'input');
+  await host.run('code.show', { steps: [{ tap: 'Calendar' }, { fill: 'Year', text: '2' }], at: 'Autumn', text: 'the new season' }, 'agent:main');
+  assert.deepEqual(host.events.since(0).filter((e) => e.type === 'proposal').at(-1)!.show, { steps: [{ tap: 'Calendar' }, { fill: 'Year', text: '2' }], at: 'Autumn', text: 'the new season' });
+  assert.ok(existsSync(join(host.dirs.data, 'code-show.json')));
   await me('proposals.decide', { round: 'code', accept: true });
   assert.equal(readFileSync(join(dir, 'src/seasons.js'), 'utf8'), 'export const SEASONS = 4;\n', 'accepted: the project has it');
+  assert.ok(!existsSync(join(host.dirs.data, 'code-show.json')), 'and it goes with the change set');
   assert.match(git('log', '--oneline', '-1'), /The year has four seasons now\.$/, 'as one commit that says what it is');
   assert.ok(!existsSync(join(host.dirs.data, 'code-about.txt')), 'what was said about it goes with it');
   assert.deepEqual(host.events.since(0).filter((e) => e.type === 'code.changed').at(-1)!.files, ['src/seasons.js']);

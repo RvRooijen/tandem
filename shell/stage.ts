@@ -14,6 +14,8 @@ export interface Picked { x: number; y: number; w: number; h: number; words: str
 export interface Stage {
   /** What the frame shows now. */
   showing: 'project' | 'copy';
+  /** How many times a page in the frame has said it is there: one more each time a page is loaded in it. */
+  loads: number;
   /** What the page in the frame can do, as far as it has said. */
   can: { snapshot: boolean; point: boolean; find: boolean };
   /** Show the agent's working copy, started from the world the person is in; or the project again. */
@@ -78,6 +80,7 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
 
   const stage: Stage = {
     showing: 'project',
+    loads: 0,
     can: { snapshot: false, point: false, find: false },
     showCopy(url) {
       stage.showing = 'copy';
@@ -147,6 +150,7 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
     } else if (m.type === 'page') {
       // Tandem's own lines in the page: what is on it can be found.
       stage.can = { ...stage.can, find: !!m.can?.find };
+      stage.loads++;
     } else if (m.type === 'did' && m.id !== undefined) {
       const r = frame.getBoundingClientRect();
       const { tandem: _t, type: _y, id: _i, ...got } = m as Record<string, unknown>;

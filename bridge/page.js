@@ -120,6 +120,28 @@
   /** Something the agent does on the page, as a person would. */
   function act(m) {
     if (m.do === 'look') return { ok: true, ...look() };
+    // What this page keeps in the browser, and where it is: the working copy is started from it, so the person is
+    // who they are and where they were. And the other side: taking that over, and going there.
+    if (m.do === 'state') {
+      const dump = (store) => { const out = {}; try { for (let i = 0; i < store.length; i++) { const k = store.key(i); out[k] = store.getItem(k); } } catch { /* no storage here */ } return out; };
+      return { ok: true, local: dump(localStorage), session: dump(sessionStorage), path: location.pathname + location.search + location.hash };
+    }
+    if (m.do === 'load') {
+      const fill = (store, from, keep) => {
+        try {
+          for (const k of Object.keys(dump0(store))) if (!keep(k)) store.removeItem(k);
+          for (const [k, v] of Object.entries(from ?? {})) if (!keep(k)) store.setItem(k, String(v));
+        } catch { /* no storage here */ }
+      };
+      const dump0 = (store) => { const out = {}; for (let i = 0; i < store.length; i++) out[store.key(i)] = 1; return out; };
+      // (What tandem itself keeps here, for a page that uses its bridge, is left alone.)
+      const own = (k) => k.startsWith('tandem-');
+      fill(localStorage, m.local, own);
+      fill(sessionStorage, m.session, own);
+      const to = typeof m.path === 'string' && /^[/?#]/.test(m.path) && !m.path.startsWith('//') ? m.path : location.pathname;
+      setTimeout(() => { if (to.startsWith('#')) { location.hash = to; location.reload(); } else location.replace(to); }, 60);
+      return { ok: true, did: 'took over what the project keeps in the browser' };
+    }
     if (m.do === 'go') {
       const to = String(m.path ?? '');
       if (!/^[/?#]/.test(to) || to.startsWith('//')) return { ok: false, error: 'a place in this app starts with / (or ? or #)' };

@@ -222,6 +222,19 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     return text;
   };
 
+  /**
+   * Where the change set shows: the way from where the app opens to the place it can be seen (what a person would
+   * tap and fill in), and the thing itself. When the person plays the copy they are taken there. Gone with the set.
+   */
+  type Step = { go: string } | { tap: string } | { fill: string; text: string };
+  interface Show { steps: Step[]; at?: string; text?: string }
+  const showFile = join(dataDir, 'code-show.json');
+  const shown = (now?: Show | null): Show | undefined => {
+    if (now === undefined) { try { return existsSync(showFile) ? JSON.parse(readFileSync(showFile, 'utf8')) as Show : undefined; } catch { return undefined; } }
+    if (now) writeFileSync(showFile, JSON.stringify(now, null, 2) + '\n'); else rmSync(showFile, { force: true });
+    return now ?? undefined;
+  };
+
   function proposeCode(by: By, said: string) {
     if (!code) return;
     const files = code.changes();
@@ -230,6 +243,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     const note = about();
     if (!files.length) {
       about('');
+      shown(null);
       // The copy is the project again: whatever was proposed is no more.
       if (open.length) { proposals.decide(CODE, 'rejected'); events.add({ type: 'proposal.decided', by, round: CODE, status: 'rejected', count: open.length, paths: ['code:working copy'] }); }
       return;
@@ -239,7 +253,8 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     const p = proposals.add({ round: CODE, by, kind: 'code', path: 'working copy', after, note });
     // The whole list every time: a file the agent put back is not part of the change any more.
     p.after = after;
-    events.add({ type: 'proposal', by, round: CODE, id: p.id, kind: 'code', path: 'working copy', files, note });
+    const show = shown();
+    events.add({ type: 'proposal', by, round: CODE, id: p.id, kind: 'code', path: 'working copy', files, note, ...(show && { show }) });
   }
 
   // ------------------------------------------------------------ helpers
@@ -474,7 +489,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
           }
           await art.accepting(pending);
         } else if (code && pending.some((p) => p.kind === 'code')) code.reject();
-        if (pending.some((p) => p.kind === 'code')) about('');
+        if (pending.some((p) => p.kind === 'code')) { about(''); shown(null); }
         const set = proposals.decide(i.round, i.accept ? 'accepted' : 'rejected', only);
         if (i.accept) {
           for (const p of set) {
@@ -700,6 +715,28 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
           covers: files,
           says: `this is now the description of the whole change set (${files.length} ${files.length === 1 ? 'file' : 'files'}); if it only says what you did last, say it again so that it covers all of it`,
         };
+      },
+    },
+    {
+      name: 'code.show', kind: 'write', agent: 'free',
+      about: 'Say where the working copy\'s change set can be seen, so the person lands on it when they play the copy: steps is the way there from where the app opens, as a person would go, a list of {"go": "/path"}, {"tap": "the words on it"} and {"fill": "what the field is called", "text": "what goes in"}; at is the thing itself (the words on it, or a CSS selector) and text a few words to say with it. They are taken there with what their browser remembers of the project, and a ring is put around it. An empty list of steps and no at takes it away.',
+      input: { steps: 'json?', at: 'string?', text: 'string?' },
+      run(c, i) {
+        if (!code) throw new CommandError('unsupported', 'there is no working copy here: the project is not in a repository');
+        const raw = i.steps ?? [];
+        if (!Array.isArray(raw) || raw.length > 12) throw new CommandError('input', 'steps is a list of at most twelve steps');
+        const steps = (raw as Record<string, unknown>[]).map((st): Step => {
+          if (st && typeof st.go === 'string' && /^[/?#]/.test(st.go) && !st.go.startsWith('//')) return { go: st.go };
+          if (st && typeof st.tap === 'string' && st.tap.trim()) return { tap: st.tap.trim() };
+          if (st && typeof st.fill === 'string' && st.fill.trim() && typeof st.text === 'string') return { fill: st.fill.trim(), text: st.text };
+          throw new CommandError('input', 'a step is {"go": "/path"}, {"tap": "the words on it"} or {"fill": "what the field is called", "text": "what goes in"}');
+        });
+        const at = i.at?.trim();
+        if (!steps.length && !at) { shown(null); return { shown: false }; }
+        const show: Show = { steps, ...(at && { at }), ...(i.text?.trim() && { text: i.text.trim() }) };
+        shown(show);
+        if (proposals.list({ status: 'pending', round: CODE }).length) proposeCode(c.by, '');
+        return { shown: true, says: 'when the person plays your copy they are taken there; you cannot try the steps on their screen unless they ask you to use the app, so take the words from the code' };
       },
     },
     {

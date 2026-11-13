@@ -684,6 +684,50 @@ test('a change to the project is a card: which files, the copy played in the fra
   await until(() => all('.card.prop').filter((c) => /A change to the project/.test(c.textContent!)).at(-1)!.dataset.status === 'rejected', 'the rejection');
 });
 
+test('playing the copy starts it from what the browser keeps of the project, goes to where the change is and marks it', async () => {
+  tab('Chat');
+  app.playProject();
+  fromFrame({ type: 'page', can: { find: true, act: true } });
+  const answer = async (what: string, says: Record<string, unknown>) => {
+    await until(() => toFrame.some((m) => m.type === 'do' && m.do === what), `the page to be asked to ${what}`, 20000);
+    const m = toFrame.find((x) => x.type === 'do' && x.do === what);
+    toFrame.splice(toFrame.indexOf(m), 1);
+    fromFrame({ type: 'did', id: m.id, ...says });
+    return m;
+  };
+  // The agent said where its change shows: the card offers to go there.
+  const show = { steps: [{ tap: 'Shop' }, { fill: 'Search', text: 'lamp' }], at: 'Lamplight', text: 'the new pack' };
+  host.events.add({ type: 'proposal', by: 'agent:main', round: 'code', id: 'pc7', kind: 'code', path: 'working copy', files: [{ path: 'src/shop.js', added: 1, removed: 1, status: 'changed' }], note: 'Lamplight is out.', show });
+  await until(() => all('.card.prop').some((c) => c.dataset.status === 'pending' && /Lamplight is out/.test(c.textContent!)), 'the card');
+  const card = all('.card.prop').find((c) => c.dataset.status === 'pending' && /Lamplight is out/.test(c.textContent!))!;
+  assert.deepEqual(all('.t-row button', card).map((b) => b.textContent), ['Show me in the copy', 'Accept', 'Reject']);
+  canned.set('code.play', { url: 'http://localhost:5211/' });
+  toFrame.length = 0;
+  click(button('Show me in the copy', card));
+  // What the project keeps in the browser is asked of its page, and given to the copy's once that is there.
+  await answer('state', { ok: true, local: { save: '{"level":12}' }, session: { tab: 'home' }, path: '/shop?x=1' });
+  await until(() => frame.src === 'http://localhost:5211/', 'the frame to show the copy');
+  assert.ok($('#t-sheet').classList.contains('shut'), 'the tools get out of the way');
+  fromFrame({ type: 'page', can: { find: true, act: true } });
+  const load = await answer('load', { ok: true });
+  assert.deepEqual([load.local, load.session, load.path], [{ save: '{"level":12}' }, { tab: 'home' }, '/'], 'who they are and how far, from where the app opens: the steps start there');
+  fromFrame({ type: 'page', can: { find: true, act: true } });
+  // The way to the change, as a person would go it.
+  assert.equal((await answer('tap', { ok: true, did: 'tapped button "Shop"', x: 1, y: 1, w: 10, h: 10 })).at, 'Shop');
+  const fill = await answer('type', { ok: true, did: 'filled in "Search"' });
+  assert.deepEqual([fill.at, fill.text], ['Search', 'lamp']);
+  // And the thing itself, marked.
+  await until(() => toFrame.some((m) => m.type === 'find'), 'the thing to be looked for', 20000);
+  const finding = toFrame.find((m) => m.type === 'find');
+  assert.equal(finding.at, 'Lamplight');
+  fromFrame({ type: 'found', id: finding.id, x: 30, y: 200, w: 120, h: 80 });
+  await until(() => !$('#t-ring').hidden && $('#t-ring span').textContent === 'the new pack', 'the ring around what changed');
+  canned.delete('code.play');
+  host.events.add({ type: 'proposal.decided', by: 'me', round: 'code', status: 'rejected', count: 1, paths: ['code:working copy'] });
+  await until(() => card.dataset.status === 'rejected', 'the card to be put away');
+  app.playProject();
+});
+
 test('a new conversation clears the chat and keeps what is still to be decided', async () => {
   tab('Chat');
   // (The engine's message in the test before this one set the agent to work, as it should; let it finish.)

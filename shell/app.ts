@@ -24,6 +24,9 @@ export interface Panel {
   agent?(): void;
 }
 
+/** Where a change shows: the way there, as a person would go, and the thing itself. */
+export interface Show { steps: ({ go: string } | { tap: string } | { fill: string; text: string })[]; at?: string; text?: string }
+
 export interface App {
   info: Info;
   /** The project's page, in its frame. */
@@ -39,7 +42,8 @@ export interface App {
   attach(ref: string): void;
   point(x: number, y: number, text?: string, at?: string): void;
   /** Show the agent's working copy in the frame instead of the project, and back. */
-  playCopy(): Promise<void>;
+  /** Show the working copy, started from what the browser keeps of the project; with `show`, go to where the change is and mark it. */
+  playCopy(show?: Show): Promise<void>;
   playProject(): void;
   zoom(url: string): void;
   toast(text: string): void;
@@ -220,11 +224,35 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       });
     },
 
-    async playCopy() {
+    async playCopy(show) {
       const got = await app.act<{ url: string }>('code.play');
       if (!got) return;
+      const wait = async (what: () => unknown, ms: number) => { for (let t = 0; t < ms && !what(); t += 150) await new Promise((r) => setTimeout(r, 150)); return !!what(); };
+      const settle = () => new Promise((r) => setTimeout(r, 700));
+      // What the browser keeps of the project (who is signed in, how far they are) and where they are in it: the
+      // copy is started from that. What happens in the copy afterwards stays in the copy.
+      const mine = stage.showing === 'project' ? await stage.act({ do: 'state' }) : null;
+      let n = stage.loads;
       stage.showCopy(got.url);
       app.close();
+      if (!(await wait(() => stage.loads > n, 40000))) return;
+      if (mine?.ok) {
+        n = stage.loads;
+        if ((await stage.act({ do: 'load', local: mine.local, session: mine.session, path: show?.steps.length ? '/' : mine.path }))?.ok) await wait(() => stage.loads > n, 20000);
+      }
+      if (!show) return;
+      // The way to the change, gone as a person would go it; then the thing itself, marked.
+      await settle();
+      for (const step of show.steps) {
+        n = stage.loads;
+        const what = 'go' in step ? { do: 'go', path: step.go } : 'tap' in step ? { do: 'tap', at: step.tap } : { do: 'type', at: step.fill, text: step.text };
+        const did = await stage.act(what);
+        if (did?.ok === false) return app.toast(`On the way to the change: ${String(did.error)}. This is as far as it got.`);
+        await settle();
+        // (A step that loads the page anew: wait for it to be there again.)
+        if (!did) await wait(() => stage.loads > n, 8000);
+      }
+      if (show.at) app.point(0, 0, show.text ?? 'this is what changed', show.at);
     },
 
     playProject() { stage.showProject(); },

@@ -3,7 +3,7 @@
 // a small table. All of it is the event log, drawn.
 import type { Event } from '../../core/events.ts';
 import { run } from '../api.ts';
-import type { App, Panel } from '../app.ts';
+import type { App, Panel, Show } from '../app.ts';
 import { ago, clear, h, mins, prose, short } from '../dom.ts';
 
 interface Change {
@@ -17,6 +17,8 @@ interface Change {
   status?: 'accepted' | 'rejected';
   /** What the agent asks the person about it: each answered in a field on the card. */
   questions?: string[];
+  /** Code: where the change can be seen, when the agent said so. */
+  show?: Show;
 }
 /** A round is 'decided' when its pieces went different ways: some taken, some refused. */
 interface Round {
@@ -363,7 +365,8 @@ export function chatPanel(): Panel {
         c.questions?.length && c.status !== 'rejected' ? questionFields(c.id, c.questions) : null)),
       touched.size > 0 && h('div.touches', {}, 'touches ', [...touched].map(([id, t]) => h('span.t-chip.stage', { data: { stage: t.stage }, onclick: () => app.open('concepts', id) }, `${t.name} · ${t.stage}`))),
       r.status === 'pending' && h('div.t-row', {},
-        coded && app.info.page && h<'button'>('button', { onclick: () => void app.playCopy() }, 'Play the copy'),
+        // With the way to the change, playing the copy goes there and marks it.
+        coded && app.info.page && h<'button'>('button', { onclick: () => void app.playCopy(r.changes.find((c) => c.kind === 'code')?.show) }, r.changes.some((c) => c.show) ? 'Show me in the copy' : 'Play the copy'),
         h<'button'>('button.primary', { onclick: () => decide(true) }, total === 1 ? 'Accept' : left < total ? 'Accept the rest' : 'Accept all'),
         h<'button'>('button.danger', { onclick: () => decide(false) }, total === 1 ? 'Reject' : left < total ? 'Reject the rest' : 'Reject all')));
     return el;

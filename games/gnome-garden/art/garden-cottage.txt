@@ -79,8 +79,23 @@ Z = #fffaf0
 3 = #8a6420
 4 = #d8ac3c
 5 = #fae48c
+// snow: lit, soft shadow, the blue of its shaded edge (winter only)
+! = #f4f8fc
+$ = #d3dfec
+% = #a3b6d0
+// lamplight on the wall: soft, strong (winter only)
+^ = #f1dcae
+~ = #fbe6a6
 
 @size 112 88
+// four looks, one per season; the palette above is summer
+@recolor summer
+// spring: fresh pale ivy, a cooler and lighter roof
+@recolor spring p=#2e5c2c q=#4c8a3a r=#7cb850 s=#b4e078 A=#723236 B=#964640 C=#b65e50 D=#cf7a62 E=#e69a7c
+// autumn: the ivy turned, the box gone to seed and yellowed, warmer and duller light on the plaster
+@recolor autumn p=#4a1612 q=#8c2a1a r=#cc5a1c s=#f0a030 a=#927448 b=#b4955e c=#d2b47c d=#e8cf98 e=#f2dcaa w=#6a4a34 x=#8c6a48 y=#b09670 X=#9a7a40 Y=#c2a868 Z=#d8ccb0 8=#5a5a2c 9=#84803c 0=#b0a454
+// winter: the ivy's chars are its bare stems, cold grey light on the plaster and the tiles
+@recolor winter p=#2c2220 q=#4c3a30 r=#6e5646 s=#93796a a=#8c806c b=#aea288 c=#cdc4aa d=#e6dfc8 e=#f3eedc A=#5e2a2e B=#7c3a36 C=#98503e D=#b0664c E=#c6805e
 
 // roof: full width, y 0..17, overhanging the wall on the right
 @rect 0 0 112 18 C
@@ -782,3 +797,375 @@ Z = #fffaf0
 @px 59 78 121
 @px 23 85 1
 @px 58 85 21
+// spring: the window box in blossom, pink and white heads crowding the leaves
+@variant spring
+@px 64 52 _yxxy____yZZy_____xyyx___yZZy__
+@px 64 53 _yxxwy0_yZZ7y90xyxy0xxwy0yZZ7y_
+@px 64 54 0xww0yZ70xwy0Z7yxw09yxww0Z7yxw0
+@px 64 55 99y9909x9990Z999x990y9909Z99y99
+@px 64 56 98y99x998x99989y98999989Z999x99
+// spring: a petal or two blown down onto the plinth
+@px 72 70 y
+@px 90 74 y
+// spring: pale buds at the tips of the ivy shoots, on the roof edge, under the eave, up the post, on the two tendrils
+@px 102 12 v
+@px 94 14 v
+@px 98 15 v
+@px 105 15 v
+@px 90 18 v
+@px 99 18 v
+@px 84 19 v
+@px 97 21 v
+@px 86 22 v
+@px 90 23 v
+@px 102 23 v
+@px 98 31 v
+@px 101 33 v
+@px 102 36 v
+@px 103 40 v
+@px 99 46 v
+@px 101 50 v
+@px 98 54 v
+@px 102 59 v
+@px 99 63 v
+@px 101 67 v
+// autumn: the box gone to seed: the leaves thinned so the sill and the wall show between the stalks, brown heads, pale fluff
+@variant autumn
+@px 64 54 0r9w9j0xw09s990xww9j990Zw09w9r0
+@px 64 55 99g9989wx9g8999xw9g899987g98999
+@px 64 56 98c99w998c9998999899c98999c9899
+// autumn: fallen ivy leaves on the ends of the sill, on the doorstep, at the foot of the plinth, two caught on the roof
+@px 62 54 sr
+@px 95 54 4
+@px 27 79 sr
+@px 28 80 q
+@px 39 80 rs
+@px 45 79 4r
+@px 55 80 sr
+@px 56 79 r
+@px 33 81 r4
+@px 58 81 q
+@px 95 76 sr
+@px 96 77 r
+@px 92 77 4
+@px 87 13 sr
+@px 80 16 rq
+// autumn: a few ivy leaves gone yellow among the red
+@px 93 15 4
+@px 94 18 4
+@px 99 34 4
+@px 101 45 u
+@px 102 48 4
+@px 99 57 u
+@px 98 65 4
+// winter: the ivy's leaves are gone: the tiles, the plaster and the corner post it covered
+@variant winter
+@px 90 12 CCCCCCCCCCCCCCCCCC
+@px 90 13 DDDDDBDDDD2BDDDDDB
+@px 90 14 BBBBBBBBB112BBBBBB
+@px 90 15 BBCCCCCCCCCCCCCCCC
+@px 90 16 CCBDDDDDBDDDDDBDDD
+@rect 90 17 18 1 A
+@rect 84 18 15 2 b
+@rect 84 20 15 3 c
+@rect 98 22 1 48 c
+@px 96 23 dd
+@px 96 24 cd
+@px 96 25 cd
+@px 96 26 cc
+@px 96 56 cc
+@px 96 57 cc
+@px 96 63 d
+@px 96 64 bd
+@px 97 65 c
+@px 97 66 c
+@px 97 67 d
+@px 97 68 c
+@px 97 69 1
+@rect 99 18 5 52 H
+@rect 99 18 1 52 I
+@rect 103 18 1 52 G
+@rect 101 20 1 12 G
+@rect 100 36 1 9 G
+@rect 102 50 1 10 G
+// winter: snow on the roof: a blanket over the upper courses, its edge in heavy lumps that shade the tiles below
+@rect 0 10 112 1 B
+@ellipse 12 9 6 3 B
+@ellipse 30 9 9 5 B
+@ellipse 46 10 4 3 B
+@ellipse 61 8 8 4 B
+@ellipse 78 10 6 4 B
+@ellipse 93 9 6 3 B
+@ellipse 106 9 5 4 B
+@rect 0 9 112 1 %
+@ellipse 12 8 6 3 %
+@ellipse 30 8 9 5 %
+@ellipse 46 9 4 3 %
+@ellipse 61 7 8 4 %
+@ellipse 78 9 6 4 %
+@ellipse 93 8 6 3 %
+@ellipse 106 8 5 4 %
+@rect 0 0 112 9 !
+@ellipse 12 7 6 3 !
+@ellipse 30 7 9 5 !
+@ellipse 46 8 4 3 !
+@ellipse 61 6 8 4 !
+@ellipse 78 8 6 4 !
+@ellipse 93 7 6 3 !
+@ellipse 106 7 5 4 !
+// roof snow: soft shadow where it sags over the laps of the courses, and on the lumps' side away from the light
+@rect 8 2 9 1 $
+@rect 11 3 4 1 $
+@rect 30 2 12 1 $
+@rect 34 3 6 1 $
+@rect 32 1 5 1 $
+@rect 58 2 7 1 $
+@rect 60 3 3 1 $
+@rect 80 2 10 1 $
+@rect 84 3 5 1 $
+@rect 82 1 4 1 $
+@rect 100 2 6 1 $
+@rect 102 3 3 1 $
+@rect 20 5 6 1 $
+@rect 22 6 5 1 $
+@rect 42 5 9 1 $
+@rect 45 4 4 1 $
+@rect 66 5 8 1 $
+@rect 69 6 6 1 $
+@rect 88 5 6 1 $
+@rect 89 4 3 1 $
+@px 14 8 $$$
+@px 12 9 $$$$
+@px 33 9 $$$$
+@px 31 10 $$$$$
+@px 29 11 $$$$
+@px 47 9 $$
+@px 46 10 $$
+@px 64 8 $$$
+@px 61 9 $$$$
+@px 80 10 $$$
+@px 78 11 $$$
+@px 95 8 $$$
+@px 93 9 $$$
+@px 107 9 $$$
+@px 105 10 $$$
+// roof snow: what slid down lies caught on the laps of the lower courses and along the eave
+@px 7 12 !!!!
+@px 6 13 !!!!!$%
+@px 49 12 !!!!
+@px 48 13 !!!!!$%
+@px 65 12 !!!
+@px 64 13 !!!!$%
+@px 87 12 !!!
+@px 86 13 !!!!$%
+@px 10 15 !!!!!
+@px 9 16 !!!!!!$%
+@px 24 15 !!!!!!
+@px 23 16 !!!!!!!$%
+@px 37 15 !!!
+@px 36 16 !!!!$%
+@px 55 15 !!!!!
+@px 54 16 !!!!!!$%
+@px 72 15 !!!!
+@px 71 16 !!!!!$%
+@px 82 15 !!!
+@px 81 16 !!!!$%
+@px 108 15 !!
+@px 107 16 !!!$%
+// winter: icicles under the eave where the melt drips
+@px 11 18 o
+@px 11 19 n
+@px 12 18 n
+@px 27 18 o
+@px 27 19 o
+@px 27 20 n
+@px 28 18 n
+@px 56 18 o
+@px 56 19 n
+@px 74 18 o
+@px 74 19 o
+@px 74 20 n
+@px 75 18 n
+// winter: the ivy's bare stems: the main stem winding up the post, lit in stretches
+@rect 101 60 1 10 p
+@px 100 59 pp
+@rect 100 52 1 7 p
+@px 100 51 pp
+@rect 101 44 1 7 p
+@px 101 43 pp
+@rect 102 36 1 7 p
+@px 101 35 pp
+@rect 101 28 1 7 p
+@px 100 27 pp
+@rect 100 18 1 9 p
+@rect 101 62 1 3 q
+@rect 100 54 1 2 q
+@rect 101 46 1 2 q
+@rect 102 38 1 3 q
+@rect 101 30 1 2 q
+@rect 100 21 1 3 q
+// stems: a thinner one beside it on the edge of the post and the wall, twigs forking off left and right
+@px 100 66 q
+@px 99 65 q
+@rect 99 56 1 9 q
+@px 98 55 q
+@rect 98 47 1 8 q
+@px 99 46 q
+@rect 99 38 1 8 q
+@px 98 37 q
+@rect 98 31 1 6 q
+@px 97 30 r
+@px 98 61 q
+@px 97 60 r
+@px 96 59 r
+@px 95 58 r
+@px 98 66 q
+@px 97 67 r
+@px 96 67 r
+@px 102 56 q
+@px 103 55 q
+@px 103 54 r
+@px 102 47 q
+@px 103 46 q
+@px 103 45 r
+@px 102 34 q
+@px 103 33 q
+@px 103 32 r
+@px 101 26 q
+@px 102 25 q
+@px 103 24 r
+// stems: the branch under the eave, its two tendrils hanging, twigs up onto the roof edge
+@px 98 20 pp
+@px 96 21 qp
+@px 95 21 q
+@px 92 20 qqq
+@px 90 19 qq
+@px 89 19 r
+@px 86 20 rrr
+@px 84 19 rr
+@px 90 20 q
+@px 90 21 q
+@px 90 22 r
+@px 90 23 r
+@px 86 21 r
+@px 86 22 r
+@px 94 21 q
+@px 94 22 r
+@px 95 20 q
+@px 95 19 q
+@px 95 18 q
+@px 94 17 q
+@px 94 16 q
+@px 93 15 r
+@px 95 15 r
+@px 96 14 r
+@px 100 17 p
+@px 101 16 p
+@px 101 15 q
+@px 102 14 q
+@px 102 13 q
+@px 103 12 r
+@px 99 16 q
+@px 98 15 q
+@px 97 15 r
+@px 103 14 r
+@px 104 13 r
+@px 105 14 r
+// stems: three withered leaves still hanging on, snow caught on the branch
+@px 88 21 s
+@px 92 21 s
+@px 103 53 s
+@px 86 19 !!
+@px 92 19 !!
+@px 97 14 !
+// winter: the window box empty: the frame, the sill and the wall the flowers hid, the box whole again, the petal gone
+@rect 66 52 26 1 j
+@rect 64 53 30 1 h
+@rect 62 54 34 1 j
+@rect 62 55 34 1 g
+@rect 64 56 31 2 d
+@rect 63 56 32 1 c
+@rect 63 58 32 6 H
+@rect 63 58 32 1 I
+@rect 63 63 32 1 G
+@rect 94 58 1 6 G
+@rect 64 61 14 1 G
+@rect 81 61 12 1 G
+@px 64 59 F
+@px 64 62 F
+@px 92 59 F
+@px 92 62 F
+@px 73 62 G
+@px 73 63 F
+@px 84 62 G
+@px 84 63 F
+@px 94 64 b
+@px 95 65 c
+@px 83 70 N
+// window box: bare soil heaped a little over the rim, snow lying on it
+@px 64 57 _!!!$GG!!!!!!$G!!!!$GGG!!!!!$G_
+@px 66 56 !!
+@px 74 56 !!!
+@px 81 56 !!
+@px 88 56 !!!
+// snow on the sill, lumpy on top, hanging over the front edge in places
+@rect 63 53 32 1 !
+@px 62 52 __!!!!___!!!!!!____!!!!!___!!!!!!_
+@px 72 53 $$
+@px 81 53 $
+@px 90 53 $
+@px 94 53 $
+@px 67 52 $
+@px 76 52 $
+@px 94 52 $
+@px 65 54 !!!%
+@px 76 54 !!%
+@px 85 54 !!!!%
+// snow on top of the window lintel and the door lintel
+@px 63 22 !!!!!$__!!!!!!!!$_!!!!!!$__!!!!$
+@px 26 29 !!!!$_!!!!!!!!$__!!!!!!!$_!!!!!$
+// snow on the doorstep: drifted against the wall at both ends, trodden away in the middle, rounding over the nosing
+@px 22 76 !
+@px 61 76 !
+@px 22 77 !!$
+@px 59 77 $!!
+@px 22 78 !!!!!!!!!!!!!$$__________$$!!!!!!!!!!!!!
+@px 22 79 !!!!$$$!!!!!$$____________$$!!!!!$$$!!!!
+@px 22 80 !!!!!!!!$$!!!$$___________$$!!!!!!!!$!!!
+@px 22 81 !!!!!!!!!!!!$$____________$$!!!!!!!!!!!!
+@px 22 82 _%%!!%%%%!!!%%____________%%%!!%%%%!!%%_
+@px 39 79 $
+@px 44 80 $
+// winter: the lamp lit: its glow on the plaster, soft then strong, the stain under the wall plate
+@ellipse 16 45 8 9 ^
+@ellipse 16 45 5 7 ~
+@px 22 41 bc
+@px 22 42 b
+// lamp: the lantern again over its glow, the glass bright, the flame's white heart
+@rect 22 34 2 7 U
+@line 23 36 16 36 U 1
+@line 22 40 19 37 U 1
+@rect 16 36 1 3 U
+@px 16 38 UU
+@px 15 39 UUUU
+@px 14 40 UUUUUT
+@rect 14 41 6 8 U
+@px 13 41 VUUUUUUT
+@rect 15 42 4 6 v
+@rect 18 42 1 6 u
+@rect 15 47 4 1 u
+@rect 16 43 2 3 Z
+@rect 15 49 4 1 U
+@rect 16 50 2 1 U
+@rect 14 42 1 6 V
+@rect 19 41 1 8 T
+@rect 15 48 4 1 T
+@px 15 39 V
+@px 14 40 V
+@rect 22 34 1 7 V
+// lamp: its light on the edge of the door post, snow on the lantern's cap, on the arm and the wall plate
+@rect 25 38 1 14 J
+@px 15 39 !!!$
+@px 17 35 !!!!$
+@px 22 33 !$
+@variant

@@ -138,7 +138,11 @@ export function artPanel(): Panel {
       w.said && w.state !== 'failed' && h('div.said', {}, prose(w.said)),
       // A drawing with looks is compared look by look: the change may be in any of them.
       w.state !== 'running' && w.pictures?.after && (w.pictures.looks?.length
-        ? w.pictures.looks.map((l) => h('div.pictures', {}, pic(l.before, `${l.look}, as it is`), pic(l.after, l.before ? `${l.look}, as proposed` : `${l.look}, new`), !l.after && h('div.note', {}, `${l.look} would be gone`)))
+        ? [
+          // A drawing that had no looks before: how it is, once, above the looks it would get.
+          !w.pictures.looks.some((l) => l.before) && w.pictures.before && h('div.pictures', {}, pic(w.pictures.before, 'as it is')),
+          w.pictures.looks.map((l) => h('div.pictures', {}, pic(l.before, `${l.look}, as it is`), pic(l.after, l.before ? `${l.look}, as proposed` : `${l.look}, new`), !l.after && h('div.note', {}, `${l.look} would be gone`))),
+        ]
         : h('div.pictures', {}, pic(w.pictures.before, 'as it is'), pic(w.pictures.after, w.phase === 'silhouette' ? 'the silhouette' : w.isNew ? 'new' : 'as proposed'))),
       !w.decided && w.state !== 'running' && [
         box,

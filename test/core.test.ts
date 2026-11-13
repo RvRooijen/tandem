@@ -5,6 +5,8 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { CommandError } from '../core/commands.ts';
 import { AGENT, fixture } from './helpers.ts';
@@ -303,6 +305,52 @@ test('how tandem runs the project is kept in tandem\'s own folder; the agent pro
   assert.ok(!existsSync(pageScript));
   assert.equal(JSON.parse(readFileSync(configFile, 'utf8')).page, undefined);
   assert.equal(host.project.pageCommand(5210), undefined);
+});
+
+test('the project\'s own server is called the way another device would: someone new, who keeps their cookies by name', async () => {
+  await refused(agent('page.request', { path: '/api/me' }, 'r70'), 'unsupported');
+  // A page, and a server standing where that page would be served from.
+  const server = createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => { body += d; });
+    req.on('end', () => {
+      if (req.url === '/api/join' && req.method === 'POST') {
+        const name = JSON.parse(body).name as string;
+        res.writeHead(201, { 'content-type': 'application/json', 'set-cookie': `who=${name}; Path=/; HttpOnly` });
+        return void res.end(JSON.stringify({ joined: name, sent: req.headers['content-type'] }));
+      }
+      if (req.url === '/api/me') { res.writeHead(200, { 'content-type': 'application/json' }); return void res.end(JSON.stringify({ cookie: req.headers.cookie ?? null })); }
+      if (req.url === '/old') { res.writeHead(302, { location: '/new' }); return void res.end(); }
+      res.writeHead(404, { 'content-type': 'text/plain' });
+      res.end('no such thing');
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const was = process.env.TANDEM_PAGE_PORT;
+  process.env.TANDEM_PAGE_PORT = String((server.address() as AddressInfo).port - 2000);
+  await me('project.configure', { page: 'serve {port}' });
+  try {
+    await refused(agent('page.request', { path: 'http://elsewhere.example/' }, 'r70'), 'input');
+    await refused(agent('page.request', { path: '//elsewhere.example/' }, 'r70'), 'input');
+    await refused(agent('page.request', { path: '/api/me', method: 'CONNECT' }, 'r70'), 'input');
+    assert.deepEqual(await agent('page.request', { path: '/api/me' }, 'r70'), { status: 200, type: 'application/json', as: 'visitor', body: '{"cookie":null}' });
+    const joined = await agent('page.request', { path: '/api/join', body: { name: 'bob' }, as: 'bob' }, 'r70');
+    assert.deepEqual([joined.status, JSON.parse(joined.body)], [201, { joined: 'bob', sent: 'application/json' }]);
+    await agent('page.request', { path: '/api/join', body: { name: 'cas' }, as: 'cas' }, 'r70');
+    // Each is their own device: bob is still bob, and someone without a name is no one.
+    assert.equal((await agent('page.request', { path: '/api/me', as: 'bob' }, 'r70')).body, '{"cookie":"who=bob"}');
+    assert.equal((await agent('page.request', { path: '/api/me', as: 'cas' }, 'r70')).body, '{"cookie":"who=cas"}');
+    assert.equal((await agent('page.request', { path: '/api/me' }, 'r70')).body, '{"cookie":null}');
+    assert.deepEqual(await agent('page.request', { path: '/old' }, 'r70'), { status: 302, type: '', as: 'visitor', location: '/new', body: '' });
+    assert.equal((await agent('page.request', { path: '/nowhere' }, 'r70')).status, 404);
+    // What changed something is kept, for the person to see; what only asked is not.
+    const did = host.events.since(0).filter((e) => e.type === 'page.did');
+    assert.deepEqual(did.map((e) => e.did), ['sent POST /api/join to the project\'s server as bob: 201', 'sent POST /api/join to the project\'s server as cas: 201']);
+  } finally {
+    server.close();
+    if (was === undefined) delete process.env.TANDEM_PAGE_PORT; else process.env.TANDEM_PAGE_PORT = was;
+    await me('project.configure', { page: '' });
+  }
 });
 
 test('the conversation and the stage are events like everything else', async () => {

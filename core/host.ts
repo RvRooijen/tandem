@@ -11,7 +11,8 @@ import { createEventLog, type EventLog } from './events.ts';
 import type { GameModule, World } from './game.ts';
 import { runJob, type JobSpec } from './jobs.ts';
 import { createLocks, type Locks } from './locks.ts';
-import { createPreview, type Preview } from './preview.ts';
+import { COPY_PORT, createPreview, type Preview } from './preview.ts';
+import { innerPort } from './through.ts';
 import { encodePng } from './png.ts';
 import { SETUP, loadProject, prepare, type Project } from './project.ts';
 import { createProposals, type Proposals, type RecordValue } from './proposals.ts';
@@ -151,6 +152,53 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     if (what.do !== 'look') events.add({ type: 'page.did', by, what: what.do, ...(what.at !== undefined && { at: what.at }), ...(what.path !== undefined && { path: what.path }), did: result.did ?? '', showing: result.showing });
     const { ok: _ok, lines, ...rest } = result;
     return { ...rest, page: Array.isArray(lines) ? lines.join('\n') : '' };
+  }
+
+  /**
+   * The project's own server, called the way another device would: without anything the person's browser keeps.
+   * Only the address the project's page is served from (and what that page reaches through it), or the working
+   * copy's. A visitor with a name keeps its cookies from one call to the next.
+   */
+  const visitors = new Map<string, Map<string, string>>();
+  async function request(by: By, i: { method?: string; path: string; body?: unknown; headers?: unknown; as?: string; copy?: boolean }) {
+    if (!project.pageCommand(0)) throw new CommandError('unsupported', 'this project has no page set up in tandem (project.configure: page)');
+    const method = (i.method ?? (i.body === undefined ? 'GET' : 'POST')).toUpperCase();
+    if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'].includes(method)) throw new CommandError('input', 'method is GET, POST, PUT, PATCH, DELETE or HEAD');
+    if (!i.path.startsWith('/') || i.path.startsWith('//')) throw new CommandError('input', 'path starts with /: only the project\'s own server is called, at the address its page is served from');
+    if (i.headers !== undefined && (typeof i.headers !== 'object' || i.headers === null || Array.isArray(i.headers))) throw new CommandError('input', 'headers is an object of names and values');
+    let port = innerPort(Number(process.env.TANDEM_PAGE_PORT ?? 5210));
+    if (i.copy) {
+      if (!preview) throw new CommandError('unsupported', 'there is no working copy with a page here');
+      try { await preview.url(); } catch (e) { throw new CommandError('failed', e instanceof Error ? e.message : String(e)); }
+      port = innerPort(COPY_PORT);
+    }
+    const who = i.as?.trim() || 'visitor';
+    const jar = visitors.get(who) ?? new Map<string, string>();
+    visitors.set(who, jar);
+    const headers: Record<string, string> = {};
+    for (const [k, v] of Object.entries((i.headers ?? {}) as Record<string, unknown>)) headers[k.toLowerCase()] = String(v);
+    let body: string | undefined;
+    if (i.body !== undefined && method !== 'GET' && method !== 'HEAD') {
+      body = typeof i.body === 'string' ? i.body : JSON.stringify(i.body);
+      if (typeof i.body !== 'string') headers['content-type'] ??= 'application/json';
+    }
+    if (jar.size) headers.cookie = [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
+    let res: Response;
+    try { res = await fetch(`http://127.0.0.1:${port}${i.path}`, { method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(20_000) }); }
+    catch (e) { throw new CommandError('failed', `the project's server did not answer ${method} ${i.path}: ${e instanceof Error ? e.message : e}`); }
+    for (const c of res.headers.getSetCookie()) {
+      const [pair] = c.split(';');
+      const at = pair.indexOf('=');
+      if (at > 0) jar.set(pair.slice(0, at).trim(), pair.slice(at + 1).trim());
+    }
+    const text = await res.text();
+    const type = res.headers.get('content-type') ?? '';
+    // What changes something is kept as something that happened: the person sees what was done with their project.
+    if (method !== 'GET' && method !== 'HEAD') events.add({ type: 'page.did', by, what: 'request', did: `sent ${method} ${i.path} to ${i.copy ? 'the working copy\'s' : 'the project\'s'} server as ${who}: ${res.status}`, showing: i.copy ? 'copy' : 'project' });
+    return {
+      status: res.status, type, as: who, ...(res.headers.get('location') && { location: res.headers.get('location') }),
+      body: text.length > 8000 ? `${text.slice(0, 8000)}\n… (${text.length - 8000} more characters)` : text,
+    };
   }
 
   /** How the project is run, as tandem keeps it: in its own folder in the project, not among the project's files. */
@@ -673,6 +721,12 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       about: 'Go to another place in the project\'s page on the person\'s screen: path starts with / (or ? or #). Answers with what is on the page there. copy as in page.look.',
       input: { path: 'string', copy: 'boolean?' },
       run: (c, i) => onPage(c.by, { do: 'go', path: i.path, ...(i.copy !== undefined && { copy: i.copy }) }),
+    },
+    {
+      name: 'page.request', kind: 'write', agent: 'free',
+      about: 'Call the project\'s own server the way another device would: nothing of what the person\'s browser keeps goes along, so it is someone new. path starts with / and is asked at the address the project\'s page is served from (its API, if the page reaches that through the same address). method is GET unless there is a body, then POST; body is text, or JSON to send as JSON; headers is an object. as names a visitor ("bob"): one name keeps its cookies from call to call. copy: true calls the working copy\'s server. Answers with the status and the body.',
+      input: { path: 'string', method: 'string?', body: 'json?', headers: 'json?', as: 'string?', copy: 'boolean?' },
+      run: (c, i) => request(c.by, i),
     },
     {
       name: 'page.answer', kind: 'write',

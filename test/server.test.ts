@@ -33,7 +33,7 @@ test('commands over HTTP: the list, a run, who is asking, what goes wrong', asyn
   assert.ok(list.some((c) => c.name === 'agent.status'), 'the agent\'s own commands are in the list');
   // What the page is built from: which project this is, and what it offers.
   const info = await (await fetch(`${base}/info`)).json() as Record<string, unknown>;
-  assert.deepEqual({ ...info, last: 0 }, { project: 'fixture', name: 'Fixture', last: 0, page: null, senses: false, copy: false });
+  assert.deepEqual({ ...info, last: 0 }, { project: 'fixture', name: 'Fixture', last: 0, root: dir, page: null, senses: false, copy: false });
 
   const gnome = await post('art.get', { name: 'gnome' });
   assert.equal(gnome.status, 200);

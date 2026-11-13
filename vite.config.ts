@@ -1,18 +1,16 @@
 import { defineConfig } from 'vite';
 
-// The shell: the phone page. Everything under /api goes to the core server.
+// Tandem's own page: the project in a frame, the tools over it. Everything under /api/ goes to the core.
 export default defineConfig({
   root: 'shell',
   base: './',
-  // The page of the agent's working copy runs next to this one and keeps its own cache.
-  ...(process.env.TANDEM_PREVIEW && { cacheDir: 'node_modules/.vite-preview' }),
   esbuild: { target: 'es2022' },
   build: { target: 'es2022', outDir: '../dist', emptyOutDir: true },
   optimizeDeps: { exclude: ['archetype-ecs'] },
   server: {
     // IPv4 loopback: a phone's browser looks for localhost there, and node on its own picks IPv6 only.
     host: '127.0.0.1',
-    port: 5173,
+    port: Number(process.env.TANDEM_SHELL_PORT ?? 5173),
     // Never drift to another port quietly: pixeldraw's viewer wants this one too, and only one of them can have it.
     strictPort: true,
     fs: { strict: false },

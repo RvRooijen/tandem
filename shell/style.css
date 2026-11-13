@@ -1,8 +1,17 @@
-/* The engine's layer. It is a tool laid over a game, so it looks like neither
-   the game nor a web page: ink-dark, quiet, one warm accent. Everything is
-   sized for a thumb. The game's own stylesheet resets margins and switches
-   text selection off for the whole page; this turns it back on where words
-   are typed or read. */
+/* Tandem's page: the project's own page in a frame that fills the screen, and
+   tandem's tools over it. The tools look like neither a game nor a web page:
+   ink-dark, quiet, one warm accent. Everything is sized for a thumb. */
+html, body { height: 100%; margin: 0; background: #17161c; overscroll-behavior: none; }
+body { overflow: hidden; -webkit-tap-highlight-color: transparent; }
+#root { position: fixed; inset: 0; }
+#t-frame { display: block; width: 100%; height: 100%; border: 0; background: #17161c; }
+#t-nopage { position: absolute; inset: 0; display: grid; place-content: center; gap: 10px; padding: 28px; text-align: center; color: #9c9aae; font: 15px/1.5 system-ui, sans-serif; }
+#t-nopage b { color: #ecebf2; font-size: 17px; }
+#t-nopage p { margin: 0; max-width: 34em; }
+/* Nothing in the tools has a margin or padding it was not given (every rule below wins over this one). */
+:where(#tandem *) { margin: 0; padding: 0; }
+:where(#tandem button, #tandem input, #tandem textarea, #tandem select) { font: inherit; }
+
 #tandem {
   --t-bg: #17161c;
   --t-raise: #26263c;
@@ -203,12 +212,6 @@ canvas.live { image-rendering: pixelated; display: block; }
 
 #tandem .field .pct.minus { margin-left: 0; }
 .sys.engine { text-align: left; background: var(--t-raise); border-radius: 10px; padding: 7px 10px; max-height: 5.6em; overflow: hidden; }
-#t-preview { position: fixed; z-index: 24; left: 50%; transform: translateX(-50%); bottom: calc(8px + env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 10px; padding: 5px 6px 5px 14px; border-radius: 26px; background: #8fc7ff; color: #0c1c2c; font-weight: 700; font-size: 12.5px; white-space: nowrap; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3); max-width: 96vw; }
-#t-preview span { overflow: hidden; text-overflow: ellipsis; }
-#t-preview button { min-height: 34px; background: var(--t-bg); color: var(--t-ink); border: 0; border-radius: 20px; font-size: 13px; padding: 0 12px; }
-body.t-preview #t-fab { border-color: #8fc7ff; }
-body.t-preview #t-fab .mark { background: #8fc7ff; }
-
 /* ---- over the stage */
 #t-ring { position: fixed; z-index: 23; pointer-events: none; transform: translate(-50%, -50%); }
 #t-ring i { display: block; width: 46px; height: 46px; border-radius: 50%; border: 3px solid var(--t-accent); box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(0, 0, 0, 0.55); }

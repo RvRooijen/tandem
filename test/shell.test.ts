@@ -1,6 +1,8 @@
-// The shell, started in jsdom against a real core: the game in the page, the
-// tools over it, and a walk through every tab the way a thumb would. No pixels
-// are checked, only that everything is there, pressed, and ends in a command.
+// The shell, started in jsdom against a real core: a project's page in a frame,
+// the tools over it, and a walk through every tab the way a thumb would. The
+// project's page itself is not loaded here; what it would tell tandem through
+// the bridge is said for it. No pixels are checked, only that everything is
+// there, pressed, and ends in a command.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -8,7 +10,7 @@ import { registerHooks } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
 import { startServer } from '../core/server.ts';
-import { AGENT, scratchHost } from './helpers.ts';
+import { AGENT, fixture } from './helpers.ts';
 
 // A stylesheet is nothing to node.
 registerHooks({
@@ -18,7 +20,7 @@ registerHooks({
 });
 
 process.env.CLAUDE_BIN = fileURLToPath(new URL('./fake-claude.mjs', import.meta.url));
-const { host, cleanup } = await scratchHost();
+const { host, cleanup } = await fixture({ code: false, page: true });
 const s = await startServer({ port: 0, host });
 process.env.TANDEM_PORT = String(s.port);
 const origin = `http://127.0.0.1:${s.port}`;
@@ -79,7 +81,20 @@ Object.assign(globalThis, {
 });
 
 const { boot } = await import('../shell/boot.ts');
-const app = (await boot(() => import('../games/gnome-garden/page.ts')))!;
+const app = (await boot())!;
+
+// The project's page, in its frame: what tandem says to it is caught here, and what it would say is said for it.
+const frame = w.document.querySelector('#t-frame') as HTMLIFrameElement;
+const toFrame: any[] = [];
+frame.getBoundingClientRect = () => ({ left: 10, top: 20, width: 360, height: 620, right: 370, bottom: 640, x: 10, y: 20, toJSON() {} });
+// (The frame gets a new window whenever it is pointed somewhere else, so the catching is put on it each time.)
+const listen = () => { frame.contentWindow!.postMessage = ((m: unknown) => { toFrame.push(m); }) as never; };
+listen();
+const fromFrame = (data: Record<string, unknown>) => { listen(); w.dispatchEvent(new w.MessageEvent('message', { data: { tandem: 1, ...data }, source: frame.contentWindow })); };
+/** Every command the page ran, by name: to see what it asks of the core. */
+const ran: string[] = [];
+const fetchNow = globalThis.fetch;
+globalThis.fetch = ((url: string, init?: RequestInit) => { const m = String(url).match(/\/api\/run\/([\w.]+)/); if (m) ran.push(m[1]); return fetchNow(url, init); }) as typeof fetch;
 
 const $ = (sel: string, root: ParentNode = w.document) => root.querySelector(sel) as HTMLElement;
 const all = (sel: string, root: ParentNode = w.document) => [...root.querySelectorAll(sel)] as HTMLElement[];
@@ -101,16 +116,29 @@ async function until(what: () => unknown, says = 'it', ms = 30000) {
   }
 }
 
-test('the game runs in the page and the tools lie over it, shut', async () => {
-  assert.ok($('#garden'), 'the game drew its own page');
-  assert.ok($('#drawer'), 'with its own drawer');
+test('the project\'s page is in a frame and the tools lie over it, shut', () => {
+  assert.equal(frame.src, 'http://localhost:5210/', 'the project\'s own page, where tandem started it');
+  assert.equal(w.document.title, 'Fixture · tandem');
+  assert.ok($('#t-nopage').hidden);
   assert.ok($('#t-fab'));
   assert.ok($('#t-sheet').classList.contains('shut'));
   assert.deepEqual(all('.t-tab').map((t) => t.textContent), ['Chat', 'Concepts', 'Art']);
-  const clock = (app.page.world.game as { s: { clock: number } }).s.clock;
-  await until(() => (app.page.world.game as { s: { clock: number } }).s.clock > clock, 'the game to move');
-  // The page shares its world with the host, where the agent can read it.
-  await until(() => String((host.world().game as { s: { stats: { tapped: number } } }).s.stats.tapped) === '0', 'the mirror');
+  assert.deepEqual(app.stage.can, { snapshot: false, point: false }, 'a page that says nothing is simply shown');
+});
+
+test('a page that uses the bridge tells tandem its world, and where things are', async () => {
+  fromFrame({ type: 'hello', loaded: false, can: { snapshot: true, point: true } });
+  assert.deepEqual(app.stage.can, { snapshot: true, point: true });
+  // Its world is passed on to the core, for a project that can be seen inside (this one cannot: nothing is sent).
+  fromFrame({ type: 'snapshot', snapshot: { blooms: 2 } });
+  assert.ok(!ran.includes('world.push'));
+  (app.info as { senses: boolean }).senses = true;
+  fromFrame({ type: 'snapshot', snapshot: { blooms: 3 } });
+  await until(() => ran.includes('world.push'), 'the world to be passed on');
+  (app.info as { senses: boolean }).senses = false;
+  // A message from anywhere else is not the page's.
+  w.dispatchEvent(new w.MessageEvent('message', { data: { tandem: 1, type: 'hello', can: { snapshot: false, point: false } }, source: w }));
+  assert.equal(app.stage.can.point, true);
 });
 
 test('chat: a message goes out, the agent answers with a proposal, and it is accepted from its card', async () => {
@@ -278,9 +306,19 @@ test('art: the drawings are listed, one is looked at and locked, and a worker\'s
 
 test('the agent shows things on the person\'s screen', async () => {
   app.close();
+  // Pointing: tandem asks the page where that is, and puts the ring there, on its own screen.
+  toFrame.length = 0;
   await host.run('stage.point', { x: 72, y: 150, text: 'this bed' }, AGENT);
+  await until(() => toFrame.some((m) => m.type === 'where'), 'the page to be asked where that is');
+  const asking = toFrame.find((m) => m.type === 'where');
+  assert.deepEqual([asking.x, asking.y], [72, 150]);
+  fromFrame({ type: 'screen', id: asking.id, x: 180, y: 300 });
   await until(() => $('#t-ring span').textContent === 'this bed', 'the ring');
-  assert.equal($('#t-ring').style.left, '180px', 'in the middle of a garden 144 wide on a canvas 360 wide');
+  assert.deepEqual([$('#t-ring').style.left, $('#t-ring').style.top], ['190px', '320px'], 'where the page said, moved by where the frame is');
+  // A page that does not say where things are: the words still arrive.
+  fromFrame({ type: 'hello', loaded: false, can: { snapshot: false, point: false } });
+  await host.run('stage.point', { x: 1, y: 1, text: 'over here' }, AGENT);
+  await until(() => /The agent points at something: over here/.test($('#t-toast').textContent!), 'the words');
   await host.run('stage.open', { tab: 'concepts', id: 'night-roses' }, AGENT);
   await until(() => $('input.title'), 'the concept to be opened');
   assert.ok(!$('#t-sheet').classList.contains('shut'));
@@ -288,7 +326,7 @@ test('the agent shows things on the person\'s screen', async () => {
   // The ECS and the playtests are the agent's instruments: there is no tab for them. What it looks at and plays
   // shows up in the conversation.
   tab('Chat');
-  await host.run('game.look', { caption: 'the garden, now' }, AGENT);
+  await host.run('art.look', { name: 'gnome' }, AGENT);
   host.events.add({ type: 'playtest', by: AGENT, kind: 'run', profile: 'eager', proposed: false, length: 598.9, minutes: { start: 0 } });
   await until(() => $('figure.card.look img') && all('.card.test').length === 1, 'the look and the playtest in the conversation');
   assert.match($('.card.test').textContent!, /Playtest.*eager player.*whole game.*9h59/);
@@ -305,32 +343,60 @@ test('the agent shows things on the person\'s screen', async () => {
   assert.match(all('.msg.agent').at(-1)!.textContent!, /Have a look at this one/);
 });
 
-test('a change to the game\'s code is a card: which files, a button to play the copy, and a decision', async () => {
+test('a change to the project is a card: which files, the copy played in the frame, and a decision', async () => {
   tab('Chat');
-  const files = [{ path: 'games/gnome-garden/src/sim/seasons.ts', added: 40, removed: 0, status: 'new' }, { path: 'games/gnome-garden/src/sim/game.ts', added: 12, removed: 3, status: 'changed' }];
+  const files = [{ path: 'src/seasons.ts', added: 40, removed: 0, status: 'new' }, { path: 'src/game.ts', added: 12, removed: 3, status: 'changed' }];
   // What the engine tells the agent is shown, small; then what the agent's working copy changed.
   host.events.add({ type: 'message', by: 'engine', text: 'Art was accepted into the project: garden-cottage. Bring it in.' });
   host.events.add({ type: 'proposal', by: 'agent:main', round: 'code', id: 'pc1', kind: 'code', path: 'working copy', files, note: 'The cottage follows the season.' });
-  await until(() => all('.card.prop').some((c) => /change to the game's code/.test(c.textContent!)), 'the card');
+  await until(() => all('.card.prop').some((c) => /A change to the project/.test(c.textContent!)), 'the card');
   assert.match(all('.sys.engine').at(-1)!.textContent!, /to the agent: Art was accepted/);
-  const card = all('.card.prop').find((c) => /change to the game's code/.test(c.textContent!))!;
-  assert.deepEqual(all('.field .k', card).map((k) => k.textContent), ['src/sim/seasons.ts', 'src/sim/game.ts']);
+  const card = all('.card.prop').find((c) => /A change to the project/.test(c.textContent!))!;
+  assert.deepEqual(all('.field .k', card).map((k) => k.textContent), ['src/seasons.ts', 'src/game.ts']);
   assert.match(card.textContent!, /new\+40/);
   assert.match(card.textContent!, /\+12−3/);
   assert.match($('.note', card).textContent!, /The cottage follows the season/);
   assert.deepEqual(all('button', card).map((b) => b.textContent), ['Play the copy', 'Accept', 'Reject']);
 
-  // The agent works on: the same card, with what the copy changes now.
+  // Playing the copy: the frame shows the working copy's page instead, started from the world the person is in,
+  // and says so. (Here there is no working copy to start, so the frame is switched by hand.)
+  fromFrame({ type: 'hello', loaded: false, can: { snapshot: true, point: true } });
+  fromFrame({ type: 'snapshot', snapshot: { blooms: 7 } });
+  click(button('Play the copy', card));
+  await until(() => ran.includes('code.play'), 'the copy to be asked for');
+  await until(() => /no working copy/.test($('#t-toast').textContent!), 'the answer that there is none here');
+  app.stage.showCopy('http://localhost:5211/');
+  assert.equal(frame.src, 'http://localhost:5211/');
+  assert.equal($('#t-copy').hidden, false);
+  assert.match($('#t-copy').textContent!, /The working copy/);
+  toFrame.length = 0;
+  fromFrame({ type: 'hello', loaded: false, can: { snapshot: true, point: false } });
+  assert.deepEqual(toFrame, [{ tandem: 1, type: 'load', snapshot: { blooms: 7 } }], 'the copy is asked to start from the person\'s world');
+  // What happens in the copy is a try-out: its world is not passed on as the person's.
+  const pushed = ran.filter((n) => n === 'world.push').length;
+  (app.info as { senses: boolean }).senses = true;
+  fromFrame({ type: 'snapshot', snapshot: { blooms: 99 } });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(ran.filter((n) => n === 'world.push').length, pushed);
+  (app.info as { senses: boolean }).senses = false;
+
+  // The agent works on: the same card, with what the copy changes now. Decided, the frame is the project again.
   host.events.add({ type: 'proposal', by: 'agent:main', round: 'code', id: 'pc1', kind: 'code', path: 'working copy', files: files.slice(0, 1), note: 'Only the seasons.' });
   await until(() => all('.field .k', card).length === 1, 'the card to follow');
   host.events.add({ type: 'proposal.decided', by: 'me', round: 'code', status: 'accepted', count: 1, paths: ['code:working copy'] });
   host.events.add({ type: 'code.changed', by: 'me', files: [files[0].path] });
   await until(() => card.dataset.status === 'accepted', 'the decision');
-  assert.match(all('.chat .sys').at(-1)!.textContent!, /the working copy is the game now: 1 file changed/);
+  assert.match(all('.chat .sys').at(-1)!.textContent!, /the working copy is the project now: 1 file changed/);
+  assert.equal(frame.src, 'http://localhost:5210/', 'the frame shows the project again');
+  assert.equal($('#t-copy').hidden, true);
+  // A page that was once asked to start from a world is told it is its own again.
+  toFrame.length = 0;
+  fromFrame({ type: 'hello', loaded: true, can: { snapshot: true, point: true } });
+  assert.deepEqual(toFrame, [{ tandem: 1, type: 'unload' }]);
 
   // The working copy is one round that comes back: what it proposes next is a card of its own.
   host.events.add({ type: 'proposal', by: 'agent:main', round: 'code', id: 'pc2', kind: 'code', path: 'working copy', files, note: 'Bulbs.' });
-  await until(() => all('.card.prop').filter((c) => /change to the game's code/.test(c.textContent!)).length === 2, 'a second card');
+  await until(() => all('.card.prop').filter((c) => /A change to the project/.test(c.textContent!)).length === 2, 'a second card');
   assert.equal(card.dataset.status, 'accepted');
   host.events.add({ type: 'proposal.decided', by: 'me', round: 'code', status: 'rejected', count: 1, paths: ['code:working copy'] });
   await until(() => all('.card.prop').at(-1)!.dataset.status === 'rejected', 'the rejection');
@@ -362,16 +428,6 @@ test('a new conversation clears the chat and keeps what is still to be decided',
   await until(() => !app.agent.busy, 'the agent to be done');
 });
 
-test('the game\'s stylesheet and the shell\'s do not style each other', () => {
-  // Both are on one page. A class name they share makes the game's rules land on the engine's tools.
-  const classes = (css: string) => new Set([...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/\.([a-zA-Z][\w-]*)/g)].map((m) => m[1]));
-  const game = classes(readFileSync(new URL('../games/gnome-garden/src/ui/style.css', import.meta.url), 'utf8'));
-  const shell = classes(readFileSync(new URL('../shell/style.css', import.meta.url), 'utf8'));
-  // These the game only styles inside its own parts (.meter .bar, .job .count, .tab .dot, .set.danger, .tab.on).
-  const harmless = new Set(['bar', 'count', 'dot', 'danger', 'on']);
-  assert.deepEqual([...shell].filter((c) => game.has(c) && !harmless.has(c)), []);
-});
-
 test('parity: everything the shell does is a command the agent could name', async () => {
   const known = new Set((await host.run('commands.list', {}, 'me') as { name: string }[]).map((c) => c.name));
   for (const c of s.runner!.commands) known.add(c.name);
@@ -387,5 +443,7 @@ test('parity: everything the shell does is a command the agent could name', asyn
     }
   }
   assert.ok(used.size >= 20, `the shell uses ${used.size} commands`);
+  // (world.push is there only for a project that can be seen inside, which this one cannot; the shell sends it only then.)
+  known.add('world.push');
   for (const name of used) assert.ok(known.has(name), `${name}, which the shell uses, is a command`);
 });

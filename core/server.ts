@@ -12,6 +12,8 @@ import { createHost, type Host } from './host.ts';
 import { createRunner } from './runner.ts';
 
 export const PORT = Number(process.env.TANDEM_PORT ?? 5201);
+/** Where the project's own page runs (started by start.ts). */
+export const PAGE_PORT = Number(process.env.TANDEM_PAGE_PORT ?? 5210);
 
 function send(res: ServerResponse, status: number, body: unknown) {
   const text = JSON.stringify(body);
@@ -44,7 +46,12 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
       if (req.method === 'GET' && url.pathname === '/api/commands') return send(res, 200, host.registry.list());
 
       if (req.method === 'GET' && url.pathname === '/api/info')
-        return send(res, 200, { game: host.game.id, name: host.game.name, size: host.game.size, profiles: host.game.profiles, last: host.events.last() });
+        return send(res, 200, {
+          project: host.project.id, name: host.project.name, last: host.events.last(),
+          // Where the project's own page is, and what the project offers: the shell is built from this.
+          page: host.project.pageCommand(0) ? `http://localhost:${PAGE_PORT}/` : null,
+          senses: !!host.game, copy: !!host.code,
+        });
 
       if (req.method === 'POST' && url.pathname.startsWith('/api/run/')) {
         const name = url.pathname.slice('/api/run/'.length);
@@ -93,5 +100,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const s = await startServer();
   // Stopped from outside: what the core started stops with it.
   for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, () => { void s.close().then(() => process.exit(0)); setTimeout(() => process.exit(0), 1500).unref(); });
-  console.log(`tandem core: ${s.host.game.name} on http://127.0.0.1:${s.port}/api  (${s.host.registry.list().length} commands)`);
+  console.log(`tandem core: ${s.host.project.name} (${s.host.project.root}) on http://127.0.0.1:${s.port}/api  (${s.host.registry.list().length} commands${s.host.game ? ', with an adapter' : ''}${s.host.code ? ', working copy' : ''})`);
 }

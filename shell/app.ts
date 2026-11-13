@@ -1,12 +1,12 @@
-// The engine's layer over the game: a round button, a sheet that slides up
-// over the lower part of the screen with the tools in it, a ring for pointing
-// at the game. The game underneath keeps running and stays in view, so it
-// can be played and talked about at once.
+// Tandem's layer over the project's page: a round button, a sheet that slides
+// up over the lower part of the screen with the tools in it, a ring for
+// pointing at something in the project. The project underneath keeps running
+// and stays in view, so it can be used and talked about at once.
 import type { Event } from '../core/events.ts';
-import type { GameModule, GamePage } from '../core/game.ts';
 import type { AgentStatus } from '../core/runner.ts';
 import { run, type Info } from './api.ts';
 import { clear, h } from './dom.ts';
+import type { Stage } from './stage.ts';
 
 export interface Panel {
   id: string;
@@ -23,8 +23,8 @@ export interface Panel {
 
 export interface App {
   info: Info;
-  game: GameModule;
-  page: GamePage;
+  /** The project's page, in its frame. */
+  stage: Stage;
   events: Event[];
   agent: AgentStatus;
   /** What the next message is about: "concept:<id>", "drawing:<name>", "point:<x>,<y>". */
@@ -35,6 +35,9 @@ export interface App {
   /** Hang something on the next message and go to the chat. */
   attach(ref: string): void;
   point(x: number, y: number, text?: string): void;
+  /** Show the agent's working copy in the frame instead of the project, and back. */
+  playCopy(): Promise<void>;
+  playProject(): void;
   zoom(url: string): void;
   toast(text: string): void;
   /** Run a command for a button: failures are said, not thrown. */
@@ -44,7 +47,7 @@ export interface App {
   lockButton(ref: string, locked: boolean, changed?: (locked: boolean) => void): HTMLButtonElement;
 }
 
-export function createApp(root: HTMLElement, info: Info, game: GameModule, page: GamePage, panels: Panel[]): App & { feed(ev: Event, live: boolean): void } {
+export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: Panel[]): App & { feed(ev: Event, live: boolean): void; stageChanged(): void } {
   const fab = h<'button'>('button#t-fab', { 'aria-label': 'Open the tools', onclick: () => (shown ? app.close() : app.open(last)) }, h('i.mark'), h('i.badge'));
   const tabs = h<'nav'>('nav#t-tabs');
   const body = h('div#t-body');
@@ -56,9 +59,10 @@ export function createApp(root: HTMLElement, info: Info, game: GameModule, page:
       h<'button'>('button.icon', { 'aria-label': 'Close', onclick: () => app.close() }, '✕')),
     body, foot);
   const ring = h('div#t-ring', { hidden: true }, h('i'), h('span'));
+  const banner = h('div#t-copy', { hidden: true }, h('span', {}, 'The working copy: what the agent made, not yet the project'), h<'button'>('button', { onclick: () => app.playProject() }, 'Back to the project'));
   const toastEl = h('div#t-toast', { hidden: true });
   const zoomEl = h('div#t-zoom', { hidden: true, onclick: () => { zoomEl.hidden = true; } }, h<'img'>('img'));
-  root.append(fab, ring, sheet, toastEl, zoomEl);
+  root.append(fab, banner, ring, sheet, toastEl, zoomEl);
 
   let shown: string | null = null, last = 'chat';
   let ringTimer = 0, toastTimer = 0;
@@ -77,8 +81,8 @@ export function createApp(root: HTMLElement, info: Info, game: GameModule, page:
     fab.classList.toggle('busy', app.agent.busy);
   }
 
-  const app: App & { feed(ev: Event, live: boolean): void } = {
-    info, game, page,
+  const app: App & { feed(ev: Event, live: boolean): void; stageChanged(): void } = {
+    info, stage,
     events: [],
     agent: { busy: false, doing: '', text: '', waiting: 0, session: false, off: false, context: 0, limit: 0 },
     refs: [],
@@ -103,7 +107,6 @@ export function createApp(root: HTMLElement, info: Info, game: GameModule, page:
       shown = null;
       sheet.classList.add('shut');
       fab.classList.remove('open');
-      page.intercept = null;
     },
 
     attach(ref) {
@@ -112,16 +115,33 @@ export function createApp(root: HTMLElement, info: Info, game: GameModule, page:
     },
 
     point(x, y, text = '') {
-      const at = page.toScreen(x, y);
-      ring.style.left = `${at.x}px`;
-      ring.style.top = `${at.y}px`;
-      ring.querySelector('span')!.textContent = text;
-      ring.hidden = false;
-      ring.classList.remove('go');
-      void ring.offsetWidth;
-      ring.classList.add('go');
-      clearTimeout(ringTimer);
-      ringTimer = window.setTimeout(() => { ring.hidden = true; }, 7000);
+      void stage.where(x, y).then((at) => {
+        if (!at) return app.toast(text ? `The agent points at something: ${text}` : 'The agent points at something, but this page does not say where things are.');
+        ring.style.left = `${at.x}px`;
+        ring.style.top = `${at.y}px`;
+        ring.querySelector('span')!.textContent = text;
+        ring.hidden = false;
+        ring.classList.remove('go');
+        void ring.offsetWidth;
+        ring.classList.add('go');
+        clearTimeout(ringTimer);
+        ringTimer = window.setTimeout(() => { ring.hidden = true; }, 7000);
+      });
+    },
+
+    async playCopy() {
+      const got = await app.act<{ url: string }>('code.play');
+      if (!got) return;
+      stage.showCopy(got.url);
+      app.close();
+    },
+
+    playProject() { stage.showProject(); },
+
+    /** The frame shows something else now: say so over it. */
+    stageChanged() {
+      banner.hidden = stage.showing !== 'copy';
+      document.body.classList.toggle('t-copy', stage.showing === 'copy');
     },
 
     zoom(url) {
@@ -183,6 +203,7 @@ export function createApp(root: HTMLElement, info: Info, game: GameModule, page:
         // What the agent shows, it shows on the stage itself.
         if (ev.type === 'stage.point') app.point(Number(ev.x), Number(ev.y), String(ev.text ?? ''));
         if (ev.type === 'stage.open') app.open(String(ev.tab), ev.id ? String(ev.id) : undefined);
+        if (ev.type === 'proposal.decided' && ev.round === 'code') app.playProject();
         if (ev.by !== 'me' && ['message', 'look', 'playtest'].includes(ev.type)) app.badge('chat', true);
         if (ev.type === 'proposal' && !ev.worker) app.badge('chat', true);
         // A worker's round is ready: that is news in the Art tab.

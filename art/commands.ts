@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { CommandError, isAgent, type CommandDef } from '../core/commands.ts';
 import type { EventLog } from '../core/events.ts';
 import type { Locks } from '../core/locks.ts';
+import type { Project } from '../core/project.ts';
 import type { Proposal, Proposals } from '../core/proposals.ts';
 import { createPictures, type Pictures } from './pictures.ts';
 import { describeDrawing } from './sprites.ts';
@@ -16,58 +17,52 @@ import { createWorkers } from './workers.ts';
 import { createWorkspaces, filesIn, validName } from './workspace.ts';
 
 export interface ArtOptions {
-  game: string;
-  /** The engine's root, where a game's own build tool is found. */
-  root: string;
-  /** Where the game's drawings are: art/ and depth/ in here. */
-  gameDir: string;
-  dataDir: string;
+  /** The project the drawings belong to: they are in its art/ folder, with depth maps in depth/. */
+  project: Project;
   events: EventLog;
   proposals: Proposals;
   locks: Locks;
   newLookFile(): { file: string; url: string };
-  /** Drawings were taken into the project: somebody has to bring them into the game. Unset: they are built straight in. */
+  /** Drawings were taken into the project: somebody has to bring them into what the project runs on. Unset: they are built straight in. */
   accepted?(drawings: { name: string; w: number; h: number; looks: string[]; anims: Record<string, number>; isNew: boolean; depth: boolean }[]): void;
 }
 
 export function createArt(o: ArtOptions) {
-  const spaces = createWorkspaces(o.gameDir, join(o.dataDir, 'art-work'));
+  const root = o.project.root;
+  const spaces = createWorkspaces(root, join(o.project.dirs.data, 'art-work'));
   const pictureOf = createPictures(spaces, o.newLookFile);
   const workers = createWorkers({ spaces, events: o.events, proposals: o.proposals, pictures: pictureOf });
-  const artFile = (name: string) => join(o.gameDir, 'art', `${name}.txt`);
-  const depthFile = (name: string) => join(o.gameDir, 'depth', `${name}.txt`);
+  const artFile = (name: string) => join(root, 'art', `${name}.txt`);
+  const depthFile = (name: string) => join(root, 'depth', `${name}.txt`);
   const has = (name: string) => validName(name) && existsSync(artFile(name));
 
   function need(name: string) {
     if (!has(name)) throw new CommandError('missing', `there is no drawing called ${name}; there are: ${names().join(', ') || 'none'}`);
   }
-  const names = () => Object.keys(filesIn(o.gameDir)).filter((p) => p.startsWith('art/')).map((p) => p.slice(4, -4));
+  const names = () => Object.keys(filesIn(root)).filter((p) => p.startsWith('art/')).map((p) => p.slice(4, -4));
 
   /** A drawing's text has to be something the format can read. */
   function check(text: string, what: string) {
     try { parseArt(text); } catch (e) { throw new CommandError('input', `${what} is not a drawing the format can read: ${e instanceof Error ? e.message : e}`); }
   }
 
-  /** The game is built again with the drawings as they are now. */
+  /** The project's own build of its drawings (tandem.json: art.build), run in the project. */
   function build(): Promise<string> {
-    const tool = join(o.root, 'games', o.game, 'tools/import-art.ts');
-    if (!existsSync(tool)) return Promise.resolve('this game has no tools/import-art.ts; nothing was built');
-    // A game that lives somewhere else (a test's scratch copy) builds next to itself, not into the real one.
-    const real = join(o.root, 'games', o.game);
-    const args = o.gameDir === real ? [] : [`--from=${o.gameDir}`, `--out=${join(o.dataDir, 'art.gen.ts')}`];
+    const command = o.project.config.art?.build;
+    if (!command) return Promise.resolve('the project has no build for its drawings (tandem.json: art.build); nothing was built');
     return new Promise((ok, fail) => {
-      execFile(process.execPath, ['--no-warnings', tool, ...args], { timeout: 120_000 }, (err, stdout, stderr) => {
-        if (err) fail(new CommandError('failed', `the drawings could not be built into the game: ${(stderr || err.message).trim().split('\n').slice(-2).join(' ')}`));
+      execFile('sh', ['-c', command], { cwd: root, timeout: 120_000 }, (err, stdout, stderr) => {
+        if (err) fail(new CommandError('failed', `the drawings could not be built into the project: ${(stderr || err.message).trim().split('\n').slice(-2).join(' ')}`));
         else ok(stdout.trim().split('\n').pop() ?? '');
       });
     });
   }
 
-  /** Put a drawing in the game: its text, and its depth map when it comes with one. */
+  /** Put a drawing in the project: its text, and its depth map when it comes with one. */
   function write(name: string, value: { text?: string; depth?: string }) {
-    mkdirSync(join(o.gameDir, 'art'), { recursive: true });
+    mkdirSync(join(root, 'art'), { recursive: true });
     if (value.text !== undefined) writeFileSync(artFile(name), value.text);
-    if (value.depth !== undefined) { mkdirSync(join(o.gameDir, 'depth'), { recursive: true }); writeFileSync(depthFile(name), value.depth); }
+    if (value.depth !== undefined) { mkdirSync(join(root, 'depth'), { recursive: true }); writeFileSync(depthFile(name), value.depth); }
   }
 
   /**
@@ -105,7 +100,7 @@ export function createArt(o: ArtOptions) {
   const commands: CommandDef[] = [
     {
       name: 'art.list', kind: 'read',
-      about: 'The game\'s drawings: the size of each, its looks (colour variants), its animations with how many frames, whether it has a depth map and whether it is locked.',
+      about: 'The project\'s drawings: the size of each, its looks (colour variants), its animations with how many frames, whether it has a depth map and whether it is locked.',
       run: () => names().map((n) => ({ ...describeDrawing(n, readFileSync(artFile(n), 'utf8')), depth: existsSync(depthFile(n)), locked: o.locks.has(`drawing:${n}`) })),
     },
     {
@@ -125,7 +120,7 @@ export function createArt(o: ArtOptions) {
     },
     {
       name: 'art.look', kind: 'look',
-      about: 'A picture of a drawing: every animation as a row of frames, enlarged, with a small preview. anim and frame (from 1) narrow it down, look picks a colour variant, depth shows its depth map, worker shows a worker\'s version instead of the game\'s. The file can be read as an image.',
+      about: 'A picture of a drawing: every animation as a row of frames, enlarged, with a small preview. anim and frame (from 1) narrow it down, look picks a colour variant, depth shows its depth map, worker shows a worker\'s version instead of the project\'s. The file can be read as an image.',
       input: { name: 'string', anim: 'string?', frame: 'number?', look: 'string?', depth: 'boolean?', worker: 'string?' },
       async run(c, i) {
         if (!validName(i.name)) throw new CommandError('input', 'a drawing is named in lower-case words with dashes');
@@ -176,7 +171,7 @@ export function createArt(o: ArtOptions) {
     },
     {
       name: 'art.ask', kind: 'write', agent: 'free',
-      about: 'Hand drawing work to a worker: a change to a drawing there is, or a new one (new: true), with a brief in plain words. edit names more drawings it may change. It draws in its own copy, silhouette first, and what it makes comes back as a proposal with pictures; nothing reaches the game until the person accepts it. A locked drawing cannot be given to a worker.',
+      about: 'Hand drawing work to a worker: a change to a drawing there is, or a new one (new: true), with a brief in plain words. edit names more drawings it may change. It draws in its own copy, silhouette first, and what it makes comes back as a proposal with pictures; nothing reaches the project until the person accepts it. A locked drawing cannot be given to a worker.',
       input: { name: 'string', message: 'string', new: 'boolean?', edit: 'json?' },
       run(c, i) {
         if (!validName(i.name)) throw new CommandError('input', 'a drawing is named in lower-case words with dashes');
@@ -247,7 +242,7 @@ export function createArt(o: ArtOptions) {
     },
     {
       name: 'art.build', kind: 'write',
-      about: 'Build the drawings into the game again, as they are now. Done by itself whenever a drawing changes.',
+      about: 'Run the project\'s own build of its drawings (tandem.json: art.build), as they are now.',
       run: async (c) => { const built = await build(); o.events.add({ type: 'art.changed', by: c.by, names: [] }); return { built }; },
     },
   ];

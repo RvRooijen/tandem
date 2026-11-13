@@ -6,10 +6,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startServer } from '../core/server.ts';
-import { scratchHost } from './helpers.ts';
+import { fixture } from './helpers.ts';
 
 process.env.CLAUDE_BIN = fileURLToPath(new URL('./fake-claude.mjs', import.meta.url));
-const { host, dir, cleanup } = await scratchHost();
+const { host, dir, cleanup } = await fixture({ code: false });
 const s = await startServer({ port: 0, host });
 process.env.TANDEM_PORT = String(s.port);
 const base = `http://127.0.0.1:${s.port}/api`;
@@ -31,9 +31,9 @@ async function until(what: () => boolean, ms = 30000) {
 test('commands over HTTP: the list, a run, who is asking, what goes wrong', async () => {
   const list = await (await fetch(`${base}/commands`)).json() as { name: string }[];
   assert.ok(list.some((c) => c.name === 'agent.status'), 'the agent\'s own commands are in the list');
-  const info = await (await fetch(`${base}/info`)).json() as { game: string; size: { w: number } };
-  assert.equal(info.game, 'gnome-garden');
-  assert.equal(info.size.w, 144);
+  // What the page is built from: which project this is, and what it offers.
+  const info = await (await fetch(`${base}/info`)).json() as Record<string, unknown>;
+  assert.deepEqual({ ...info, last: 0 }, { project: 'fixture', name: 'Fixture', last: 0, page: null, senses: false, copy: false });
 
   const gnome = await post('art.get', { name: 'gnome' });
   assert.equal(gnome.status, 200);
@@ -51,7 +51,7 @@ test('commands over HTTP: the list, a run, who is asking, what goes wrong', asyn
 });
 
 test('a look can be fetched as a picture', async () => {
-  const look = await post('game.look');
+  const look = await post('art.look', { name: 'gnome' });
   const res = await fetch(`http://127.0.0.1:${s.port}${look.result.url}`);
   assert.equal(res.headers.get('content-type'), 'image/png');
   assert.ok((await res.arrayBuffer()).byteLength > 5000);
@@ -93,18 +93,18 @@ test('a message from the person is answered by the agent, whose only hands are c
   assert.deepEqual([proposal.kind, proposal.path, (proposal.after as { text: string }).text], ['concept', `tulips-${round}`, 'Tulips are worth a bit more.']);
   const reply = evs.find((e) => e.type === 'message' && e.by === 'agent')!;
   assert.match(String(reply.text), /I proposed it \(ok\)/);
-  assert.match(String(reply.text), /Allowed: Bash\(node core\/cli\.ts:\*\)/, 'it is given the command line and little else');
+  assert.match(String(reply.text), /Allowed: Bash\(tandem run:\*\)/, 'it is given the command line and little else');
   assert.match(String(reply.text), /About: refs/, 'what the message points at is written out for it');
   assert.equal(reply.round, round);
   assert.equal(evs.filter((e) => e.type === 'message' && e.by === 'agent').length, 1, 'said once');
   assert.equal((await post('concepts.get', { id: `tulips-${round}` })).status, 404, 'and nothing is changed until the person says so');
 
-  assert.equal(JSON.parse(readFileSync(join(dir, 'data/agent.json'), 'utf8')).session, 'sess-1');
+  assert.equal(JSON.parse(readFileSync(join(dir, '.tandem/data/agent.json'), 'utf8')).session, 'sess-1');
   // How big the conversation is: everything the last request carried, in tokens.
   // (An earlier message in this file already opened the conversation, so this one resumed it.)
   assert.deepEqual([s.runner!.status().context, s.runner!.status().limit], [64_100, 800_000]);
-  assert.equal(JSON.parse(readFileSync(join(dir, 'data/agent.json'), 'utf8')).context, 64_100, 'and it is kept, for after a restart');
-  assert.ok(existsSync(join(dir, 'data/events.jsonl')));
+  assert.equal(JSON.parse(readFileSync(join(dir, '.tandem/data/agent.json'), 'utf8')).context, 64_100, 'and it is kept, for after a restart');
+  assert.ok(existsSync(join(dir, '.tandem/data/events.jsonl')));
 
   // The next message carries on the same conversation.
   const n2 = host.events.last();

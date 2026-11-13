@@ -1,13 +1,16 @@
-// The core, without HTTP: commands, who may do what, records and proposals,
-// concepts, worlds, the inspector and looks.
+// The core, without HTTP, on a project that offers nothing but its files and
+// a few drawings: commands, who may do what, concepts and proposals, locks,
+// art, the conversation. (What needs a project to be seen inside is in
+// game.test.ts.)
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CommandError } from '../core/commands.ts';
-import { AGENT, scratchHost } from './helpers.ts';
+import { AGENT, fixture } from './helpers.ts';
 
-const { host, dir, cleanup } = await scratchHost();
+// Without a working copy: drawings taken into the project are built straight in.
+const { host, dir, cleanup } = await fixture({ code: false });
 after(cleanup);
 
 const me = (name: string, input?: Record<string, unknown>) => host.run(name, input, 'me') as Promise<any>;
@@ -16,7 +19,7 @@ const refused = (p: Promise<unknown>, code: string) => assert.rejects(p, (e) => 
 
 test('every command says what it is for, and the list is what the agent is told', async () => {
   const list = await me('commands.list');
-  assert.ok(list.length > 35);
+  assert.ok(list.length > 25);
   for (const c of list) {
     assert.match(c.name, /^[a-z]+\.[a-zA-Z]+$/);
     assert.ok(c.about.length > 15, `${c.name} says what it is for`);
@@ -26,8 +29,11 @@ test('every command says what it is for, and the list is what the agent is told'
   assert.equal(by['proposals.decide'], 'no');
   assert.equal(by['concepts.update'], 'as a proposal');
   assert.ok(!list.some((c: any) => c.name.startsWith('records.')), 'the game\'s numbers are code, not a layer of records beside it');
-  assert.equal(by['game.state'], 'yes');
-  assert.equal(by['world.push'], 'no');
+  assert.equal(by['art.look'], 'yes');
+  assert.equal(by['locks.set'], 'no');
+  // This project does not offer a way to see inside it, so the commands for that are not there at all.
+  assert.ok(!list.some((c: any) => /^(game|world|ecs|playtest)\./.test(c.name)));
+  assert.equal(host.game, undefined);
 });
 
 test('input is checked before anything runs', async () => {
@@ -88,7 +94,7 @@ test('concepts: the person writes them, the agent proposes, and nothing in one i
   assert.equal(c.locked, false);
   assert.deepEqual(c.links, [{ to: 'ornaments', kind: 'part-of' }]);
   assert.ok(!('checks' in c), 'a concept holds words, not windows of minutes');
-  assert.match(readFileSync(join(dir, 'game/concepts/the-slow-burn.md'), 'utf8'), /It starts as a seed packet/);
+  assert.match(readFileSync(join(dir, '.tandem/concepts/the-slow-burn.md'), 'utf8'), /It starts as a seed packet/);
   assert.equal((await me('concepts.list'))[0].summary, 'It starts as a seed packet and takes hours to turn.');
 
   const p = await agent('concepts.create', { name: 'Blue rose', text: 'A rose that only opens at night.' }, 'r4');
@@ -115,7 +121,7 @@ test('a lock keeps the agent off a thing, even when it is asked to change it', a
   await me('locks.set', { ref: 'drawing:gnome', locked: true });
   assert.deepEqual(host.events.since(before).map((e) => `${e.type} ${e.ref}`), ['lock.changed concept:the-slow-burn', 'lock.changed drawing:gnome']);
   assert.deepEqual(await agent('locks.list'), ['concept:the-slow-burn', 'drawing:gnome']);
-  assert.deepEqual(JSON.parse(readFileSync(join(dir, 'game/locks.json'), 'utf8')), ['concept:the-slow-burn', 'drawing:gnome']);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, '.tandem/locks.json'), 'utf8')), ['concept:the-slow-burn', 'drawing:gnome']);
 
   // The agent cannot change it and cannot propose a change to it.
   const pending = (await me('proposals.list', { status: 'pending' })).length;
@@ -136,71 +142,6 @@ test('a lock keeps the agent off a thing, even when it is asked to change it', a
   await me('proposals.decide', { round: 'r8', accept: false });
   await me('locks.set', { ref: 'drawing:gnome', locked: false });
   assert.deepEqual(await me('locks.list'), []);
-});
-
-test('the world being played is mirrored; a sandbox can be played and poked in', async () => {
-  // The page shares its world.
-  const fresh = host.game.createWorld(undefined, { seed: 3 });
-  host.game.playthrough(fresh, 'eager', { untilSeconds: 400 });
-  await me('world.push', { snapshot: fresh.snapshot() });
-  await refused(agent('world.push', { snapshot: {} }), 'permission');
-  const state = (await agent('game.state')).state as string;
-  assert.match(state, /Owner 1/);
-  assert.match(state, /gardeners/);
-  assert.doesNotMatch(state, /Gnomes 0/, 'six minutes in there are gnomes');
-
-  await refused(agent('game.buy', { what: 'plot' }), 'permission');
-  await refused(me('game.tap', { x: 30, y: 150, room: 'mine' }), 'permission');
-  await refused(agent('game.step', { seconds: 5, room: 'nowhere' }), 'missing');
-
-  await agent('world.fork', { room: 'box' });
-  assert.deepEqual((await me('world.rooms')).map((r: any) => r.name).sort(), ['box', 'mine']);
-  const clock = (await agent('game.step', { seconds: 30, room: 'box' })).clock;
-  assert.ok(clock > 420);
-  assert.ok(!(await agent('game.state')).state.includes(String(Math.round(clock))), 'the mirror did not move');
-
-  const sum = await agent('ecs.summary', { room: 'box' });
-  assert.ok(sum.entities > 4);
-  assert.equal(sum.schemas.Gnome.state, 'u8');
-  assert.equal(sum.schemas.Pos.x, 'f32');
-  const gnomes = await agent('ecs.entities', { with: 'Gnome,Pos', room: 'box' });
-  assert.ok(gnomes.total >= 1);
-  const one = gnomes.entities[0];
-  assert.ok('Move' in one.components && 'role' in one.components.Gnome);
-  assert.equal((await agent('ecs.entities', { where: 'Gnome.role=0, Pos.y>0', room: 'box' })).total, gnomes.total);
-  assert.equal((await agent('ecs.entities', { where: 'Gnome.role=7', room: 'box' })).total, 0);
-  await refused(agent('ecs.entities', { where: 'Gnome.role is 7', room: 'box' }), 'input');
-  await refused(agent('ecs.entities', { with: 'Unicorn', room: 'box' }), 'input');
-
-  const near = await agent('ecs.at', { x: one.components.Pos.x, y: one.components.Pos.y, room: 'box' });
-  assert.equal(near.entities[0].id, one.id);
-  await refused(agent('ecs.set', { id: one.id, component: 'Gnome', field: 'load', value: 3 }), 'permission');
-  const poked = await agent('ecs.set', { id: one.id, component: 'Gnome', field: 'load', value: 3, room: 'box' });
-  assert.equal(poked.components.Gnome.load, 3);
-  assert.equal((await agent('ecs.entity', { id: one.id, room: 'box' })).components.Gnome.load, 3);
-
-  const sys = await agent('ecs.systems', { room: 'box' });
-  assert.deepEqual(sys.order.slice(0, 4), ['grow', 'ripe', 'brain', 'walkGnomes']);
-  assert.equal(sys.queries.find((q: any) => q.name === 'grow').mode, 'kernel');
-
-  // A world as data, to start it again somewhere else (the page of the working copy starts from it).
-  const snap = await agent('world.snapshot');
-  assert.equal(host.game.createWorld(snap).describe().split('\n')[1], host.world().describe().split('\n')[1]);
-
-  assert.equal((await agent('world.drop', { room: 'box' })).dropped, true);
-});
-
-test('a look is a picture on disk and the same thing in words', async () => {
-  const before = host.events.last();
-  const look = await agent('game.look', { caption: 'six minutes in' });
-  const png = readFileSync(look.file);
-  assert.equal(png.subarray(1, 4).toString(), 'PNG');
-  assert.ok(png.length > 5000);
-  assert.match(look.url, /^\/api\/file\/looks\/look-.*\.png$/);
-  assert.match(look.text, /Peace of mind/);
-  const ev = host.events.since(before)[0];
-  assert.equal(ev.type, 'look');
-  assert.equal(ev.caption, 'six minutes in');
 });
 
 test('art: a drawing is a thing of the engine: listed, read, looked at, changed and proposed on', async () => {
@@ -242,8 +183,8 @@ test('art: a drawing is a thing of the engine: listed, read, looked at, changed 
   await agent('art.set', { name: 'garden-sign', text: tiny, note: 'a sign for the gate' }, 'r21');
   assert.equal(host.events.since(0).at(-1)!.isNew, true);
   await me('proposals.decide', { round: 'r21', accept: true });
-  assert.equal(readFileSync(join(dir, 'game/art/garden-sign.txt'), 'utf8'), tiny);
-  assert.match(readFileSync(join(dir, 'data/art.gen.ts'), 'utf8'), /"garden-sign": \{"w":8,"h":8/);
+  assert.equal(readFileSync(join(dir, 'art/garden-sign.txt'), 'utf8'), tiny);
+  assert.ok(JSON.parse(readFileSync(join(dir, 'built.json'), 'utf8')).includes('garden-sign'), 'the project\'s own build of its drawings was run');
   assert.equal((await agent('art.list')).length, 8);
   assert.equal(host.events.since(0).filter((e) => e.type === 'art.changed').at(-1)!.names + '', 'garden-sign');
 

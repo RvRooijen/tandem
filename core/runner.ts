@@ -10,22 +10,25 @@ import type { Event } from './events.ts';
 import { ROOT, type Host } from './host.ts';
 import { entityView } from '../ecs/inspect.ts';
 
-const TOOLS = [
-  'Bash(node core/cli.ts:*)',
-  'Read(core/**)', 'Read(ecs/**)', 'Read(playtest/**)', 'Read(art/**)', 'Read(shell/**)', 'Read(games/**)', 'Read(docs/**)', 'Read(*.md)',
-  'Glob', 'Grep',
-];
-
 /**
- * What the agent may do in its working copy, on top of the above: change the game's code, build its drawings in,
- * run its tests and the type check, and see what it changed. Not the game's concepts or drawings (those go through
- * commands, where they are proposals and can be locked), and not the engine.
+ * What the agent may do. Always: the engine's commands (the `tandem` command line) and reading the project. In its
+ * working copy, on top of that: change the project's files (not tandem's own folder and not the drawings: those go
+ * through commands, where they are proposals and can be locked), run what the project says may be run (its tests,
+ * its type check, its builds), and see what it changed.
  */
-const codeTools = (game: string) => [
-  ...['src/**', 'test/**', 'tools/**', 'module.ts', 'page.ts', 'index.html'].flatMap((p) => [`Edit(games/${game}/${p})`, `Write(games/${game}/${p})`]),
-  `Bash(node --no-warnings --test:*)`, `Bash(npx tsc --noEmit:*)`, `Bash(node --no-warnings games/${game}/tools/import-art.ts:*)`,
-  'Bash(git status:*)', 'Bash(git diff:*)',
-];
+function tools(host: Host): { allow: string[]; deny: string[] } {
+  const { project } = host;
+  // The pictures it takes are outside its working copy; a path from the root is written with two slashes.
+  const allow = ['Bash(tandem run:*)', 'Bash(tandem list:*)', 'Read', 'Glob', 'Grep', `Read(/${project.dirs.looks}/**)`];
+  const deny: string[] = [];
+  if (host.code) {
+    allow.push(...project.editable.flatMap((p) => [`Edit(${p})`, `Write(${p})`]));
+    for (const cmd of [project.config.test, project.config.check, project.config.art?.build, ...(project.config.run ?? [])]) if (cmd) allow.push(`Bash(${cmd}:*)`);
+    allow.push('Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)');
+    deny.push(...['.tandem/**', 'art/**', 'depth/**'].flatMap((p) => [`Edit(${p})`, `Write(${p})`]));
+  }
+  return { allow, deny };
+}
 
 export interface AgentStatus {
   busy: boolean; doing: string; text: string; waiting: number; session: boolean; off: boolean;
@@ -71,7 +74,20 @@ export function createRunner(host: Host) {
       const may = c.agent === 'yes' ? '' : c.agent === 'no' ? ' [the person only]' : ' [from you: a proposal]';
       return `- ${c.name}${may}: ${c.about}${input ? ` Takes { ${input} }.` : ''}`;
     }).join('\n');
-    return `${readFileSync(join(ROOT, 'core/agent-intro.md'), 'utf8')}${host.code ? `\n${readFileSync(join(ROOT, 'core/agent-code.md'), 'utf8').replaceAll('<game>', host.game.id)}` : ''}\n## The game\n\n${host.game.name} (${host.game.id}). Its code is under games/${host.game.id}/src, its concepts under games/${host.game.id}/concepts, its drawings under games/${host.game.id}/art.\n\n## The commands\n\n${list}\n`;
+    const { project } = host;
+    const can = [
+      project.config.test && `Its tests: \`${project.config.test}\`.`,
+      project.config.check && `Its type check: \`${project.config.check}\`.`,
+      project.config.art?.build && `The build of its drawings: \`${project.config.art.build}\`.`,
+      ...(project.config.run ?? []).map((c) => `Also: \`${c}\`.`),
+    ].filter(Boolean).join(' ');
+    const about = [
+      `${project.name}, in ${project.root}.`,
+      host.game ? 'It offers a way to see inside it: the game.*, world.*, ecs.* and playtest.* commands.' : 'It does not offer a way to see inside it while it runs: there are no game.*, ecs.* or playtest.* commands here. You read its code, run its tests, and the person plays it.',
+      project.pageCommand(0) ? 'It has a page the person plays in tandem; they can switch it to your working copy.' : 'It has no page set up in tandem (tandem.json: page).',
+      host.code ? `In your working copy you may run: ${can || 'nothing but the tandem commands; the project does not say how its tests are run (tandem.json: test, check, run)'}` : '',
+    ].filter(Boolean).join(' ');
+    return `${readFileSync(join(ROOT, 'core/agent-intro.md'), 'utf8')}${host.code ? `\n${readFileSync(join(ROOT, 'core/agent-code.md'), 'utf8')}` : ''}\n## The project\n\n${about}\n\n## The commands\n\nRun one with \`tandem run <command> '<json input>'\`.\n\n${list}\n`;
   }
 
   /** What a message points at, written out, so the agent does not have to go and fetch it. */
@@ -85,12 +101,12 @@ export function createRunner(host: Host) {
           const c = host.concepts.get(rest);
           if (c) out.push(`Concept "${c.name}" (${c.id}, stage ${c.stage}${host.locks.has(`concept:${c.id}`) ? ', LOCKED' : ''}):\n${c.text || '(no description yet)'}`);
         } else if (kind === 'entity') {
-          const e = entityView(host.world(), host.game, Number(rest));
+          const e = host.game ? entityView(host.world(), host.game, Number(rest)) : undefined;
           out.push(e ? `Entity ${rest} in the world being played: ${JSON.stringify(e.components)}` : `Entity ${rest} (no longer there)`);
         } else if (kind === 'drawing') {
           out.push(`Drawing ${rest}${host.locks.has(`drawing:${rest}`) ? ' (LOCKED)' : ''}: one of the game's drawings, made in pixeldraw. See it with art.look.`);
         } else if (kind === 'point') {
-          out.push(`A point in the game's world: ${rest} (world units)`);
+          out.push(`A point in the project's world: ${rest} (world units)`);
         } else out.push(ref);
       } catch { out.push(ref); }
     }
@@ -110,18 +126,21 @@ export function createRunner(host: Host) {
       } catch (e) { copy = ` Your working copy could not be brought up to date (${e instanceof Error ? e.message.split('\n')[0] : e}); say so, and do not change code this round.`; }
     }
     const from = ev.by === 'engine' ? '[From the engine, not the person:] ' : '';
-    const prompt = `${from}${ev.text}${expand(ev.refs)}\n\n[This is round ${round}. Where the person is in the game: ${firstLine()}${copy}]`;
+    const where = host.game ? ` Where the person is: ${firstLine()}` : '';
+    const prompt = `${from}${ev.text}${expand(ev.refs)}\n\n[This is round ${round}.${where}${copy}]`;
+    const may = tools(host);
     const args = [
       '-p', prompt, '--append-system-prompt', intro(),
       '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
       '--model', process.env.TANDEM_MODEL ?? 'claude-fable-5-2', '--effort', process.env.TANDEM_EFFORT ?? 'medium',
       ...(session && !retry ? ['--resume', session] : []),
       // Only the tools below: the person's own default permission mode is not inherited.
-      '--permission-mode', 'default', '--allowedTools', ...TOOLS, ...(host.code ? codeTools(host.game.id) : []),
+      '--permission-mode', 'default', '--allowedTools', ...may.allow, ...(may.deny.length ? ['--disallowedTools', ...may.deny] : []),
     ];
     const proc = spawn(process.env.CLAUDE_BIN ?? 'claude', args, {
-      cwd: host.code?.work ?? ROOT, stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, TANDEM_BY: 'agent:main', TANDEM_ROUND: round },
+      cwd: host.code?.work ?? host.project.root, stdio: ['ignore', 'pipe', 'pipe'],
+      // `tandem` on its path is the engine's command line, talking to this core.
+      env: { ...process.env, PATH: `${join(ROOT, 'bin')}:${process.env.PATH ?? ''}`, TANDEM_BY: 'agent:main', TANDEM_ROUND: round },
     });
     child = proc;
     let buf = '', err = '', said = 0, failed = '', lastSaid = '';
@@ -157,7 +176,7 @@ export function createRunner(host: Host) {
             if (block.type === 'text' && block.text.trim()) { said++; text = ''; lastSaid = block.text.trim(); say(lastSaid); }
             if (block.type === 'tool_use') {
               const cmd = String(block.input?.command ?? '');
-              const m = cmd.match(/core\/cli\.ts\s+run\s+([\w.]+)/);
+              const m = cmd.match(/\btandem\s+run\s+([\w.]+)/);
               doing = m ? m[1] : block.name === 'Read' ? 'looking at a file' : block.name === 'Bash' ? 'the command line' : String(block.name).toLowerCase();
               cast(true);
             }

@@ -18,7 +18,7 @@ async function call(path: string, init?: RequestInit) {
     const res = await fetch(base + path, init);
     return await res.json() as any;
   } catch (e) {
-    fail(`the tandem server is not answering on ${base} (${e instanceof Error ? e.message : e}). Start it with: npm start`);
+    fail(`the tandem server is not answering on ${base} (${e instanceof Error ? e.message : e}). Start tandem in the project's folder`);
   }
 }
 

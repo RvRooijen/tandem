@@ -1,7 +1,7 @@
-// The host: one game, its stores, its worlds and every command, in one place.
-// The server puts HTTP around it; the tests use it as it is. Nothing here knows
-// about pages or agents beyond who is asking (`by`).
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+// The host: one project, its stores, its worlds and every command, in one
+// place. The server puts HTTP around it; the tests use it as it is. Nothing
+// here knows about pages or agents beyond who is asking (`by`).
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCode, type Code, type FileChange } from './code.ts';
@@ -9,72 +9,86 @@ import { CommandError, createRegistry, isAgent, type By, type CommandDef, type R
 import { STAGES, createConcepts, type Concept, type Concepts } from './concepts.ts';
 import { createEventLog, type EventLog } from './events.ts';
 import type { GameModule, World } from './game.ts';
-import { runJob } from './jobs.ts';
+import { runJob, type JobSpec } from './jobs.ts';
 import { createLocks, type Locks } from './locks.ts';
-import { createPreview } from './preview.ts';
+import { createPreview, type Preview } from './preview.ts';
 import { encodePng } from './png.ts';
+import { loadProject, prepare, type Project } from './project.ts';
 import { createProposals, type Proposals, type RecordValue } from './proposals.ts';
 import { createArt, type Art } from '../art/commands.ts';
 import { ecsCommands } from '../ecs/inspect.ts';
 import { compare, type Pacing } from '../playtest/pacing.ts';
 
+/** Where the engine itself is. */
 export const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 /** A world on the host. `mine` mirrors the one the person is playing; the others are sandboxes anyone may play in. */
 interface Room { world?: World; snapshot?: unknown; at: number }
 
 export interface Host {
-  game: GameModule;
+  project: Project;
+  /** What lets the engine see inside the project, when the project offers it (its adapter). */
+  game?: GameModule;
   registry: Registry;
   events: EventLog;
   proposals: Proposals;
   concepts: Concepts;
   locks: Locks;
   art: Art;
-  /** The agent's working copy of the game's code, when there is a repository to make one in. */
+  /** The agent's working copy of the project, when there is a repository to make one in. */
   code?: Code;
+  /** The page of the working copy, for playing it. */
+  preview?: Preview;
   /** After the agent worked: what its copy differs from the project becomes (or stops being) a proposal. */
   proposeCode(by: By, note: string): void;
   /** Things to stop before the core does. */
   onStop: (() => void)[];
-  dirs: { game: string; data: string; looks: string };
+  dirs: { project: string; data: string; looks: string };
   /** Run a command as somebody. */
   run(name: string, input: Record<string, unknown> | undefined, by: By, round?: string): Promise<unknown>;
+  /** A world of the project; only with an adapter. */
   world(room?: string): World;
 }
 
 export interface HostOptions {
-  game?: string;
-  /** Where the game's content and concepts are; games/<id> by default. */
-  gameDir?: string;
-  /** Where what is not kept in git goes: the event log, proposals, pictures. */
+  /** The project's folder; the folder tandem was started in if not said. */
+  project?: string;
+  /** Where what is not kept in git goes (the event log, proposals, pictures); .tandem/data in the project if not said. */
   dataDir?: string;
-  /** The agent's working copy, when it is not the usual one (a test's). */
-  code?: Code;
+  /** Tandem's own folder for the project (its concepts and locks), when it is not .tandem in it (a test's). */
+  tandemDir?: string;
+  /** The agent's working copy, when it is not the usual one (a test's); null for none. */
+  code?: Code | null;
 }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 export async function createHost(opts: HostOptions = {}): Promise<Host> {
-  const id = opts.game ?? process.env.TANDEM_GAME ?? 'gnome-garden';
-  const gameDir = opts.gameDir ?? join(ROOT, 'games', id);
-  const dataDir = opts.dataDir ?? join(gameDir, 'data');
-  const looksDir = join(dataDir, 'looks');
-  mkdirSync(looksDir, { recursive: true });
+  const project = loadProject(opts.project ?? process.env.TANDEM_PROJECT ?? process.cwd(), { data: opts.dataDir, tandem: opts.tandemDir });
+  prepare(project);
+  const dataDir = project.dirs.data, looksDir = project.dirs.looks;
 
-  const { game } = (await import(join(ROOT, 'games', id, 'module.ts'))) as { game: GameModule };
+  // What the project offers to be seen inside by. Without it the engine still talks, keeps concepts and codes;
+  // the commands that need it are simply not there.
+  const adapter = project.config.adapter;
+  const hasGame = !!adapter && existsSync(join(project.root, adapter));
+  const game = (hasGame ? (await import(join(project.root, adapter!))).game : undefined) as GameModule;
+  if (hasGame && !game) throw new Error(`${adapter} does not export \`game\``);
+
   const registry = createRegistry();
   const events = createEventLog(join(dataDir, 'events.jsonl'));
   const proposals = createProposals(join(dataDir, 'proposals'));
-  const concepts = createConcepts(join(gameDir, 'concepts'));
-  const locks = createLocks(join(gameDir, 'locks.json'));
+  const concepts = createConcepts(project.dirs.concepts);
+  const locks = createLocks(project.locksFile);
   const onStop: (() => void)[] = [];
 
-  // Working files and project files: the agent codes in a copy of its own (code.ts). Only for the real game, in
-  // a repository; a scratch copy of a game has no working copy, and nobody codes there.
-  const candidate = gameDir === join(ROOT, 'games', id) && process.env.TANDEM_CODE !== 'off' ? createCode({ root: ROOT, gamePath: `games/${id}` }) : undefined;
+  // Working files and project files: the agent codes in a copy of its own (code.ts), when the project is in a
+  // repository. What the engine itself writes in the project (concepts, locks, accepted drawings) is committed by
+  // it, so the copy can take it in; the person's own uncommitted work is theirs and is left alone.
+  const candidate = opts.code === undefined && process.env.TANDEM_CODE !== 'off'
+    ? createCode({ root: project.root, paths: ['.tandem/concepts', '.tandem/locks.json', '.tandem/.gitignore', 'art', 'depth'] }) : undefined;
   const code = opts.code ?? (candidate?.usable() ? candidate : undefined);
-  const preview = code && createPreview(code.work);
+  const preview = code && project.pageCommand(0) ? createPreview(() => project.at(code.work)) : undefined;
   if (preview) onStop.push(() => preview.stop());
   /** The one round the working copy's change set is: there is one copy, so one change set at a time. */
   const CODE = 'code';
@@ -94,6 +108,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   }
 
   function world(room = 'mine'): World {
+    if (!hasGame) throw new CommandError('unsupported', 'this project does not offer a way to see inside it (no adapter in tandem.json)');
     let r = rooms.get(room);
     if (!r) {
       if (room !== 'mine') throw new CommandError('missing', `there is no room called ${room}; there are: ${[...rooms.keys()].join(', ') || 'none'}. Make one with world.fork`);
@@ -133,12 +148,18 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
 
   // ------------------------------------------------------------ helpers
 
-  /** A job in the project, or in the agent's working copy (which runs the game as the copy has it). */
-  const job = <T>(spec: Parameters<typeof runJob>[0]) => runJob<T>(spec).catch((e: Error) => { throw new CommandError('failed', e.message); });
-  function inCopy<T>(spec: Parameters<typeof runJob>[0]): Promise<T> {
-    if (!code) throw new CommandError('unsupported', 'there is no working copy here: the game is not in a repository');
-    code.sync();
-    return runJob<T>(spec, { root: code.work }).catch((e: Error) => { throw new CommandError('failed', `in the working copy: ${e.message}`); });
+  /** The working copy, made if there is none yet, with everything the project has. */
+  function bringUp() {
+    try { code!.sync(); } catch (e) { throw new CommandError('failed', `the working copy could not be made or brought up to date: ${(e instanceof Error ? e.message : String(e)).split('\n').slice(-2).join(' ')}`); }
+  }
+
+  /** A job in the project, or in the agent's working copy (which runs the project as the copy has it). */
+  type Ask = JobSpec extends infer S ? S extends JobSpec ? Omit<S, 'adapter'> : never : never;
+  const job = <T>(spec: Ask) => runJob<T>({ ...spec, adapter: adapter! } as JobSpec, { root: project.root }).catch((e: Error) => { throw new CommandError('failed', e.message); });
+  function inCopy<T>(spec: Ask): Promise<T> {
+    if (!code) throw new CommandError('unsupported', 'there is no working copy here: the project is not in a repository');
+    bringUp();
+    return runJob<T>({ ...spec, adapter: adapter! } as JobSpec, { root: code.work }).catch((e: Error) => { throw new CommandError('failed', `in the working copy: ${e.message}`); });
   }
 
   let lookN = readdirSync(looksDir).length;
@@ -389,7 +410,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         const w = world(i.room);
         if (i.copy) {
           const look = newLookFile();
-          const res = await inCopy<{ text: string }>({ game: id, do: 'look', snapshot: w.snapshot(), out: look.file });
+          const res = await inCopy<{ text: string }>({ do: 'look', snapshot: w.snapshot(), out: look.file });
           events.add({ type: 'look', by: c.by, url: look.url, caption: i.caption ?? `${i.room ?? 'the world being played'}, as the working copy draws it`, text: res.text });
           return { ...look, text: res.text };
         }
@@ -405,7 +426,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       input: { minutes: 'number', profile: 'string?', copy: 'boolean?', caption: 'string?' },
       async run(c, i) {
         const look = newLookFile();
-        const spec = { game: id, do: 'lookAt' as const, minutes: Math.max(0, i.minutes), profile: i.profile, out: look.file };
+        const spec = { do: 'lookAt' as const, minutes: Math.max(0, i.minutes), profile: i.profile, out: look.file };
         const res = i.copy ? await inCopy<{ text: string }>(spec) : await job<{ text: string }>(spec);
         events.add({ type: 'look', by: c.by, url: look.url, caption: i.caption ?? `${i.minutes} minutes in${i.copy ? ', in the working copy' : ''}`, text: res.text });
         return { ...look, text: res.text };
@@ -425,7 +446,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       about: 'What the agent\'s working copy of the game changes, against the project: the files, and how many lines came and went. With path, the change in that file to read.',
       input: { path: 'string?' },
       run(_c, i) {
-        if (!code) throw new CommandError('unsupported', 'there is no working copy here: the game is not in a repository');
+        if (!code) throw new CommandError('unsupported', 'there is no working copy here: the project is not in a repository');
         return i.path ? { path: i.path, diff: code.diff(i.path) } : { files: code.changes() };
       },
     },
@@ -433,7 +454,9 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       name: 'code.play', kind: 'write',
       about: 'The address of the page of the working copy: the game with what the agent coded, to play before any of it is in the project. Starts that page if it is not running.',
       async run() {
-        if (!preview) throw new CommandError('unsupported', 'there is no working copy here: the game is not in a repository');
+        if (!code) throw new CommandError('unsupported', 'there is no working copy here: the project is not in a repository');
+        if (!preview) throw new CommandError('unsupported', 'the project has no page to play: say how it is started in tandem.json ("page")');
+        bringUp();
         try { return { url: await preview.url() }; } catch (e) { throw new CommandError('failed', e instanceof Error ? e.message : String(e)); }
       },
     },
@@ -446,7 +469,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       async run(c, i) {
         const profile = i.profile ?? 'eager';
         if (!game.profiles.includes(profile)) throw new CommandError('input', `profile is one of ${game.profiles.join(', ')}`);
-        const spec = { game: id, do: 'pacing' as const, profile };
+        const spec = { do: 'pacing' as const, profile };
         const pacing = i.copy ? await inCopy<Pacing>(spec) : await job<Pacing>(spec);
         events.add({ type: 'playtest', by: c.by, kind: 'run', profile, copy: !!i.copy, length: pacing.length, minutes: pacing.minutes });
         return { profile, length: pacing.length, minutes: pacing.minutes, took: pacing.took };
@@ -461,7 +484,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         if (!game.profiles.includes(profile)) throw new CommandError('input', `profile is one of ${game.profiles.join(', ')}`);
         const files = code?.changes() ?? [];
         if (!files.length) throw new CommandError('missing', 'the working copy does not differ from the project, so there is nothing to compare');
-        const spec = { game: id, do: 'pacing' as const, profile };
+        const spec = { do: 'pacing' as const, profile };
         const [a, b] = await Promise.all([job<Pacing>(spec), inCopy<Pacing>(spec)]);
         const out = { profile, changes: files.map((f) => f.path), length: { before: a.length, after: b.length }, moved: compare(a, b) };
         events.add({ type: 'playtest', by: c.by, kind: 'compare', ...out });
@@ -494,25 +517,29 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     ...d, run: (c, i) => { sandboxOnly(i.room, c.by); return d.run(c, i); },
   });
   const art = createArt({
-    game: id, root: ROOT, gameDir, dataDir, events, proposals, locks, newLookFile,
-    // With an agent that codes, a drawing taken into the project is news for it: it is the one who brings it into the game.
+    project, events, proposals, locks, newLookFile,
+    // With an agent that codes, a drawing taken into the project is news for it: it is the one who brings it in.
     accepted: code && ((drawings) => {
       const what = drawings.map((d) => `${d.name} (${d.isNew ? 'new' : 'changed'}; ${d.w}×${d.h}; looks: ${d.looks.join(', ')}; animations: ${Object.entries(d.anims).map(([a, n]) => `${a} ×${n}`).join(', ')}${d.depth ? '; with a depth map' : ''})`).join('; ');
       events.add({
         type: 'message', by: 'engine', refs: drawings.map((d) => `drawing:${d.name}`),
-        text: `Art was accepted into the project: ${what}. It is in the project's art files and in your working copy, but not in the game yet. Bring it in: build the drawings in your working copy, make the game use what is new about ${drawings.length === 1 ? 'it' : 'them'}, run the tests, and say in a few words what you did and what is left.`,
+        text: `Art was accepted into the project: ${what}. It is in the project's art files and in your working copy, but the project does not use it yet. Bring it in: build the drawings in your working copy if the project has a build for them, make the project use what is new about ${drawings.length === 1 ? 'it' : 'them'}, run the tests, and say in a few words what you did and what is left.`,
       });
     }),
   });
-  registry.add(...core, ...guarded(game.commands(world)), ...ecsCommands(world, game, sandboxOnly), ...art.commands);
+  // What needs the project to be seen inside (its worlds, pictures of it, a bot playing it) is there only when
+  // the project offers that.
+  const SENSES = /^(world|game|playtest)\./;
+  registry.add(
+    ...core.filter((c) => hasGame || !SENSES.test(c.name)),
+    ...(hasGame ? [...guarded(game.commands(world)), ...ecsCommands(world, game, sandboxOnly)] : []),
+    ...art.commands,
+  );
 
   return {
-    game, registry, events, proposals, concepts, locks, art, code, proposeCode, onStop,
-    dirs: { game: gameDir, data: dataDir, looks: looksDir },
+    project, game: hasGame ? game : undefined, registry, events, proposals, concepts, locks, art, code, preview, proposeCode, onStop,
+    dirs: { project: project.root, data: dataDir, looks: looksDir },
     run: (name, input, by, round) => registry.run(name, input, { by, round }),
     world,
   };
 }
-
-/** Throw away what a host keeps outside git: for tests. */
-export const wipeData = (dir: string) => rmSync(dir, { recursive: true, force: true });

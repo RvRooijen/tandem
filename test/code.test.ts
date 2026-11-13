@@ -1,6 +1,6 @@
 // Working files and project files: the working copy the agent codes in, what
 // it differs from the project, and how it goes in or is thrown away. On a
-// small repository made for the test, never the real one.
+// small repository made for the test.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -17,14 +17,15 @@ const read = (path: string, base = root) => readFileSync(join(base, path), 'utf8
 
 git('init', '-q', '-b', 'main');
 put('games/g/src/rules.ts', 'export const speed = 1;\n');
-put('games/g/content/flowers/rose.json', '{"value": 5}\n');
+put('.tandem/concepts/roses.md', 'Roses.\n');
 put('core/engine.ts', 'export const engine = true;\n');
-put('.gitignore', '.work/\nnode_modules/\n');
+put('.gitignore', 'node_modules/\n');
 mkdirSync(join(root, 'node_modules'));
 git('add', '-A');
 git('commit', '-q', '-m', 'start');
 
-const code = createCode({ root, gamePath: 'games/g' });
+// What the engine itself writes in a project: tandem's own folder, and the drawings.
+const code = createCode({ root, paths: ['.tandem/concepts', 'art'] });
 
 test('the working copy is the project, somewhere else, with the project\'s dependencies', () => {
   assert.equal(code.usable(), true);
@@ -46,12 +47,16 @@ test('what the copy changes is one change set; the project is untouched until it
   assert.equal(read('games/g/src/rules.ts'), 'export const speed = 1;\n');
   assert.ok(!existsSync(join(root, 'games/g/src/seasons.ts')));
 
-  // Meanwhile the person changes content in the project, through the engine. The copy takes that in; its own work stays.
-  put('games/g/content/flowers/rose.json', '{"value": 9}\n');
+  // Meanwhile a concept changes in the project, through the engine, and the person is in the middle of something of
+  // their own. The copy takes the concept in; the person's unfinished work is left exactly as it is.
+  put('.tandem/concepts/roses.md', 'Roses, with thorns.\n');
+  put('notes.txt', 'half a thought\n');
   assert.deepEqual(code.sync(), { conflicts: [] });
-  assert.equal(read('games/g/content/flowers/rose.json', code.work), '{"value": 9}\n');
+  assert.equal(read('.tandem/concepts/roses.md', code.work), 'Roses, with thorns.\n');
+  assert.ok(!existsSync(join(code.work, 'notes.txt')), 'what the person has not committed is not the engine\'s to commit');
+  assert.equal(git('status', '--porcelain').trim(), '?? notes.txt');
   assert.equal(code.changes().length, 2, 'what the project changed is not the copy\'s change');
-  assert.match(git('log', '--oneline', '-1'), /The game as it is now/, 'and the project\'s change is in its history');
+  assert.match(git('log', '--oneline', '-1'), /What was changed and accepted in tandem/, 'and the engine\'s change is in the project\'s history');
 
   const taken = code.accept('Seasons: four of them');
   assert.equal(taken.length, 2);
@@ -59,7 +64,8 @@ test('what the copy changes is one change set; the project is untouched until it
   assert.equal(read('games/g/src/seasons.ts'), 'export const names = ["spring"];\n');
   assert.match(git('log', '--oneline', '-3'), /Seasons: four of them/);
   assert.deepEqual(code.changes(), [], 'accepted: the copy and the project are the same again');
-  assert.equal(git('status', '--porcelain'), '');
+  assert.equal(git('status', '--porcelain').trim(), '?? notes.txt');
+  rmSync(join(root, 'notes.txt'));
 });
 
 test('a copy that has not caught up with the project did not undo what the project gained', () => {
@@ -92,13 +98,29 @@ test('rejected, the copy is the project again', () => {
 test('when the project and the copy changed the same lines, it says so and breaks nothing', () => {
   put('games/g/src/rules.ts', 'export const speed = 3;\nexport const seasons = 4;\n', code.work);
   put('games/g/src/rules.ts', 'export const speed = 7;\nexport const seasons = 4;\n');
+  git('commit', '-q', '-am', 'Faster, by hand');
   assert.deepEqual(code.sync(), { conflicts: ['games/g/src/rules.ts'] });
   assert.equal(read('games/g/src/rules.ts', code.work), 'export const speed = 3;\nexport const seasons = 4;\n', 'the copy still has its own work');
-  assert.throws(() => code.accept('Faster'), /does not go into the project cleanly/);
+  assert.throws(() => code.accept('Faster'), /does not go into the project cleanly: the project changed games\/g\/src\/rules\.ts too/);
   assert.equal(read('games/g/src/rules.ts'), 'export const speed = 7;\nexport const seasons = 4;\n', 'and the project is as it was');
   assert.equal(git('status', '--porcelain'), '');
   code.reject();
   assert.deepEqual(code.changes(), []);
+});
+
+test('the person\'s own unfinished work in a file is never overwritten, reset or committed for them', () => {
+  code.sync();
+  put('games/g/src/rules.ts', 'export const speed = 8;\nexport const seasons = 4;\n', code.work);
+  // The person is in the middle of changing the same file, and has not committed it.
+  put('games/g/src/rules.ts', 'export const speed = 7;\nexport const seasons = 4;\n// thinking about winter\n');
+  assert.deepEqual(code.sync(), { conflicts: [] }, 'what is not committed is not the project yet, so there is nothing to take in');
+  assert.throws(() => code.accept('Faster still'), /you have changes of your own in games\/g\/src\/rules\.ts that are not committed/);
+  assert.equal(read('games/g/src/rules.ts'), 'export const speed = 7;\nexport const seasons = 4;\n// thinking about winter\n', 'their work is exactly as they left it');
+  assert.equal(git('status', '--porcelain').trim(), 'M games/g/src/rules.ts');
+  assert.equal(code.changes().length, 1, 'and the copy still has its change, to accept later');
+  // Once they have committed it, the copy has to catch up with them first.
+  git('commit', '-q', '-am', 'Winter thoughts');
+  code.reject();
 });
 
 test('files of the engine that are being worked on in the project do not stop a change to the game going in', () => {

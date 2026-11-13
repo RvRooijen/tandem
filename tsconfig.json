@@ -15,5 +15,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["core", "ecs", "playtest", "art", "shell", "games", "test", "vite.config.ts"]
+  "include": ["core", "ecs", "playtest", "art", "shell", "bridge", "test", "vite.config.ts"]
 }

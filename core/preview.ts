@@ -1,26 +1,34 @@
-// Playing the working copy: a second page server, run from the agent's working
-// copy, so the person can play what the agent coded before any of it is in the
-// project. It talks to the same core. Started when first asked for.
+// Playing the working copy: the project's own page, started a second time from
+// the agent's working copy on a port of its own, so the person can play what
+// the agent coded before any of it is in the project. Started when first asked
+// for.
 import { spawn, type ChildProcess } from 'node:child_process';
+import type { Project } from './project.ts';
 
-export const PREVIEW_PORT = Number(process.env.TANDEM_PREVIEW_PORT ?? 5174);
+export const COPY_PORT = Number(process.env.TANDEM_COPY_PORT ?? 5211);
 
-export function createPreview(work: string) {
+/** `copy` gives the working copy as a project; it is asked for when the page is, because the copy is made late. */
+export function createPreview(copy: () => Project) {
   let proc: ChildProcess | undefined;
   const up = async () => {
-    try { return (await fetch(`http://127.0.0.1:${PREVIEW_PORT}/`, { signal: AbortSignal.timeout(1500) })).ok; } catch { return false; }
+    try { return (await fetch(`http://127.0.0.1:${COPY_PORT}/`, { signal: AbortSignal.timeout(1500) })).status < 500; } catch { return false; }
   };
   return {
-    /** The address of the working copy's page; starts its server if it is not running. */
+    /** The address of the working copy's page; starts it if it is not running. */
     async url(): Promise<string> {
       if (!(await up())) {
         proc?.kill();
-        proc = spawn('npx', ['vite', '--port', String(PREVIEW_PORT), '--strictPort'], { cwd: work, stdio: 'ignore', env: { ...process.env, TANDEM_PREVIEW: '1' } });
-        for (let i = 0; i < 40 && !(await up()); i++) await new Promise((r) => setTimeout(r, 500));
-        if (!(await up())) throw new Error('the page of the working copy did not start');
+        const at = copy();
+        const command = at.pageCommand(COPY_PORT);
+        if (!command) throw new Error('the project has no page to start');
+        proc = spawn('sh', ['-c', `exec ${command}`], { cwd: at.root, stdio: 'ignore', env: { ...process.env, TANDEM_COPY: '1' } });
+        for (let i = 0; i < 60 && !(await up()); i++) await new Promise((r) => setTimeout(r, 500));
+        if (!(await up())) throw new Error(`the page of the working copy did not start (${command})`);
       }
-      return `http://localhost:${PREVIEW_PORT}/?preview`;
+      return `http://localhost:${COPY_PORT}/`;
     },
     stop() { proc?.kill(); proc = undefined; },
   };
 }
+
+export type Preview = ReturnType<typeof createPreview>;

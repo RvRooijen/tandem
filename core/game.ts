@@ -1,7 +1,7 @@
-// What the engine needs from a game. A game is content, rules and commands;
-// nothing of the loop is in it. The same module runs in the page (the person
-// playing), on the server (the world the agent looks into) and in a job (a
-// playtest, a picture), which is why everything here is plain data in and out.
+// What a project's adapter gives the engine so it can see inside the project:
+// make a world, step it, draw it, let a bot play it. The adapter runs in the
+// core (the world the agent looks into) and in a job (a playtest, a picture),
+// never in the page, which is why everything here is plain data in and out.
 import type { EntityManager } from 'archetype-ecs';
 import type { CommandDef } from './commands.ts';
 
@@ -48,24 +48,4 @@ export interface GameModule {
   profiles: string[];
   /** The game's own commands: what a player can do, and whatever else it wants to offer. */
   commands(world: (room?: string) => World): CommandDef[];
-}
-
-/** How a page is to start a game. */
-export interface MountOptions {
-  /** Start from this world instead of the page's own save: the working copy is played where the person is. */
-  saved?: unknown;
-  /** Keep nothing of this session: it is a try-out, the person's own save is not to be touched. */
-  scratch?: boolean;
-}
-
-/** A game running in a page, as the shell sees it. Every game has a page.ts whose mount(root, options) gives one. */
-export interface GamePage {
-  world: World;
-  /** While set, a finger on the stage is handed here (in world units) instead of to the game. */
-  intercept: ((x: number, y: number) => void) | null;
-  /** Where a point of the world is on the screen, in CSS pixels. */
-  toScreen(x: number, y: number): { x: number; y: number };
-  /** The content was changed under the running game: work out again what follows from it. */
-  contentChanged(): void;
-  save(): void;
 }

@@ -1,26 +1,28 @@
-// Heavy work in a process of its own: a playthrough, a picture of the game at
-// some hour. A job loads the game from the folder it is run in, which is how
-// the agent's working copy is played and looked at before it is accepted: the
-// same job, run there. Reads one JSON spec from stdin and writes one JSON
-// result to stdout.
+// Heavy work in a process of its own: a playthrough, a picture of the project
+// at some hour. A job loads the project's adapter from the folder it is run
+// in, which is how the agent's working copy is played and looked at before it
+// is accepted: the same job, run there. Reads one JSON spec from stdin and
+// writes one JSON result to stdout.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { GameModule } from './game.ts';
 import { encodePng } from './png.ts';
 import { runPacing } from '../playtest/pacing.ts';
 
+/** `adapter` is the project's adapter module, relative to the folder the job runs in. */
 export type JobSpec =
-  | { game: string; do: 'pacing'; profile?: string; owners?: number }
+  | { adapter: string; do: 'pacing'; profile?: string; owners?: number }
   /** A new game, played by a bot up to a minute, and drawn. */
-  | { game: string; do: 'lookAt'; minutes: number; profile?: string; out: string }
+  | { adapter: string; do: 'lookAt'; minutes: number; profile?: string; out: string }
   /** A world as it is (its snapshot), drawn. */
-  | { game: string; do: 'look'; snapshot: unknown; out: string };
-
-const spec = JSON.parse(readFileSync(0, 'utf8')) as JobSpec;
-const { game } = (await import(`../games/${spec.game}/module.ts`)) as { game: GameModule };
+  | { adapter: string; do: 'look'; snapshot: unknown; out: string };
 
 // What goes wrong is said in one line, for whoever asked.
 process.on('uncaughtException', (e) => { process.stdout.write('\n@@error ' + JSON.stringify(e instanceof Error ? e.message : String(e)) + '\n'); process.exit(1); });
+process.on('unhandledRejection', (e) => { process.stdout.write('\n@@error ' + JSON.stringify(e instanceof Error ? e.message : String(e)) + '\n'); process.exit(1); });
+
+const spec = JSON.parse(readFileSync(0, 'utf8')) as JobSpec;
+const { game } = (await import(join(process.cwd(), spec.adapter))) as { game: GameModule };
 
 let result: unknown;
 if (spec.do === 'pacing') {

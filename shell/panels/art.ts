@@ -77,7 +77,7 @@ export function artPanel(): Panel {
       all.map((d) => h('div.item.drawing', { onclick: () => void detail(d) },
         h('div.line', {}, h('b', {}, d.locked && '🔒 ', d.name), h('span.count', {}, `${d.w}×${d.h}`)),
         h('p', {}, `${Object.keys(d.anims).length} ${Object.keys(d.anims).length === 1 ? 'animation' : 'animations'}${d.looks.length > 1 ? ` · ${d.looks.length} looks` : ''}${d.depth ? ' · depth map' : ''}`))),
-      !all.length && h('div.empty', {}, h('b', {}, 'This game has no drawings yet.')),
+      !all.length && h('div.empty', {}, h('b', {}, 'This project has no drawings yet.')),
       h('h3', {}, 'A new drawing'),
       name, brief,
       h('div.t-row', {}, h<'button'>('button', { onclick: async () => {

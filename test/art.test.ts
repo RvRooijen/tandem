@@ -1,6 +1,6 @@
-// Drawing inside the engine: the game's sprites built straight from the
-// drawings' text, and a drawing worker's whole round trip: asked, silhouette,
-// approval, colour, accepted into the game. The worker here is a stand-in for
+// Drawing inside tandem: sprites straight from a drawing's text, and a drawing
+// worker's whole round trip: asked, silhouette, approval, colour, accepted
+// into the project. The worker here is a stand-in for
 // claude that uses the real tools of its workspace.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,10 +10,11 @@ import { fileURLToPath } from 'node:url';
 import { CommandError } from '../core/commands.ts';
 import { startServer } from '../core/server.ts';
 import { spriteSheet } from '../art/sprites.ts';
-import { AGENT, scratchHost } from './helpers.ts';
+import { AGENT, fixture } from './helpers.ts';
 
 process.env.CLAUDE_BIN = fileURLToPath(new URL('./fake-claude.mjs', import.meta.url));
-const { host, dir, cleanup } = await scratchHost();
+// Without a working copy: a drawing taken into the project is built straight in.
+const { host, dir, cleanup } = await fixture({ code: false });
 // The worker's tools report to the core over HTTP, so there has to be one.
 const s = await startServer({ port: 0, host, agent: false });
 process.env.TANDEM_PORT = String(s.port);
@@ -65,7 +66,7 @@ test('a worker draws a new drawing: silhouette, approval, colour, and only then 
   assert.match(String(first.note), /Blocked out garden-sign\. Render ok, events ok\./, 'it rendered and reported with the tools of its workspace');
   assert.match(String(first.note), /Tools: Write\(art\/garden-sign\.txt\)\.$/, 'and may write only the drawing it was asked for');
   assert.deepEqual((await me('art.workers')).map((x: any) => [x.drawing, x.state, x.phase]), [['garden-sign', 'waiting', 'silhouette']]);
-  assert.ok(!existsSync(join(dir, 'game/art/garden-sign.txt')), 'nothing is in the game yet');
+  assert.ok(!existsSync(join(dir, 'art/garden-sign.txt')), 'nothing is in the game yet');
 
   // While it drew, the drawing was told as it was typed: first a part of it, then all of it.
   const drafts = told.filter((e) => e.type === 'art.draft' && e.worker === w);
@@ -98,13 +99,11 @@ test('a worker draws a new drawing: silhouette, approval, colour, and only then 
 
   // Accepted: the drawing and its depth map are the game's, the game is built with it, the worker is gone.
   await me('proposals.decide', { round: w, accept: true });
-  assert.match(readFileSync(join(dir, 'game/art/garden-sign.txt'), 'utf8'), /^r = #d5392f/);
-  assert.match(readFileSync(join(dir, 'game/depth/garden-sign.txt'), 'utf8'), /^3 = #5a6988/);
-  const built = readFileSync(join(dir, 'data/art.gen.ts'), 'utf8');
-  assert.match(built, /"garden-sign": \{"w":8,"h":8,"cpp":1,"pal":\["#f2c9a0","#d5392f"\]/);
-  assert.match(built, /"depth":\{"default":\{"main":\["/);
+  assert.match(readFileSync(join(dir, 'art/garden-sign.txt'), 'utf8'), /^r = #d5392f/);
+  assert.match(readFileSync(join(dir, 'depth/garden-sign.txt'), 'utf8'), /^3 = #5a6988/);
+  assert.ok(JSON.parse(readFileSync(join(dir, 'built.json'), 'utf8')).includes('garden-sign'), 'the project\'s own build of its drawings was run');
   assert.deepEqual(await me('art.workers'), []);
-  assert.ok(!existsSync(join(dir, 'data/art-work', w)));
+  assert.ok(!existsSync(join(dir, '.tandem/data/art-work', w)));
   assert.deepEqual((await me('art.list')).find((d: any) => d.name === 'garden-sign').depth, true);
 });
 
@@ -135,7 +134,7 @@ test('a drawing with looks is pictured look by look, so a change in one of them 
   const p = host.events.since(0).at(-1)!;
   const pics = p.pictures as { before: string; after: string; looks: { look: string; before?: string; after?: string }[] };
   assert.deepEqual(pics.looks.map((l) => l.look), ['cozy', 'odd', 'hollow']);
-  const bytes = (url: string) => readFileSync(join(dir, 'data/looks', url.split('/').pop()!));
+  const bytes = (url: string) => readFileSync(join(dir, '.tandem/data/looks', url.split('/').pop()!));
   assert.ok(pics.looks.every((l) => l.before && l.after));
   assert.ok(bytes(pics.looks[0].before!).equals(bytes(pics.looks[0].after!)), 'cozy is as it was');
   assert.ok(bytes(pics.looks[1].before!).equals(bytes(pics.looks[1].after!)), 'and so is odd');

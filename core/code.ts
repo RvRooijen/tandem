@@ -1,28 +1,33 @@
-// Working files and project files. The game's code as it is in the project is
-// what is played. The agent never writes there: it codes in a working copy of
+// Working files and project files. The project as it is in its folder is what
+// is played. The agent never writes there: it codes in a working copy of
 // the whole repository (a git worktree, on a branch of its own), where it can
 // build and run the tests. What its copy differs from the project is one change
 // set, shown to the person as a proposal: they play the copy, and accepting it
 // merges it into the project. Rejecting throws the copy's changes away.
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, symlinkSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { basename, isAbsolute, join } from 'node:path';
 
 export interface FileChange { path: string; added: number; removed: number; status: 'new' | 'changed' | 'gone' }
 
 export interface CodeOptions {
   /** The repository: the project files. */
   root: string;
-  /** Where the working copy goes; <root>/.work/agent by default. */
+  /**
+   * Where the working copy goes. By default a hidden folder right next to the project (.<project>-tandem-work):
+   * outside it, so nothing of the project (a dev server, a test run) trips over a second copy of itself, and at
+   * the same depth, so whatever the project reaches for beside itself (../a-library) the copy finds too.
+   */
   work?: string;
-  /** What of the project counts as the game: changes there are committed by themselves, so the copy can take them in. */
-  gamePath: string;
+  /** What the engine itself writes in the project (concepts, locks, accepted drawings): committed by it, so the copy can take it in. Nothing else of the project is committed for the person. */
+  paths: string[];
   branch?: string;
 }
 
 export function createCode(o: CodeOptions) {
-  const work = o.work ?? join(o.root, '.work', 'agent');
-  const branch = o.branch ?? 'work/agent';
+  const work = o.work ?? join(o.root, '..', `.${basename(o.root)}-tandem-work`);
+  // No slash in it: a project may well have a branch called tandem already.
+  const branch = o.branch ?? 'tandem-agent';
   const git = (cwd: string, ...args: string[]) =>
     execFileSync('git', ['-c', 'user.name=tandem', '-c', 'user.email=tandem@localhost', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   const tryGit = (cwd: string, ...args: string[]) => { try { return git(cwd, ...args); } catch (e) { return null; } };
@@ -42,15 +47,21 @@ export function createCode(o: CodeOptions) {
 
   /** What the person and the engine changed in the project's game is committed, so it is part of the project's history. */
   function commitProject(message: string) {
-    if (!git(o.root, 'status', '--porcelain', '--', o.gamePath)) return false;
-    git(o.root, 'add', '--', o.gamePath);
-    git(o.root, 'commit', '-q', '-m', message, '--', o.gamePath);
+    const paths = o.paths.filter((p) => existsSync(join(o.root, p)));
+    if (!paths.length) return false;
+    // The files themselves, one by one: a folder with nothing in it yet is not something git can be asked about.
+    const changed = git(o.root, 'status', '--porcelain', '-uall', '--', ...paths).split('\n').filter(Boolean)
+      // A line is two status letters (either may be a space) and the path.
+      .map((l) => l.replace(/^\s*\S+\s+/, '').split(' -> ').at(-1)!.replace(/^"|"$/g, ''));
+    if (!changed.length) return false;
+    git(o.root, 'add', '-A', '--', ...changed);
+    git(o.root, 'commit', '-q', '-m', message, '--', ...changed);
     return true;
   }
 
   /** The working copy exists and has everything the project has. Says which files clash if it cannot take the project's changes in. */
   function sync(): { conflicts: string[] } {
-    commitProject('The game as it is now: what was changed and accepted in the engine');
+    commitProject('What was changed and accepted in tandem');
     if (!existsSync(join(work, '.git'))) {
       mkdirSync(join(work, '..'), { recursive: true });
       tryGit(o.root, 'worktree', 'prune');
@@ -100,14 +111,18 @@ export function createCode(o: CodeOptions) {
     if (conflicts.length) throw new Error(`the working copy does not go into the project cleanly: the project changed ${conflicts.join(', ')} too. The agent has to bring its copy up to date first`);
     const what = changes();
     if (!what.length) return [];
+    // Git refuses, and touches nothing, when the person has work of their own in a file the copy changed. Nothing
+    // is forced or reset here: what the person has in their project is theirs.
     try {
       git(o.root, 'merge', '-q', '--squash', branch);
-      git(o.root, 'commit', '-q', '-m', message);
     } catch (e) {
-      tryGit(o.root, 'reset', '-q', '--merge');
       const said = e instanceof Error ? String((e as { stderr?: string }).stderr || e.message) : String(e);
-      throw new Error(`the working copy does not go into the project cleanly: ${said.trim().split('\n').slice(0, 3).join(' ')}`);
+      const theirs = [...said.matchAll(/^\t(.+)$/gm)].map((m) => m[1]);
+      throw new Error(theirs.length
+        ? `the working copy does not go into the project yet: you have changes of your own in ${theirs.join(', ')} that are not committed. Commit them or put them aside, then accept again`
+        : `the working copy does not go into the project cleanly: ${said.trim().split('\n').slice(0, 3).join(' ')}`);
     }
+    git(o.root, 'commit', '-q', '-m', message);
     git(work, 'reset', '-q', '--hard', main());
     return what;
   }

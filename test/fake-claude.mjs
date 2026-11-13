@@ -60,10 +60,10 @@ if (prompt.startsWith('fail')) {
 // Asked to code: it changes the game's code where it stands, which is its working copy.
 if (prompt.startsWith('code:')) {
   const { writeFileSync, existsSync } = await import('node:fs');
-  if (prompt.includes('undo')) (await import('node:fs')).rmSync('games/gnome-garden/src/sim/seasons.ts', { force: true });
-  else writeFileSync('games/gnome-garden/src/sim/seasons.ts', 'export const SEASONS = 4;\n');
+  if (prompt.includes('undo')) (await import('node:fs')).rmSync('src/seasons.js', { force: true });
+  else writeFileSync('src/seasons.js', 'export const SEASONS = 4;\n');
   const tools = args.slice(args.indexOf('--allowedTools') + 1);
-  const text = `Seasons ${prompt.includes('undo') ? 'taken out' : 'added'}. In the copy: ${existsSync('core/cli.ts') && process.cwd().includes('tandem-wt')}. May edit: ${tools.includes('Edit(games/gnome-garden/src/**)')}; content: ${tools.some((t) => t.includes('content'))}. Note: ${prompt.includes('could not take') ? 'clash' : 'none'}.`;
+  const text = `Seasons ${prompt.includes('undo') ? 'taken out' : 'added'}. In the copy: ${process.cwd().endsWith('-tandem-work')}. May edit: ${tools.includes('Edit(**)')}; may run: ${tools.filter((t) => t.startsWith('Bash(') && !t.includes('tandem') && !t.includes('git ')).join(' ')}. Kept off: ${args.slice(args.indexOf('--disallowedTools') + 1).filter((t) => t.startsWith('Edit(')).join(' ')}. Note: ${prompt.includes('could not take') ? 'clash' : 'none'}.`;
   say({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
   say({ type: 'result', is_error: false, result: text, session_id: 'sess-1' });
   process.exit(0);
@@ -72,9 +72,9 @@ say({ type: 'stream_event', event: { type: 'content_block_start', index: 0, cont
 say({ type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Let me ' } } });
 // Its one idea, every time: a concept about the tulips, proposed through the command line like any agent would.
 const idea = JSON.stringify({ name: `Tulips ${process.env.TANDEM_ROUND}`, text: 'Tulips are worth a bit more.' });
-const command = `node core/cli.ts run concepts.create '${idea}'`;
+const command = `tandem run concepts.create '${idea}'`;
 say({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: { command } }] } });
-const out = spawnSync(process.execPath, ['--no-warnings', 'core/cli.ts', 'run', 'concepts.create', idea], { encoding: 'utf8' });
+const out = spawnSync('tandem', ['run', 'concepts.create', idea], { encoding: 'utf8' });
 const text = `${resumed ? 'Again: ' : ''}I proposed it (${out.status === 0 ? 'ok' : out.stderr.trim()}). Allowed: ${args.slice(args.indexOf('--allowedTools') + 1)[0]}. About: ${prompt.includes('[The message is about:]') ? 'refs' : 'nothing'}.`;
 say({ type: 'assistant', message: { usage: { input_tokens: 12, cache_read_input_tokens: resumed ? 60_000 : 30_000, cache_creation_input_tokens: 4_000, output_tokens: 88 }, content: [{ type: 'text', text }] } });
 say({ type: 'result', is_error: false, result: text, session_id: 'sess-1' });

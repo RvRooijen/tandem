@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+# tandem: started in a project's folder, it runs the engine on that project.
+#   tandem [start] [folder]            the core, tandem's page, and the project's own page
+#   tandem list [prefix]               every command the running core has
+#   tandem run <command> ['<json>']    run one
+HERE="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/.." && pwd)"
+case "${1:-}" in
+  list|run) exec node --no-warnings "$HERE/core/cli.ts" "$@" ;;
+  start) shift; exec node --no-warnings "$HERE/core/start.ts" "$@" ;;
+  *) exec node --no-warnings "$HERE/core/start.ts" "$@" ;;
+esac

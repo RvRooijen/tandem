@@ -1,0 +1,6 @@
+{
+  "name": "Fixture",
+  "test": "node --test",
+  "check": "node check.mjs",
+  "art": { "build": "node build-art.mjs" }
+}

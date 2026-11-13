@@ -1,79 +1,103 @@
 # tandem
 
-A small game engine made for one person and an AI to build games together. The
-game is ECS (archetype-ecs) with pixel art drawn as text; the engine is
-everything around it: one set of commands that the person's screen and the agent both
-use, concepts as the layer the person works in, and four senses for the agent
-(words, pictures, the ECS, time), and drawing workers that make the art.
+A tool for one person and an AI to build a project together: a game, or any
+web project. You start it in the project's folder. It shows the project's own
+page with a sheet of tools over it (a chat, concepts, art), and runs an agent
+that works on the project through the same commands your screen uses.
 
-The first game on it is Gnome Garden (`games/gnome-garden`).
+Tandem brings nothing into a project but a small folder of its own (`.tandem`)
+and, if you want, a `tandem.json`. The project stays what it was.
 
 ## Start
 
-    npm install
-    npm start          # the core on 127.0.0.1:5201 and the phone page on http://localhost:5173
+    cd ~/projects/your-project
+    /path/to/tandem/bin/tandem          # or put tandem/bin on your PATH and type: tandem
 
-Both listen on this machine only: the core can start an agent with a command
-line. `npm start -- --host` puts the page on the network if you want that.
+    tandem's page    http://localhost:5173    open this one
+    the core         http://127.0.0.1:5201    commands, events, the agent
+    the project      http://localhost:5210    its own page, shown in tandem's
+    the copy         http://localhost:5211    the agent's working copy, when you ask to play it
 
-    npm test                     # everything (about a minute: it plays a few whole games)
-    npm run tandem list          # every command
-    npm run tandem run game.state
-    npm run game                 # Gnome Garden on its own, no engine (port 5184)
-    TANDEM_AGENT=off npm start   # without the agent
+Everything listens on this machine only: the core can start an agent with a
+command line.
 
-## The idea in five lines
+    tandem list                 every command the running core has
+    tandem run concepts.list    run one
+    TANDEM_AGENT=off tandem     without the agent
+    npm test                    (in tandem) its own tests
 
-- **Everything is a command.** `core/commands.ts` is the only door. A button in the page, the agent's command line, the bot and the tests call the same named commands; the only difference is who is asking. `test/shell.test.ts` checks that the page uses nothing else.
-- **The person's change is made; the agent's is proposed.** An agent's write to a concept or a drawing becomes a proposal, and its code is a change set from its working copy. Everything proposed while answering one message is one round, played, accepted or rejected as one.
-- **Concepts** (`games/<game>/concepts/*.md`) are a name and a description in the person's words, with links to each other, what makes them real, and a stage (idea, design, build, playtest) that says where they are on the way into the game. A concept holds words, not numbers to be met: a playtest reports timings, it never judges them.
-- **Locks.** A concept or a drawing can be locked. A locked thing is the person's alone; the engine refuses the agent any change or proposal to it, even when the person asks the agent for one.
-- **A number is code.** Everything the game is tuned with (prices, growth, timings, diary lines) is in the game's code, in one place (`src/sim/content.ts`), and nowhere else. Tuning is a change by the agent in its working copy, played against the project (`playtest.compare`) and accepted like any other.
-- **The agent has senses**: `game.state` (words), `game.look` / `game.lookAt` (pictures), `ecs.*` (entities and systems), `playtest.run` / `playtest.compare` (a bot plays the whole game in ten seconds, as it is and as proposed), `art.list` / `art.look` (the drawings).
-- **Working files and project files.** The project is what is played. The agent codes in a working copy of its own (a git worktree in `.work/agent`), where it can build and run the tests; it may change the game's code there, not the engine, and not content, concepts or drawings as files. What its copy differs from the project is one change set: a card with the files, a button to play the copy (a second page, started from the world you are in, keeping nothing), accept (one commit into the project; the core starts again with the new code) or reject (the copy is the project again). Accepting art puts the drawing in the project's art files and tells the agent, whose work it is to bring it into the game.
-- **Art is in the engine.** A drawing is text (`games/<game>/art/<name>.txt`, with a depth map in `depth/`), in pixeldraw's format and rendered by pixeldraw's own code, which lives in `art/`. A drawing worker (a headless Claude with pixeldraw's way of working: silhouette first, then colour, in rounds of edit, render, look) draws in its own copy; what it draws is a proposal with a picture before and after. Accepted, it is built straight into the game's sprites. Nothing outside this repo is needed.
+## What a project needs
+
+A git repository. That is all: tandem then gives you the chat, concepts, locks
+and an agent that reads the project and codes in a working copy.
+
+Everything else is optional, in `tandem.json` at the project's root:
+
+    {
+      "name": "Gnome Garden",
+      "page": "npx vite --port {port} --strictPort --host 127.0.0.1",
+      "test": "npm test",
+      "check": "npx tsc --noEmit",
+      "run": ["npm run lint"],
+      "adapter": "tandem.adapter.ts",
+      "art": { "build": "node tools/import-art.ts" }
+    }
+
+- **page**: how the project's page is started, with `{port}` where the port goes. Tandem shows it in a frame, and starts it a second time from the agent's working copy when you want to play that. For a project with Vite in its package.json this is guessed.
+- **test**, **check**, **run**: what the agent may run in its working copy. Without them it can change code but run nothing, and says so.
+- **art**: drawings live in `art/` (depth maps in `depth/`) as text, in pixeldraw's format. `build` is the project's own step that turns them into what it loads.
+- **adapter**: a module that lets tandem see inside the running project (see below).
+- **edit**: what the agent may change, as patterns; everything but `.tandem`, `art` and `depth` by default.
+
+## How much a project shows
+
+| The project has | Then |
+| --- | --- |
+| a git repository | chat, concepts, locks; the agent reads the code and codes in a working copy; its change set is a proposal you accept as one commit |
+| `page` | you use the project inside tandem, and can switch the frame to the agent's working copy before accepting |
+| `test` / `check` | the agent runs them before it says something works |
+| drawings in `art/` | the Art tab: look at a drawing, lock it, ask a worker for a change and watch it draw; its round is a proposal with pictures |
+| the bridge in its page | the agent can read the world you are in; the working copy starts from where you are; the agent can point at things |
+| an adapter | the agent sees inside: state in words, pictures, entities and systems, a bot that plays it through, and all of that on its working copy too |
+
+**The bridge** is one small file, `bridge/tandem.bridge.ts`, copied into the project (it has no imports). The page calls `tandemStart()` before it starts its world and `tandemConnect({ snapshot, toScreen })` once it runs. Outside tandem's frame it does nothing.
+
+**The adapter** exports `game`, a `GameModule` (`core/game.ts`): how to make a world from a snapshot, step it, describe it in words, draw it to pixels, let a bot play it and report milestones, and the things a player can do as commands. Tandem loads it in the core and in jobs, never in the page. Gnome Garden's is `tandem.adapter.ts` in `../incremental`.
+
+## The idea
+
+- **Everything is a command.** `core/commands.ts` is the only door. A button in the page, the agent's command line and the tests call the same named commands; the only difference is who is asking.
+- **Concepts** (`.tandem/concepts/*.md`) are a name and a description in your own words, with links, what makes them real, and a stage (idea, design, build, playtest) that tells the agent what kind of help fits. They hold words, not numbers to be met.
+- **Locks.** A concept or a drawing can be locked: the engine refuses the agent any change or proposal to it, even when you ask the agent for one.
+- **Working files and project files.** The project is what you use. The agent codes in a working copy (a git worktree in a hidden folder right beside the project, so `../something` still resolves). What the copy differs from the project is one change set: a card with the files, the copy played in the frame, accept (one commit) or reject. Your own uncommitted work is never committed, reset or overwritten for you; if it is in the way of an accept, tandem says which files.
+- **The person's change is made; the agent's is proposed**, for concepts and drawings too. Everything proposed while answering one message is one round.
+- **Art is drawn in rounds.** A drawing worker (a headless Claude with pixeldraw's way of working: silhouette first, then colour) draws in its own copy; you watch it in the Art tab as it is typed. Accepted art goes into the project's art files and the agent is told: bringing it into the project is its work.
 
 ## Layout
 
-    core/        commands, events, proposals, concepts, locks, the host that ties them to a game,
-                 the agent's working copy (code.ts) and its page (preview.ts),
-                 the HTTP server, the command line, the agent runner and what the agent is told
+    bin/tandem   the command
+    core/        commands, events, proposals, concepts, locks, the project (project.ts), the host that ties
+                 them together, the HTTP server, the agent runner and what the agent is told, the agent's
+                 working copy (code.ts) and its page (preview.ts), jobs
     art/         drawings: pixeldraw's format, renderer and tests (src/, scripts/, test/, as they are there),
-                 the guide a drawing worker follows, workspaces, workers, sprites for a game, the art commands
-    ecs/         the inspector: entities, archetypes, systems, as commands
+                 the guide a drawing worker follows, workspaces, workers, sprites, the art commands
+    ecs/         the inspector, for projects on archetype-ecs with an adapter
     playtest/    pacing runs, and comparing two of them
-    shell/       the phone page: the game, and over it a sheet with Chat, Concepts and Art
-    games/<id>/  module.ts (what the engine needs from a game), page.ts (the game in a page),
-                 src/, art/ and depth/ (its drawings), concepts/, locks.json, and data/ (not in git: event log, proposals, pictures)
-    test/        core, server and runner (with a stand-in for claude), playtests, the shell in jsdom
+    bridge/      the file a project's page copies to talk to tandem
+    shell/       tandem's page: the project in a frame, a sheet with Chat, Concepts and Art over it
+    test/        on a small fixture project (test/fixture) and, for what needs an adapter, on Gnome Garden
 
-## What a game gives the engine
-
-`games/<id>/module.ts` exports a `GameModule` (`core/game.ts`): its components, how to make a world, draw it, let a bot play it, the milestones a run reports, and its own commands. `games/<id>/page.ts` exports `mount(root)`, which runs the game in a page and returns its world; the standalone page calls the same function.
+In a project: `tandem.json`, `.tandem/concepts`, `.tandem/locks.json`, and `.tandem/data` (not in git: the event log, proposals, pictures, the agent's session).
 
 ## Where it stands
 
-Works, and is tested:
+Works, and is tested: everything above, on the fixture project and on Gnome Garden (`../incremental`), including a real agent coding in its working copy and real drawing workers.
 
-- the command layer, permissions (person / agent / proposal), the event log, SSE
-- proposals per round; accept and reject
-- concepts with a stage, links and what makes them real; locks on concepts and drawings
-- worlds: a mirror of the one being played, sandboxes the agent can play and poke in
-- the ECS inspector, in the page (live, on the world being played) and for the agent
-- playtests and looks, of the project or of the agent's working copy; the two played against each other
-- the agent: headless `claude -p` whose only hands are the command line; it answers in the chat, proposes, plays its proposals, takes pictures, points at the garden
-- art: drawings as text in the game, rendered and built into its sprites by the engine (the build gives byte for byte what pixeldraw's export gave); drawing workers with silhouette approval, feedback rounds, proposals with pictures (a real worker drew a garden sign through both phases)
-- the shell: the game plays underneath; chat with proposal, picture and playtest cards; concepts; art with workers watched live
-- Gnome Garden on it, with its concepts and its drawings
+Not there, or not seen:
 
-Not there yet:
-
-- **Nobody has looked at the shell on a real screen.** It is driven in jsdom and it builds, but its looks are unseen.
-- **Live shared world.** The page plays its own world and shares a snapshot every five seconds; the agent reads a mirror (right state, not the exact place of every entity) and plays in sandboxes. Syncing one world live with archetype-ecs-net, the way testp does, is not built.
-- **A restart cuts work off.** The agent and the drawing workers are child processes of the core; restarting it stops whatever is mid-run. A stopped worker keeps its conversation and its copy, and goes on with the next feedback.
-- **Characters with clothes.** pixeldraw's attachments (a body with items per slot) render here, but nothing exports them to a game, and a worker cannot be asked for one from the page.
-- **Drawing by hand.** pixeldraw's viewer (painting pixels, sketching over a frame, watching every edit live) is not here; the page shows renders.
-- **The agent coding, for real.** The working copy, the change set and the hand-over of accepted art are tested with a stand-in for Claude; a real agent has not coded a change yet, and the page of the working copy has not been seen on a screen.
-- **The engine itself** is not the agent's to change; it says what it would need.
-- **One game at a time**, chosen with `TANDEM_GAME`. There is no second game yet to prove the seams.
-- Playing a proposal lays it over the game you are in the middle of; there is no "from the start" yet other than the bot's.
+- **The frame on a real screen.** The shell is driven in jsdom with the bridge's messages said for the page; the project in a frame with the tools over it has not been looked at on a phone.
+- **A second real project.** Only Gnome Garden and a fixture run on it. A project without Vite needs its `page` command written by hand; one whose dev server refuses to be framed, or needs its own port, will need care.
+- **The agent in a project without an adapter** cannot see the running thing at all; it works from code and tests, and you are its eyes.
+- **Live shared world.** The page shares a snapshot every five seconds; the agent reads a mirror, not the live world.
+- **Characters with clothes** (pixeldraw's attachments) render but nothing exports them; drawing by hand is not here.
+- **A restart cuts work off.** The agent and the workers are children of the core.

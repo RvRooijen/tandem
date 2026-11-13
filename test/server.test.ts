@@ -100,6 +100,10 @@ test('a message from the person is answered by the agent, whose only hands are c
   assert.equal((await post('records.get', { path: 'flowers/tulip' })).result.value, 6, 'and nothing is changed until the person says so');
 
   assert.equal(JSON.parse(readFileSync(join(dir, 'data/agent.json'), 'utf8')).session, 'sess-1');
+  // How big the conversation is: everything the last request carried, in tokens.
+  // (An earlier message in this file already opened the conversation, so this one resumed it.)
+  assert.deepEqual([s.runner!.status().context, s.runner!.status().limit], [64_100, 800_000]);
+  assert.equal(JSON.parse(readFileSync(join(dir, 'data/agent.json'), 'utf8')).context, 64_100, 'and it is kept, for after a restart');
   assert.ok(existsSync(join(dir, 'data/events.jsonl')));
 
   // The next message carries on the same conversation.
@@ -108,10 +112,12 @@ test('a message from the person is answered by the agent, whose only hands are c
   await until(() => host.events.since(n2).some((e) => e.type === 'message' && e.by === 'agent'));
   assert.match(String(host.events.since(n2).find((e) => e.by === 'agent')!.text), /^Again: /);
   await until(() => !s.runner!.status().busy);
+  assert.equal(s.runner!.status().context, 64_100);
 
   // A new conversation: the agent does not carry the old one on.
   await post('chat.new');
   assert.equal((await post('agent.status')).result.session, false);
+  assert.equal((await post('agent.status')).result.context, 0, 'a new conversation starts empty');
   const n4 = host.events.last();
   await post('chat.send', { text: 'who are you again' });
   await until(() => host.events.since(n4).some((e) => e.type === 'message' && e.by === 'agent'));

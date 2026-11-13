@@ -88,7 +88,7 @@ export function createApp(root: HTMLElement, info: Info, game: GameModule, page:
   const app: App & { feed(ev: Event, live: boolean): void } = {
     info, game, page,
     events: [],
-    agent: { busy: false, doing: '', text: '', waiting: 0, session: false, off: false },
+    agent: { busy: false, doing: '', text: '', waiting: 0, session: false, off: false, context: 0, limit: 0 },
     refs: [],
     playing: null,
     current: () => shown,

@@ -19,5 +19,5 @@ const command = `node core/cli.ts run records.set '{"path":"flowers/tulip","valu
 say({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: { command } }] } });
 const out = spawnSync(process.execPath, ['--no-warnings', 'core/cli.ts', 'run', 'records.set', '{"path":"flowers/tulip","value":{"value":8},"note":"a little more"}'], { encoding: 'utf8' });
 const text = `${resumed ? 'Again: ' : ''}I proposed it (${out.status === 0 ? 'ok' : out.stderr.trim()}). Allowed: ${args.slice(args.indexOf('--allowedTools') + 1)[0]}. About: ${prompt.includes('[The message is about:]') ? 'refs' : 'nothing'}.`;
-say({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
+say({ type: 'assistant', message: { usage: { input_tokens: 12, cache_read_input_tokens: resumed ? 60_000 : 30_000, cache_creation_input_tokens: 4_000, output_tokens: 88 }, content: [{ type: 'text', text }] } });
 say({ type: 'result', is_error: false, result: text, session_id: 'sess-1' });

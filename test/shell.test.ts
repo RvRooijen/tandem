@@ -123,6 +123,8 @@ test('chat: a message goes out, the agent answers with a proposal, and it is pla
   await until(() => $('.card.prop'), 'the proposal');
   await until(() => $('.msg.agent'), 'the answer');
   assert.match($('.msg.agent').textContent!, /I proposed it \(ok\)/);
+  await until(() => /34k \/ 800k tokens/.test($('.usage').textContent!), 'the context counter');
+  assert.equal(($('.usage .bar i') as HTMLElement).style.width, '4.3%');
 
   const card = $('.card.prop');
   assert.equal(card.dataset.status, 'pending');
@@ -315,6 +317,7 @@ test('a new conversation clears the chat and keeps what is still to be decided',
   assert.equal(all('.card.prop').length, 1, 'the pending proposal is still there');
   assert.equal(all('figure.card.look').length, 0);
   assert.equal(app.agent.session, false, 'and the agent has forgotten');
+  assert.match($('.usage').textContent!, /nothing in context yet/);
   click(button('Reject', $('.card.prop')));
   await until(() => $('.card.prop').dataset.status === 'rejected', 'the rejection');
   type($('.composer textarea'), 'hello again');

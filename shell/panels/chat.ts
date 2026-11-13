@@ -28,6 +28,7 @@ export function chatPanel(): Panel {
   const list = h('div.chat');
   const status = h('div.agent-status', { hidden: true });
   const refsEl = h('div.refs');
+  const usage = h('div.usage');
   const input = h<'textarea'>('textarea', { rows: 1, placeholder: 'Say something…', 'aria-label': 'Message' });
   const sendBtn = h<'button'>('button.primary', { onclick: () => void send() }, 'Send');
   const newBtn = h<'button'>('button.icon.new-chat', { 'aria-label': 'New conversation', title: 'New conversation', onclick: () => {
@@ -62,7 +63,17 @@ export function chatPanel(): Panel {
     refsEl.hidden = !app.refs.length;
   }
 
+  /** How full the conversation is: its context in tokens against where it starts over. */
+  function paintUsage() {
+    const a = app.agent;
+    const k = (n: number) => `${Math.round(n / 1000)}k`;
+    if (!a.limit) return clear(usage);
+    if (!a.context) return clear(usage, h('span', {}, 'New conversation: nothing in context yet'));
+    clear(usage, h('span', {}, `${k(a.context)} / ${k(a.limit)} tokens`), h('span.bar', {}, h('i', { style: `width:${Math.min(100, (a.context / a.limit) * 100).toFixed(1)}%` })));
+  }
+
   function paintStatus() {
+    paintUsage();
     const a = app.agent;
     status.hidden = !a.busy && !a.off;
     if (a.off) return clear(status, h('span', {}, 'The agent is switched off on this server.'));
@@ -198,7 +209,7 @@ export function chatPanel(): Panel {
       body = b;
       b.append(list);
       if (!list.children.length) list.append(EMPTY());
-      foot.append(status, refsEl, h('div.composer', {}, newBtn, input, sendBtn));
+      foot.append(status, usage, refsEl, h('div.composer', {}, newBtn, input, sendBtn));
       paintRefs(); paintStatus();
       for (const r of rounds.values()) roundCard(r);
       requestAnimationFrame(toBottom);

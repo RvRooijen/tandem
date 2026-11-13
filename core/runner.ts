@@ -16,19 +16,32 @@ const TOOLS = [
   'Glob', 'Grep',
 ];
 
-export interface AgentStatus { busy: boolean; doing: string; text: string; waiting: number; session: boolean; off: boolean }
+export interface AgentStatus {
+  busy: boolean; doing: string; text: string; waiting: number; session: boolean; off: boolean;
+  /** How big the conversation is, in tokens, and where it starts over by itself. */
+  context: number; limit: number;
+}
+
+/** Past this many tokens the next message starts a new conversation. */
+const CONTEXT_LIMIT = Number(process.env.TANDEM_CONTEXT_LIMIT) || 800_000;
 
 export function createRunner(host: Host) {
   const file = join(host.dirs.data, 'agent.json');
   let session: string | undefined;
-  try { session = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).session : undefined; } catch { /* start a new conversation */ }
+  // The context of the last request the agent made: what the next message starts from.
+  let context = 0;
+  try {
+    const kept = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
+    session = kept.session;
+    context = session ? Number(kept.context) || 0 : 0;
+  } catch { /* start a new conversation */ }
   const off = process.env.TANDEM_AGENT === 'off';
   const queue: Event[] = [];
   let child: ChildProcess | undefined;
   let busy = false, doing = '', text = '', stopped = false, forgotten = false;
   let lastCast = 0;
 
-  const status = (): AgentStatus => ({ busy, doing, text: text.slice(-600), waiting: queue.length, session: !!session, off });
+  const status = (): AgentStatus => ({ busy, doing, text: text.slice(-600), waiting: queue.length, session: !!session, off, context: session ? context : 0, limit: CONTEXT_LIMIT });
   function cast(force = false) {
     const now = Date.now();
     if (!force && now - lastCast < 250) return;
@@ -38,7 +51,8 @@ export function createRunner(host: Host) {
   const beat = setInterval(() => { if (busy) cast(true); }, 5000);
   beat.unref?.();
 
-  const keep = () => writeFileSync(file, JSON.stringify({ session }, null, 2));
+  const keep = () => writeFileSync(file, JSON.stringify({ session, context: session ? context : 0 }, null, 2));
+  const forget = () => { session = undefined; context = 0; keep(); };
 
   function intro(): string {
     const list = host.registry.list().map((c) => {
@@ -119,6 +133,9 @@ export function createRunner(host: Host) {
             cast();
           }
         } else if (msg.type === 'assistant') {
+          const u = msg.message?.usage;
+          const now = u ? (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.output_tokens ?? 0) : 0;
+          if (now && now !== context) { context = now; keep(); cast(true); }
           for (const block of msg.message?.content ?? []) {
             if (block.type === 'text' && block.text.trim()) { said++; text = ''; say(block.text.trim()); }
             if (block.type === 'tool_use') {
@@ -141,13 +158,17 @@ export function createRunner(host: Host) {
       if (forgotten) {
         // A new conversation was started while it was answering: this answer belongs to the old one, and so does its session.
         forgotten = stopped = false;
-        session = undefined; keep();
+        forget();
       } else if (stopped) { stopped = false; say('(stopped)', { error: true }); }
       else if ((failed || code !== 0) && session && !retry && !said) {
         // Most often the conversation to resume is gone; start a new one, once.
-        session = undefined; keep();
+        forget();
         return run(ev, true);
       } else if (failed || code !== 0) say(`That did not work: ${failed || err.trim().split('\n').pop() || `claude ended with code ${code}`}`, { error: true });
+      if (session && context > CONTEXT_LIMIT) {
+        say(`(The conversation reached ${Math.round(context / 1000)}k tokens; the next message starts a new one.)`);
+        forget();
+      }
       busy = false; doing = ''; text = '';
       cast(true);
       next();
@@ -168,7 +189,7 @@ export function createRunner(host: Host) {
     if (ev.n > 0 && ev.type === 'chat.new') {
       // A new conversation: nothing is waiting any more, and nothing is remembered.
       queue.length = 0;
-      session = undefined; keep();
+      forget();
       if (child) { forgotten = true; child.kill(); }
       return cast(true);
     }
@@ -198,7 +219,7 @@ export function createRunner(host: Host) {
     {
       name: 'agent.reset', kind: 'write',
       about: 'Start a new conversation with the agent: it forgets what was said, not what was made.',
-      run() { session = undefined; keep(); return { reset: true }; },
+      run() { forget(); cast(true); return { reset: true }; },
     },
   ];
 

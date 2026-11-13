@@ -109,6 +109,16 @@ test('a message from the person is answered by the agent, whose only hands are c
   assert.match(String(host.events.since(n2).find((e) => e.by === 'agent')!.text), /^Again: /);
   await until(() => !s.runner!.status().busy);
 
+  // A new conversation: the agent does not carry the old one on.
+  await post('chat.new');
+  assert.equal((await post('agent.status')).result.session, false);
+  const n4 = host.events.last();
+  await post('chat.send', { text: 'who are you again' });
+  await until(() => host.events.since(n4).some((e) => e.type === 'message' && e.by === 'agent'));
+  assert.doesNotMatch(String(host.events.since(n4).find((e) => e.by === 'agent')!.text), /^Again: /);
+  await until(() => !s.runner!.status().busy);
+  assert.equal((await post('chat.history')).result.length, 2);
+
   // A failure is said, not swallowed. (It first tries once more without the old conversation.)
   const n3 = host.events.last();
   await post('chat.send', { text: 'fail please' });

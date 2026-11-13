@@ -157,9 +157,18 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'chat.history', kind: 'read',
-      about: 'The last messages of the conversation (limit defaults to 20).',
+      about: 'The last messages of this conversation (limit defaults to 20). A conversation starts at the last chat.new.',
       input: { limit: 'number?' },
-      run: (_c, i) => events.since(0).filter((e) => e.type === 'message').slice(-(i.limit ?? 20)).map((e) => ({ n: e.n, by: e.by, text: e.text, refs: e.refs })),
+      run(_c, i) {
+        const all = events.since(0);
+        const from = all.map((e) => e.type).lastIndexOf('chat.new') + 1;
+        return all.slice(from).filter((e) => e.type === 'message').slice(-(i.limit ?? 20)).map((e) => ({ n: e.n, by: e.by, text: e.text, refs: e.refs }));
+      },
+    },
+    {
+      name: 'chat.new', kind: 'write',
+      about: 'Start a new conversation: the chat is cleared and the agent forgets what was said. What was made stays: records, concepts, and proposals that are still pending.',
+      run: (c) => events.add({ type: 'chat.new', by: c.by }),
     },
     {
       name: 'events.since', kind: 'read',

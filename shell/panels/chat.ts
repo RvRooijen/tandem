@@ -30,6 +30,10 @@ export function chatPanel(): Panel {
   const refsEl = h('div.refs');
   const input = h<'textarea'>('textarea', { rows: 1, placeholder: 'Say something…', 'aria-label': 'Message' });
   const sendBtn = h<'button'>('button.primary', { onclick: () => void send() }, 'Send');
+  const newBtn = h<'button'>('button.icon.new-chat', { 'aria-label': 'New conversation', title: 'New conversation', onclick: () => {
+    if (confirm('Start a new conversation? The chat is cleared and the agent forgets what was said. Pending proposals stay.')) void app.act('chat.new');
+  } }, '↺');
+  const EMPTY = () => h('div.empty', {}, h('b', {}, 'Nothing said yet.'), h('p', {}, 'Talk about the game while you play it. Hang a concept, a record or something in the garden on a message from the other tabs.'));
   let body: HTMLElement | undefined;
 
   const nearBottom = () => !body || body.scrollHeight - body.scrollTop - body.clientHeight < 80;
@@ -193,14 +197,21 @@ export function chatPanel(): Panel {
     show(b, foot) {
       body = b;
       b.append(list);
-      if (!list.children.length) list.append(h('div.empty', {}, h('b', {}, 'Nothing said yet.'), h('p', {}, 'Talk about the game while you play it. Hang a concept, a record or something in the garden on a message from the other tabs.')));
-      foot.append(status, refsEl, h('div.composer', {}, input, sendBtn));
+      if (!list.children.length) list.append(EMPTY());
+      foot.append(status, refsEl, h('div.composer', {}, newBtn, input, sendBtn));
       paintRefs(); paintStatus();
       for (const r of rounds.values()) roundCard(r);
       requestAnimationFrame(toBottom);
     },
     hide() { body = undefined; },
     event(ev) {
+      if (ev.type === 'chat.new') {
+        // A new conversation: everything said goes, what is still to be decided stays.
+        for (const [key, r] of rounds) if (r.status !== 'pending') rounds.delete(key);
+        list.replaceChildren(...[...rounds.values()].map((r) => r.el!).filter(Boolean));
+        if (!list.children.length) list.append(EMPTY());
+        return;
+      }
       list.querySelector('.empty')?.remove();
       addEvent(ev);
     },

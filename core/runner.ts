@@ -25,7 +25,7 @@ export function createRunner(host: Host) {
   const off = process.env.TANDEM_AGENT === 'off';
   const queue: Event[] = [];
   let child: ChildProcess | undefined;
-  let busy = false, doing = '', text = '', stopped = false;
+  let busy = false, doing = '', text = '', stopped = false, forgotten = false;
   let lastCast = 0;
 
   const status = (): AgentStatus => ({ busy, doing, text: text.slice(-600), waiting: queue.length, session: !!session, off });
@@ -138,7 +138,11 @@ export function createRunner(host: Host) {
     proc.on('close', (code) => {
       clearTimeout(timer);
       child = undefined;
-      if (stopped) { stopped = false; say('(stopped)', { error: true }); }
+      if (forgotten) {
+        // A new conversation was started while it was answering: this answer belongs to the old one, and so does its session.
+        forgotten = stopped = false;
+        session = undefined; keep();
+      } else if (stopped) { stopped = false; say('(stopped)', { error: true }); }
       else if ((failed || code !== 0) && session && !retry && !said) {
         // Most often the conversation to resume is gone; start a new one, once.
         session = undefined; keep();
@@ -161,6 +165,13 @@ export function createRunner(host: Host) {
   }
 
   const unsubscribe = host.events.subscribe((ev) => {
+    if (ev.n > 0 && ev.type === 'chat.new') {
+      // A new conversation: nothing is waiting any more, and nothing is remembered.
+      queue.length = 0;
+      session = undefined; keep();
+      if (child) { forgotten = true; child.kill(); }
+      return cast(true);
+    }
     if (ev.n > 0 && ev.type === 'message' && ev.by === 'me') {
       if (off) return void host.events.cast({ type: 'agent.status', ...status() });
       queue.push(ev);

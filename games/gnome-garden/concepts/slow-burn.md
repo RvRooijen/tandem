@@ -11,8 +11,8 @@
 }
 ---
 
-It starts normal and gets creepy, and it takes its time. The first minutes are a cosy garden game with nothing wrong in it. The dread comes in small steps, hours apart, and each step should feel like something you might have imagined.
+It starts normal and gets creepy, and it takes its time. The beginning is a cosy garden game with nothing wrong in it. The dread comes in small steps, far apart, and each step should feel like something you might have imagined.
 
-A whole first run is about ten hours for someone who keeps the game open and joins in. Someone who only looks in now and then gets there too, in a few hours more.
+Someone who keeps the game open and joins in gets through it sooner. Someone who only looks in now and then gets there too.
 
 It must never be over quickly: this is a slow-burn idle game first.

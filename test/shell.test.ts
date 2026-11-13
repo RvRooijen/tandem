@@ -305,6 +305,25 @@ test('the agent shows things on the person\'s screen', async () => {
   assert.match(all('.msg.agent').at(-1)!.textContent!, /Have a look at this one/);
 });
 
+test('a new conversation clears the chat and keeps what is still to be decided', async () => {
+  tab('Chat');
+  await host.run('records.set', { path: 'flowers/daisy', value: { value: 2 }, note: 'still open' }, AGENT, 'r950');
+  await until(() => all('.card.prop').some((c) => c.dataset.status === 'pending'), 'a pending proposal');
+  assert.ok(all('.msg').length >= 3 && all('.card.prop').length >= 3);
+  click($('.composer .new-chat'));
+  await until(() => all('.msg').length === 0, 'the chat to be cleared');
+  assert.equal(all('.card.prop').length, 1, 'the pending proposal is still there');
+  assert.equal(all('figure.card.look').length, 0);
+  assert.equal(app.agent.session, false, 'and the agent has forgotten');
+  click(button('Reject', $('.card.prop')));
+  await until(() => $('.card.prop').dataset.status === 'rejected', 'the rejection');
+  type($('.composer textarea'), 'hello again');
+  click(button('Send'));
+  await until(() => $('.msg.agent'), 'an answer in the new conversation');
+  assert.doesNotMatch($('.msg.agent').textContent!, /^Again: /);
+  await until(() => !app.agent.busy, 'the agent to be done');
+});
+
 test('parity: everything the shell does is a command the agent could name', async () => {
   const known = new Set((await host.run('commands.list', {}, 'me') as { name: string }[]).map((c) => c.name));
   for (const c of s.runner!.commands) known.add(c.name);

@@ -216,4 +216,11 @@ test('the conversation and the stage are events like everything else', async () 
   const history = await me('chat.history', { limit: 2 });
   assert.deepEqual(history.map((m: any) => m.text), ['what about the tulips?', 'They pay 10 now.']);
   assert.deepEqual(history[0].refs, ['record:flowers/tulip']);
+
+  // A new conversation: what was said before is not part of it. Only the person starts one.
+  await refused(agent('chat.new'), 'permission');
+  await me('chat.new');
+  assert.deepEqual(await me('chat.history'), []);
+  await me('chat.send', { text: 'a clean start' });
+  assert.deepEqual((await me('chat.history')).map((m: any) => m.text), ['a clean start']);
 });

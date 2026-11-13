@@ -54,7 +54,7 @@ export function projectsPanel(): Panel {
   }
 
   return {
-    id: 'projects', title: 'Projects',
+    id: 'projects', title: 'Projects', tab: false,
     init(a) { app = a; },
     show(b) { body = b; void paint(); },
     hide() { body = undefined; },

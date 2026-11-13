@@ -14,7 +14,11 @@ import { basename, join, resolve } from 'node:path';
 export interface ProjectConfig {
   /** What it is called. The folder's name if not said. */
   name?: string;
-  /** How the project's page is started, with {port} where the port goes. Guessed for a Vite project. */
+  /**
+   * How the project's page is started, with {port} where the port goes; {project} is the project's own folder
+   * (the page of the agent's working copy is started with this same line, in the copy: a script named through
+   * {project} is the project's, whatever the copy holds). Guessed for a Vite project.
+   */
   page?: string;
   /** How its tests are run, and its type check: the agent may run these in its working copy. */
   test?: string;
@@ -62,28 +66,31 @@ function guessPage(root: string): string | undefined {
 }
 
 /** `tandem` and `data` put tandem's own folder, or only what it does not keep in git, somewhere else (a test's). */
-export function loadProject(dir: string, opts: { data?: string; tandem?: string } = {}): Project {
+export function loadProject(dir: string, opts: { data?: string; tandem?: string; as?: Project } = {}): Project {
   const root = resolve(dir);
   if (!existsSync(root)) throw new Error(`there is no folder ${root}`);
-  let config: ProjectConfig = {};
+  // The working copy is run by the project's own settings, not by whatever its copy of tandem.json says: how a
+  // project's page and tests are started is the person's to decide, not something a change set can rewrite.
+  let config: ProjectConfig = opts.as?.config ?? {};
   const file = join(root, 'tandem.json');
-  if (existsSync(file)) {
+  if (!opts.as && existsSync(file)) {
     try { config = JSON.parse(readFileSync(file, 'utf8')) as ProjectConfig; } catch (e) { throw new Error(`tandem.json is not valid JSON: ${e instanceof Error ? e.message : e}`); }
   }
   const tandem = opts.tandem ?? join(root, '.tandem');
   const data = opts.data ?? join(tandem, 'data');
-  const page = config.page ?? guessPage(root);
+  const home = opts.as?.root ?? root;
+  const page = config.page ?? guessPage(home);
   const art = config.art?.dir ?? 'art', depth = config.art?.depth ?? 'depth';
   const project: Project = {
     root,
     id: basename(root).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'project',
-    name: config.name ?? basename(root),
+    name: config.name ?? basename(home),
     config,
     dirs: { tandem, concepts: join(tandem, 'concepts'), data, looks: join(data, 'looks'), art: join(root, art), depth: join(root, depth) },
     locksFile: join(tandem, 'locks.json'),
-    pageCommand: (port) => page?.replaceAll('{port}', String(port)),
+    pageCommand: (port) => page?.replaceAll('{port}', String(port)).replaceAll('{project}', home),
     editable: config.edit ?? ['**'],
-    at: (other) => loadProject(other, opts),
+    at: (other) => loadProject(other, { ...opts, as: project }),
   };
   return project;
 }

@@ -38,7 +38,7 @@ function startProject() {
     paging = project?.root;
     const command = project?.pageCommand(PAGE_PORT);
     if (project && command) {
-      const mine = spawn('sh', ['-c', `exec ${command}`], { cwd: project.root, stdio: 'inherit', env, detached: true });
+      const mine = spawn('sh', ['-c', command], { cwd: project.root, stdio: 'inherit', env, detached: true });
       page = mine;
       mine.on('exit', (code) => { if (!stopping && page === mine) console.log(`the project's page stopped (${code}): ${command}`); });
     } else if (project) console.log('the project has no page to show: say how it is started in tandem.json ("page"), with {port} where the port goes');

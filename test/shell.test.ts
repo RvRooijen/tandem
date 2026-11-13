@@ -129,7 +129,7 @@ test('the project\'s page is in a frame and the tools lie over it, shut', async 
   pagesUp = true;
   assert.ok($('#t-fab'));
   assert.ok($('#t-sheet').classList.contains('shut'));
-  assert.deepEqual(all('.t-tab').map((t) => t.textContent), ['Chat', 'Concepts', 'Art', 'Projects']);
+  assert.deepEqual(all('.t-tab').map((t) => t.textContent), ['Chat', 'Concepts', 'Art']);
   await until(() => frame.src === 'http://localhost:5210/', 'the frame to show the project\'s own page');
   assert.ok(!frame.hidden && $('#t-nopage').hidden);
   assert.deepEqual(app.stage.can, { snapshot: false, point: false }, 'a page that says nothing is simply shown');
@@ -443,8 +443,10 @@ test('projects: the folders that could be one are listed, and another is chosen 
   mkdirSync(join(beside, 'other-game/.git'), { recursive: true });
   writeFileSync(join(beside, 'other-game/tandem.json'), JSON.stringify({ name: 'The Other Game', page: 'serve {port}' }));
   mkdirSync(join(beside, 'loose-notes'));
-  tab('Projects');
+  // Not a tab: the button at the end of the tabs, where another project is opened.
+  click($('button[aria-label="Open another project"]'));
   await until(() => all('.item.project').length >= 3, 'the folders');
+  assert.equal(all('.t-tab.on').length, 0, 'none of the tabs is the one showing');
   const item = (name: string) => all('.item.project').find((i) => $('b', i).textContent === name)!;
   assert.equal(all('.item.project')[0], item('Fixture'), 'the one that is open comes first');
   assert.match(item('Fixture').textContent!, /open now/);

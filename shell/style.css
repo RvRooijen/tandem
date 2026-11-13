@@ -59,7 +59,6 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
   transition: transform 0.22s ease-out, height 0.22s ease-out;
 }
 #t-sheet.shut { transform: translateY(105%); }
-#t-sheet.tall { height: calc(100dvh - 34px - env(safe-area-inset-top)); }
 #t-sheet > header { display: flex; align-items: center; gap: 2px; padding: 6px 6px 0 8px; border-bottom: 1px solid var(--t-line); flex: none; }
 #t-tabs { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 #t-tabs::-webkit-scrollbar { display: none; }

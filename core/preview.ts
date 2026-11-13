@@ -21,7 +21,7 @@ export function createPreview(copy: () => Project) {
         const at = copy();
         const command = at.pageCommand(COPY_PORT);
         if (!command) throw new Error('the project has no page to start');
-        proc = spawn('sh', ['-c', `exec ${command}`], { cwd: at.root, stdio: 'ignore', env: { ...process.env, TANDEM_COPY: '1' }, detached: true });
+        proc = spawn('sh', ['-c', command], { cwd: at.root, stdio: 'ignore', env: { ...process.env, TANDEM_COPY: '1' }, detached: true });
         for (let i = 0; i < 60 && !(await up()); i++) await new Promise((r) => setTimeout(r, 500));
         if (!(await up())) throw new Error(`the page of the working copy did not start (${command})`);
       }

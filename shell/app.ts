@@ -11,6 +11,8 @@ import type { Stage } from './stage.ts';
 export interface Panel {
   id: string;
   title: string;
+  /** False for a panel that is not one of the tabs: it is opened some other way (the project chooser, by its button). */
+  tab?: boolean;
   /** The panels are made before the app is; it hands itself over here. */
   init(app: App): void;
   /** Draw into the sheet. `id` is something to open straight away: a concept, a record, an entity. */
@@ -55,7 +57,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
   const sheet = h<'section'>('section#t-sheet.shut', {},
     h('header', {},
       tabs,
-      h<'button'>('button.icon', { 'aria-label': 'Taller or shorter', onclick: () => sheet.classList.toggle('tall') }, '⇕'),
+      h<'button'>('button.icon.projects', { 'aria-label': 'Open another project', title: 'Open another project', onclick: () => app.open('projects') }, '📁'),
       h<'button'>('button.icon', { 'aria-label': 'Close', onclick: () => app.close() }, '✕')),
     body, foot);
   const ring = h('div#t-ring', { hidden: true }, h('i'), h('span'));
@@ -70,6 +72,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
 
   const tabEls = new Map<string, HTMLButtonElement>();
   for (const p of panels) {
+    if (p.tab === false) continue;
     const b = h<'button'>('button.t-tab', { onclick: () => app.open(p.id) }, p.title, h('i.dot'));
     tabEls.set(p.id, b);
     tabs.append(b);

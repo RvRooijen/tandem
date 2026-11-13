@@ -69,12 +69,19 @@ export function createCode(o: CodeOptions) {
     return { conflicts };
   }
 
-  /** What the working copy changes, against the project as it is now. */
+  /**
+   * Where the copy last had everything the project had. What the copy changed is measured from there, not from
+   * the project as it is now: a copy that has not caught up yet did not undo what the project gained since.
+   */
+  const base = () => git(work, 'merge-base', main(), 'HEAD');
+
+  /** What the working copy changes. */
   function changes(): FileChange[] {
     if (!existsSync(join(work, '.git'))) return [];
     git(work, 'add', '-A', '-N');                                   // so that new files count
-    const out = git(work, 'diff', '--numstat', main());
-    const names = new Map(git(work, 'diff', '--name-status', main()).split('\n').filter(Boolean).map((l) => { const [s, ...p] = l.split('\t'); return [p.at(-1)!, s] as const; }));
+    const from = base();
+    const out = git(work, 'diff', '--numstat', from);
+    const names = new Map(git(work, 'diff', '--name-status', from).split('\n').filter(Boolean).map((l) => { const [s, ...p] = l.split('\t'); return [p.at(-1)!, s] as const; }));
     return out.split('\n').filter(Boolean).map((l) => {
       const [a, r, ...p] = l.split('\t');
       const path = p.at(-1)!;
@@ -84,7 +91,7 @@ export function createCode(o: CodeOptions) {
   }
 
   /** The change itself, to read: a diff of one file, or of everything. */
-  const diff = (path?: string) => (existsSync(join(work, '.git')) ? git(work, 'diff', main(), ...(path ? ['--', path] : [])).slice(0, 60_000) : '');
+  const diff = (path?: string) => (existsSync(join(work, '.git')) ? git(work, 'diff', base(), ...(path ? ['--', path] : [])).slice(0, 60_000) : '');
 
   /** Take the working copy into the project, as one commit that says what it is. Throws, with the project as it was, when it does not go in cleanly. */
   function accept(message: string): FileChange[] {

@@ -62,6 +62,22 @@ test('what the copy changes is one change set; the project is untouched until it
   assert.equal(git('status', '--porcelain'), '');
 });
 
+test('a copy that has not caught up with the project did not undo what the project gained', () => {
+  // The project moves on, by somebody else's hand; the copy has not been brought up to date yet.
+  put('games/g/src/weather.ts', 'export const rain = true;\n');
+  git('add', '-A');
+  git('commit', '-q', '-m', 'Weather');
+  assert.deepEqual(code.changes(), [], 'the copy changed nothing');
+  put('games/g/src/seasons.ts', 'export const names = ["spring", "winter"];\n', code.work);
+  assert.deepEqual(code.changes().map((c) => c.path), ['games/g/src/seasons.ts'], 'only its own change is its change');
+  assert.doesNotMatch(code.diff(), /weather/);
+  // Brought up to date, it has the weather too, and its change is still only its own.
+  assert.deepEqual(code.sync(), { conflicts: [] });
+  assert.equal(read('games/g/src/weather.ts', code.work), 'export const rain = true;\n');
+  assert.deepEqual(code.changes().map((c) => c.path), ['games/g/src/seasons.ts']);
+  code.reject();
+});
+
 test('rejected, the copy is the project again', () => {
   put('games/g/src/rules.ts', 'export const speed = 99;\n', code.work);
   put('games/g/src/junk.ts', 'x\n', code.work);

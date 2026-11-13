@@ -682,15 +682,24 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'code.describe', kind: 'write', agent: 'free',
-      about: 'Say what the working copy\'s change set does, for the person: a sentence or two in plain words about what is different when the project is used, not which files or how. It is what the proposal says, and its first line is the commit when it is accepted. Say it again when the change set becomes something else.',
+      about: 'Say what the working copy\'s change set does, for the person: a sentence or two in plain words about what is different when the project is used, not which files or how. It describes the whole change set as it stands, everything the person gets by accepting it, not the step you took last: when you add to a change set, say it again so that it still covers all of it. It is what the proposal says, and its first line is the commit when it is accepted.',
       input: { text: 'string' },
       run(c, i) {
         if (!code) throw new CommandError('unsupported', 'there is no working copy here: the project is not in a repository');
         if (!i.text.trim()) throw new CommandError('input', 'say what the change does');
+        const was = about();
         about(i.text);
         // Said by hand while a proposal is open, the card says it at once; the agent's is shown when its reply is done.
         if (proposals.list({ status: 'pending', round: CODE }).length) proposeCode(c.by, i.text);
-        return { said: i.text.trim() };
+        const files = code.changes().map((f) => f.path);
+        return {
+          said: i.text.trim(),
+          // What it replaces is said back, with what the change set holds: a description of the last step alone
+          // would leave the rest of the change unnamed, on the card and in the commit.
+          ...(was && was !== i.text.trim() && { replaces: was }),
+          covers: files,
+          says: `this is now the description of the whole change set (${files.length} ${files.length === 1 ? 'file' : 'files'}); if it only says what you did last, say it again so that it covers all of it`,
+        };
       },
     },
     {

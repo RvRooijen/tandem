@@ -73,7 +73,12 @@ test('when the copy is the project again, the proposal is gone; rejected, the co
   await idle();
   // What the change does, in the agent's plain words, is what the proposal says from then on, and the commit.
   await refused(me('code.describe', { text: ' ' }), 'input');
-  await host.run('code.describe', { text: 'The year has four seasons now.\nNothing uses them yet.' }, 'agent:main');
+  const first = await host.run('code.describe', { text: 'Seasons.' }, 'agent:main') as any;
+  assert.deepEqual([first.replaces, first.covers], [undefined, ['src/seasons.js']]);
+  // Said again, it is told what it replaces and what the change set holds: the description is of all of it.
+  const again = await host.run('code.describe', { text: 'The year has four seasons now.\nNothing uses them yet.' }, 'agent:main') as any;
+  assert.deepEqual([again.replaces, again.covers], ['Seasons.', ['src/seasons.js']]);
+  assert.match(again.says, /the whole change set \(1 file\)/);
   assert.equal(host.events.since(0).filter((e) => e.type === 'proposal').at(-1)!.note, 'The year has four seasons now.\nNothing uses them yet.');
   assert.equal((await me('proposals.list', { status: 'pending' })).length, 1, 'still the one proposal');
   await me('proposals.decide', { round: 'code', accept: true });

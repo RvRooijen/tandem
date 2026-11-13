@@ -176,14 +176,16 @@ test('chat: a message goes out, the agent answers with a proposal, and it is acc
 
   const card = $('.card.prop');
   assert.equal(card.dataset.status, 'pending');
-  assert.match($('.change .path', card).textContent!, /concept tulips-r\d+/);
-  assert.ok(all('.field', card).some((f) => /text.*new.*Tulips are worth a bit more\./.test(f.textContent!)), 'what it would be, spelled out');
-  assert.match($('.note', card).textContent!, /a new concept/);
+  // A proposed concept is read like a concept: its name, where it stands, and what it says in full.
+  assert.match($('.change .path', card).dataset.id!, /^tulips-r\d+$/);
+  assert.match($('.change .path b', card).textContent!, /^Tulips r\d+$/);
+  assert.equal($('.change .path .t-chip.stage', card).textContent, 'idea');
+  assert.equal($('.change .ctext', card).textContent, 'Tulips are worth a bit more.', 'what it would say, all of it');
   assert.deepEqual(all('button', card).map((b) => b.textContent), ['Accept', 'Reject'], 'a proposal is decided; there is nothing else to press');
 
   click(button('Accept', card));
   await until(() => card.dataset.status === 'accepted', 'the card to say accepted');
-  const id = $('.change .path', card).textContent!.split(' ')[1];
+  const id = $('.change .path', card).dataset.id!;
   assert.equal(host.concepts.get(id)!.text, 'Tulips are worth a bit more.');
   assert.equal(all('button', card).length, 0, 'a decided proposal has no buttons');
   await until(() => !app.agent.busy, 'the agent to be done');
@@ -199,7 +201,7 @@ test('chat: a round of several is one card, decided as one or piece by piece', a
   assert.match($('.t-head', card).textContent!, /A proposal, 3 changes.*pending/);
   assert.deepEqual(all('button', card).map((b) => b.getAttribute('aria-label') ?? b.textContent),
     ['Accept poppies', 'Reject poppies', 'Accept thistles', 'Reject thistles', 'Accept clover', 'Reject clover', 'Accept all', 'Reject all']);
-  const piece = (path: string) => all('.change', card).find((c) => $('.path', c).textContent!.endsWith(path))!;
+  const piece = (path: string) => all('.change', card).find((c) => $('.path', c).dataset.id === path)!;
 
   // One is taken: it is real now, and the others still wait.
   click($('button[aria-label="Accept poppies"]', card));
@@ -315,8 +317,12 @@ test('concepts: add one, work on it, and hand it to the agent', async () => {
 
   // What the agent proposes about a concept shows up, and accepting it rewrites the concept.
   await host.run('concepts.update', { id: 'night-roses', text: 'A rose that only opens after dark, and closes if you look.' }, AGENT, 'r900');
-  const about = () => all('.card.prop').find((c) => /concept night-roses/.test(c.textContent!) && c.dataset.status === 'pending');
+  const about = () => all('.card.prop').find((c) => $('.path[data-id=night-roses]', c) && c.dataset.status === 'pending');
   await until(about, 'the proposal about it');
+  // A change to a concept that is there: what it would say in full, and what it says now one tap away.
+  assert.equal($('.path b', about()!).textContent, 'Night roses');
+  assert.equal($('.ctext', about()!).textContent, 'A rose that only opens after dark, and closes if you look.');
+  assert.match($('details.cwas', about()!).textContent!, /What it says now.*A rose that only opens after dark\.$/);
   click(button('Accept', about()!));
   await until(() => host.concepts.get('night-roses')!.text.endsWith('if you look.'), 'the concept to change');
 
@@ -619,7 +625,8 @@ test('a change to the project is a card: which files, the copy played in the fra
   await until(() => all('.card.prop').filter((c) => /A change to the project/.test(c.textContent!)).length === 2, 'a second card');
   assert.equal(card.dataset.status, 'accepted');
   host.events.add({ type: 'proposal.decided', by: 'me', round: 'code', status: 'rejected', count: 1, paths: ['code:working copy'] });
-  await until(() => all('.card.prop').at(-1)!.dataset.status === 'rejected', 'the rejection');
+  // (The agent, set to work by the engine's message above, may have put a card of its own after it.)
+  await until(() => all('.card.prop').filter((c) => /A change to the project/.test(c.textContent!)).at(-1)!.dataset.status === 'rejected', 'the rejection');
 });
 
 test('a new conversation clears the chat and keeps what is still to be decided', async () => {
@@ -627,7 +634,7 @@ test('a new conversation clears the chat and keeps what is still to be decided',
   // (The engine's message in the test before this one set the agent to work, as it should; let it finish.)
   await until(() => !app.agent.busy, 'the agent to be done');
   await host.run('concepts.create', { name: 'Daisies everywhere' }, AGENT, 'r950');
-  await until(() => all('.card.prop').some((c) => /daisies-everywhere/.test(c.textContent!)), 'a pending proposal');
+  await until(() => all('.card.prop').some((c) => $('.path[data-id=daisies-everywhere]', c)), 'a pending proposal');
   const open = all('.card.prop').filter((c) => c.dataset.status === 'pending').length;
   assert.ok(all('.msg').length >= 3 && all('.card.prop').length > open, 'there is a conversation, with decided proposals in it');
   asked = '7';
@@ -638,7 +645,7 @@ test('a new conversation clears the chat and keeps what is still to be decided',
   assert.equal(all('figure.card.look').length + all('.card.test').length, 0);
   assert.equal(app.agent.session, false, 'and the agent has forgotten');
   assert.match($('.usage').textContent!, /nothing in context yet/);
-  const daisy = all('.card.prop').find((c) => /daisies-everywhere/.test(c.textContent!))!;
+  const daisy = all('.card.prop').find((c) => $('.path[data-id=daisies-everywhere]', c))!;
   click(button('Reject', daisy));
   await until(() => daisy.dataset.status === 'rejected', 'the rejection');
   type($('.composer textarea'), 'hello again');
@@ -684,7 +691,7 @@ test('with the tools shut, tandem speaks in a bubble: what it says goes again, w
   // Something it proposes: a bubble that stays, with the two answers on it.
   await host.run('concepts.create', { name: 'Later roses', text: 'Roses come later.' }, AGENT, 'r970');
   await until(() => $('.bubble.waits'), 'the proposal');
-  assert.match($('.bubble.waits b').textContent!, /A proposal · concept later-roses, new/);
+  assert.match($('.bubble.waits b').textContent!, /A new concept · Later roses/);
   assert.deepEqual(all('.bubble.waits button').map((b) => b.textContent), ['Approve', 'Decline']);
   tab('Concepts');
   assert.ok($('#t-bubbles').hidden);
@@ -696,7 +703,7 @@ test('with the tools shut, tandem speaks in a bubble: what it says goes again, w
 
   await host.run('concepts.update', { id: 'later-roses', text: 'Roses come much later.' }, AGENT, 'r971');
   await until(() => $('.bubble.waits'), 'another proposal');
-  assert.match($('.bubble.waits b').textContent!, /A proposal · concept later-roses$/);
+  assert.match($('.bubble.waits b').textContent!, /A change to the concept Later roses$/);
   click(button('Decline', $('.bubble.waits')));
   await until(() => !$('.bubble.waits'), 'the bubble to go');
   assert.equal(host.concepts.get('later-roses')!.text, 'Roses come later.', 'declined: nothing changed');
@@ -722,7 +729,7 @@ test('with the tools shut, tandem speaks in a bubble: what it says goes again, w
   await until(() => /A proposal · 2 changes/.test($('.bubble.waits b')?.textContent ?? ''), 'the two');
   const moss = (await host.run('proposals.list', { status: 'pending' }, 'me') as { id: string; path: string }[]).find((x) => x.path === 'moss')!;
   await host.run('proposals.decide', { round: 'r972', accept: false, only: [moss.id] }, 'me');
-  await until(() => /A proposal · concept ferns, new/.test($('.bubble.waits b')?.textContent ?? ''), 'the one that is left');
+  await until(() => /A new concept · Ferns/.test($('.bubble.waits b')?.textContent ?? ''), 'the one that is left');
   click(button('Decline', $('.bubble.waits')));
   await until(() => !$('.bubble.waits'), 'the bubble to go');
 
@@ -734,7 +741,7 @@ test('with the tools shut, tandem speaks in a bubble: what it says goes again, w
   await until(() => $('.bubble.waits.many'), 'the one bubble for both');
   assert.equal(all('.bubble.waits').length, 1);
   assert.match($('.bubble.many .count').textContent!, /2 things wait for you/);
-  assert.deepEqual(all('.bubble.many .wait b').map((b) => b.textContent), ['A change to the project · 2 files', 'A proposal · concept ivy, new']);
+  assert.deepEqual(all('.bubble.many .wait b').map((b) => b.textContent), ['A change to the project · 2 files', 'A new concept · Ivy']);
   click(button('Decline', all('.bubble.many .wait')[1]));
   await until(() => !$('.bubble.many') && /A change to the project/.test($('.bubble.waits b')?.textContent ?? ''), 'the one that is left, said in full again');
   assert.equal(host.concepts.get('ivy'), undefined);

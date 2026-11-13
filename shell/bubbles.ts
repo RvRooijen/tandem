@@ -73,6 +73,7 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
       said.slice(-2).map((s) => h(`div.bubble.says${s.error ? '.error' : ''}`, { onclick: () => app.open('chat') }, h('p', {}, s.text))));
   }
 
+  const conceptName = (ev: Event) => String((ev.after as { name?: string } | undefined)?.name ?? (ev.touches as { name: string }[] | undefined)?.[0]?.name ?? ev.path);
   /** What a round of proposals is, in a line, and what the two answers do. */
   function proposal(round: string) {
     const changes = [...(rounds.get(round)?.values() ?? [])];
@@ -84,7 +85,9 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
       ? `A change to the project · ${(first.files as unknown[] | undefined)?.length ?? 0} ${(first.files as unknown[] | undefined)?.length === 1 ? 'file' : 'files'}`
       : changes.length > 1 ? `A proposal · ${changes.length} changes`
         : first.kind === 'setup' ? 'A proposal · how tandem runs the project'
-        : `A proposal · ${first.kind} ${first.path}${first.before ? '' : ', new'}`;
+        // A concept goes by its name, as the person knows it.
+        : first.kind === 'concept' ? (first.before ? `A change to the concept ${conceptName(first)}` : `A new concept · ${conceptName(first)}`)
+          : `A proposal · ${first.kind} ${first.path}${first.before ? '' : ', new'}`;
     waiting.set(round, {
       title, text: short(String(changes.at(-1)!.note ?? '')), open: ['chat'],
       yes: { label: 'Approve', run: () => void app.act('proposals.decide', { round, accept: true }) },

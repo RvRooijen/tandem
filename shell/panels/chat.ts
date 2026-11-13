@@ -208,6 +208,30 @@ export function chatPanel(): Panel {
       h('span.now', {}, short(c.after![k], k === 'text' ? 200 : 40))));
   }
 
+  /** Text as it was written, in full: its paragraphs, and what is marked in it. */
+  const whole = (text: unknown, cls: string) => h(`div.${cls}`, {}, prose(String(text ?? '').trim()));
+  const LINKS: Record<string, string> = { 'part-of': 'part of', 'leads-to': 'leads to', 'clashes-with': 'clashes with' };
+
+  /**
+   * A concept as it would be, to read: what it says in full, where it stands, what it belongs with and what makes
+   * it real. For a change to one that exists, what it says now is kept one tap away.
+   */
+  function conceptLines(c: Change): HTMLElement[] {
+    const a = c.after ?? {}, b = c.before;
+    const links = Array.isArray(a.links) ? a.links as { to: string; kind: string }[] : [];
+    const real = Array.isArray(a.realised) ? (a.realised as unknown[]).map(String) : [];
+    return [
+      b && 'name' in a && h('div.cline', {}, h('span.k', {}, 'renamed'), h('span.was', {}, String(b.name ?? '')), h('span.arrow', {}, '→'), h('b', {}, String(a.name))),
+      b && 'stage' in a && h('div.cline', {}, h('span.k', {}, 'stage'), h('span.t-chip.stage', { data: { stage: String(b.stage) } }, String(b.stage)), h('span.arrow', {}, '→'), h('span.t-chip.stage', { data: { stage: String(a.stage) } }, String(a.stage))),
+      'text' in a && (String(a.text ?? '').trim() ? whole(a.text, 'ctext') : h('div.note', {}, b ? 'Its description would be taken away.' : 'No description yet.')),
+      b && 'text' in a && String(b.text ?? '').trim() && h('details.cwas', {}, h('summary', {}, 'What it says now'), whole(b.text, 'ctext.old')),
+      'links' in a && (links.length > 0 || b) && h('div.cline', {}, h('span.k', {}, 'belongs with'),
+        links.length ? links.map((l) => h('span.t-chip.link', { onclick: () => app.open('concepts', l.to) }, `${LINKS[l.kind] ?? l.kind} ${l.to.replaceAll('-', ' ')}`)) : h('span.was.new', {}, 'nothing any more')),
+      'realised' in a && (real.length > 0 || b) && h('div.cline.real', {}, h('span.k', {}, 'made real by'),
+        real.length ? h('ul', {}, real.map((r) => h('li', {}, r))) : h('span.was.new', {}, 'nothing any more')),
+    ].filter(Boolean) as HTMLElement[];
+  }
+
   /** How tandem runs the project: each field in full, and the script that starts its page as it is written. */
   function setupLines(c: Change): HTMLElement[] {
     const say = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v));
@@ -287,13 +311,19 @@ export function chatPanel(): Panel {
       h('div.t-head', {}, h('b', {}, coded ? 'A change to the project' : total === 1 ? 'A proposal' : `A proposal, ${total} changes`), h('span.state', {}, state)),
       r.changes.map((c) => h('div.change', { data: { status: c.status ?? 'pending' } },
         h('div.pathline', {},
-          h('div.path', { onclick: () => (c.kind === 'concept' || c.kind === 'drawing') && app.open(c.kind === 'concept' ? 'concepts' : 'art', c.path) }, h('i', {}, c.kind), ' ', c.path),
+          c.kind === 'concept'
+            // A concept goes by its name, with where it stands; one that is not there yet has nothing to open.
+            ? h('div.path.concept', { data: { id: c.path }, onclick: () => c.before && app.open('concepts', c.path) },
+              h('b', {}, String(c.after?.name ?? c.touches?.[0]?.name ?? c.path)),
+              !c.before && c.after?.stage ? h('span.t-chip.stage', { data: { stage: String(c.after.stage) } }, String(c.after.stage)) : null,
+              !c.before && h('span.was.new', {}, 'new'))
+            : h('div.path', { onclick: () => c.kind === 'drawing' && app.open('art', c.path) }, h('i', {}, c.kind), ' ', c.path),
           total > 1 && c.status && h('span.state', {}, c.status),
           each && !c.status && h('span.each', {},
             h<'button'>('button.yes', { 'aria-label': `Accept ${c.path}`, onclick: () => decide(true, c) }, '✓'),
             h<'button'>('button.no', { 'aria-label': `Reject ${c.path}`, onclick: () => decide(false, c) }, '✕'))),
-        c.kind === 'drawing' ? pictures(c) : c.kind === 'code' ? codeFiles(c, r) : c.kind === 'setup' ? setupLines(c) : fieldLines(c),
-        c.note && h('div.note', {}, c.note))),
+        c.kind === 'drawing' ? pictures(c) : c.kind === 'code' ? codeFiles(c, r) : c.kind === 'setup' ? setupLines(c) : c.kind === 'concept' ? conceptLines(c) : fieldLines(c),
+        c.note && c.note !== 'a new concept' && h('div.note', {}, c.note))),
       touched.size > 0 && h('div.touches', {}, 'touches ', [...touched].map(([id, t]) => h('span.t-chip.stage', { data: { stage: t.stage }, onclick: () => app.open('concepts', id) }, `${t.name} · ${t.stage}`))),
       r.status === 'pending' && h('div.t-row', {},
         coded && app.info.page && h<'button'>('button', { onclick: () => void app.playCopy() }, 'Play the copy'),

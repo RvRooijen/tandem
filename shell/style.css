@@ -184,6 +184,23 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 .card.prop[data-status=rejected] .state { color: var(--t-bad); }
 .change { padding: 7px 0; border-top: 1px solid var(--t-line); }
 .change .pathline { display: flex; align-items: flex-start; gap: 8px; }
+/* A proposed concept is read like the concept: its name, where it stands, and what it says in full. */
+.change .path.concept { font-family: inherit; font-size: 15.5px; color: var(--t-ink); word-break: normal; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-bottom: 5px; }
+.change .path.concept b { font-weight: 700; }
+.change .path.concept .was.new { color: var(--t-soft); font-size: 12px; font-style: italic; }
+.ctext { font-size: 14.5px; line-height: 1.5; margin: 0 0 7px; overflow-wrap: anywhere; }
+.ctext.old { color: var(--t-soft); font-size: 13.5px; }
+details.cwas { margin: 2px 0 8px; }
+details.cwas summary { color: var(--t-soft); font-size: 12.5px; cursor: pointer; padding: 4px 0; }
+.cline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; padding: 3px 0; }
+.cline .k { color: var(--t-soft); font-size: 12px; margin-right: 2px; }
+.cline .was { color: var(--t-soft); text-decoration: line-through; }
+.cline .was.new { text-decoration: none; font-style: italic; }
+.cline .arrow { color: var(--t-soft); }
+#tandem .cline .t-chip.link { cursor: pointer; white-space: normal; }
+.cline.real ul { margin: 0; padding: 0; list-style: none; flex-basis: 100%; }
+.cline.real li { font-family: var(--t-mono); font-size: 12px; color: var(--t-soft); padding: 1px 0; overflow-wrap: anywhere; }
+.change + .change { margin-top: 4px; padding-top: 11px; }
 .change .pathline .path { flex: 1; min-width: 0; }
 .change .pathline .state { font-size: 12px; color: var(--t-soft); flex: none; }
 .change[data-status=accepted] .pathline .state { color: var(--t-good); }

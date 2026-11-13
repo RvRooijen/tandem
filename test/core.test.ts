@@ -254,6 +254,38 @@ test('setting tandem up for a project that exists already: the engine puts the a
   assert.match(text, /The person adds: the server notes are in docs\/$/);
 });
 
+test('how tandem runs the project is kept in tandem\'s own folder; the agent proposes it, the person decides', async () => {
+  const { configFile, pageScript } = host.project;
+  assert.equal(configFile, join(host.project.dirs.tandem, 'tandem.json'));
+  await refused(agent('project.configure', { page: 'serve' }, 'r60'), 'input');
+  await refused(agent('project.configure', { run: 'npm run build' }, 'r60'), 'input');
+  const script = '#!/bin/sh\nnode api.mjs "$(($1 + 1))" &\nexec serve "$1"\n';
+  const got = await agent('project.configure', { page: 'sh {tandem}/page.sh {port}', script, run: ['npm run build'], note: 'The page needs its api beside it.' }, 'r60');
+  assert.ok(got.proposed);
+  const ev = host.events.since(0).filter((e) => e.type === 'proposal').at(-1)!;
+  assert.deepEqual([ev.kind, ev.path, ev.before, ev.note], ['setup', 'how it is run', undefined, 'The page needs its api beside it.']);
+  assert.deepEqual(ev.after, { page: 'sh {tandem}/page.sh {port}', run: ['npm run build'], script });
+  assert.ok(!existsSync(configFile) && !existsSync(pageScript), 'nothing is written until it is accepted');
+  assert.equal(host.project.pageCommand(5210), undefined);
+
+  await me('proposals.decide', { round: 'r60', accept: true });
+  const kept = JSON.parse(readFileSync(configFile, 'utf8'));
+  assert.deepEqual([kept.name, kept.test, kept.page, kept.run], ['Fixture', 'node --test', 'sh {tandem}/page.sh {port}', ['npm run build']], 'what it was run by before is kept with it');
+  assert.equal(readFileSync(pageScript, 'utf8'), script);
+  assert.equal(host.project.pageCommand(5210), `sh ${host.project.dirs.tandem}/page.sh 5210`);
+  assert.deepEqual(host.events.since(0).at(-2)!.fields, ['page', 'run', 'script']);
+  // Nothing of it is among the project's own files.
+  assert.equal(JSON.parse(readFileSync(join(dir, 'tandem.json'), 'utf8')).page, undefined);
+  assert.equal((await me('project.setup')).script, script);
+  assert.deepEqual(await agent('project.configure', { run: ['npm run build'] }, 'r61'), { changed: false });
+
+  // The person says it at once; an empty value takes a field away.
+  await me('project.configure', { page: '', script: '', run: [] });
+  assert.ok(!existsSync(pageScript));
+  assert.equal(JSON.parse(readFileSync(configFile, 'utf8')).page, undefined);
+  assert.equal(host.project.pageCommand(5210), undefined);
+});
+
 test('the conversation and the stage are events like everything else', async () => {
   const before = host.events.last();
   await me('chat.send', { text: 'what about the tulips?', refs: ['drawing:garden-flowers'] });

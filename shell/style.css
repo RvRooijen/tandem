@@ -273,6 +273,7 @@ canvas.live { image-rendering: pixelated; display: block; }
 #tandem .t-chip.tap { cursor: pointer; min-height: 32px; padding: 3px 12px; color: var(--t-ink); }
 
 #tandem .field .pct.minus { margin-left: 0; }
+.field.whole .was, .field.whole .now { font-family: var(--t-mono); font-size: 12.5px; overflow-wrap: anywhere; }
 .field.file { cursor: pointer; padding: 6px 0; }
 .field.file .k { color: var(--t-ink); text-decoration: underline; text-decoration-color: var(--t-line); text-underline-offset: 3px; word-break: break-all; }
 .field.file[aria-expanded=true] .k { color: var(--t-accent); }

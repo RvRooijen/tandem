@@ -12,9 +12,9 @@ export interface Proposal {
   id: string;
   round: string;
   by: string;
-  /** What kind of thing it changes: a concept, a drawing, or the game's code (the agent's working copy). */
-  kind: 'concept' | 'drawing' | 'code';
-  /** The concept's id or the drawing's name; for code, 'working copy'. */
+  /** What kind of thing it changes: a concept, a drawing, the project's code (the agent's working copy), or how tandem runs the project. */
+  kind: 'concept' | 'drawing' | 'code' | 'setup';
+  /** The concept's id or the drawing's name; for code, 'working copy'; for setup, 'how it is run'. */
   path: string;
   /** The fields as they were (undefined for something new) and as they would be. */
   before?: RecordValue;

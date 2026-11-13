@@ -88,8 +88,9 @@ test('a folder without a repository gets one when it is opened; a new project is
   const dir = join(root, 'the-lighthouse-keeper');
   assert.equal(made.opening, dir);
   assert.equal(readFileSync(join(dir, 'README.md'), 'utf8'), '# The Lighthouse Keeper!\n');
-  assert.equal(JSON.parse(readFileSync(join(dir, 'tandem.json'), 'utf8')).name, 'The Lighthouse Keeper!');
-  assert.deepEqual(git(dir, 'ls-files').split('\n'), ['.gitignore', 'README.md', 'tandem.json']);
+  // What tandem knows of it is in tandem's own folder, not among the project's files.
+  assert.equal(JSON.parse(readFileSync(join(dir, '.tandem/tandem.json'), 'utf8')).name, 'The Lighthouse Keeper!');
+  assert.deepEqual(git(dir, 'ls-files').split('\n'), ['.gitignore', '.tandem/tandem.json', 'README.md']);
   assert.equal(readState().project, dir);
   assert.ok(listProjects().some((p) => p.dir === dir && p.name === 'The Lighthouse Keeper!' && p.git));
   await refused(run('projects.create', { name: 'the lighthouse keeper', in: root }), 'exists');

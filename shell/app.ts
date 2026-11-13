@@ -4,7 +4,7 @@
 // and stays in view, so it can be used and talked about at once.
 import type { Event } from '../core/events.ts';
 import type { AgentStatus } from '../core/runner.ts';
-import { run, type Info } from './api.ts';
+import { info as getInfo, run, type Info } from './api.ts';
 import { createBubbles } from './bubbles.ts';
 import { clear, h } from './dom.ts';
 import type { Stage } from './stage.ts';
@@ -217,6 +217,8 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
         if (ev.type === 'stage.point') app.point(Number(ev.x), Number(ev.y), String(ev.text ?? ''));
         if (ev.type === 'stage.open') app.open(String(ev.tab), ev.id ? String(ev.id) : undefined);
         if (ev.type === 'proposal.decided' && ev.round === 'code') app.playProject();
+        // How the project is run was changed: the core and the project's page start again, and this page with them.
+        if (ev.type === 'setup.changed' && ev.restarting) void again();
         if (ev.by !== 'me' && ['message', 'look', 'playtest', 'welcome'].includes(ev.type)) app.badge('chat', true);
         if (ev.type === 'proposal' && !ev.worker) app.badge('chat', true);
         // A worker's round is ready: that is news in the Art tab.
@@ -225,6 +227,14 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       for (const p of panels) p.event?.(ev, live);
     },
   };
+  /** Wait for the core to be gone and back, then load this page again on what it is now. */
+  async function again() {
+    await new Promise((r) => setTimeout(r, 2500));
+    for (let i = 0; i < 120; i++) {
+      try { await getInfo(); break; } catch { await new Promise((r) => setTimeout(r, 500)); }
+    }
+    location.reload();
+  }
   // What tandem says while the tools are shut.
   const bubbles = createBubbles(bubbleEl, app);
   for (const p of panels) p.init(app);

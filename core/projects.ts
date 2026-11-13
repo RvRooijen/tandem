@@ -59,7 +59,9 @@ export interface Found {
 
 function look(dir: string, current?: string): Found {
   let config: { name?: string; page?: string; adapter?: string } = {};
-  try { config = JSON.parse(readFileSync(join(dir, 'tandem.json'), 'utf8')); } catch { /* none, or not JSON: it is still a folder */ }
+  for (const file of [join(dir, '.tandem', 'tandem.json'), join(dir, 'tandem.json')]) {
+    try { config = JSON.parse(readFileSync(file, 'utf8')); break; } catch { /* none, or not JSON: it is still a folder */ }
+  }
   let vite = false;
   try { const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')); vite = !!{ ...pkg.dependencies, ...pkg.devDependencies }.vite; } catch { /* no package.json */ }
   return {
@@ -158,7 +160,9 @@ export function projectCommands(o: ProjectsOptions): CommandDef[] {
         if (why) throw new CommandError('busy', why);
         mkdirSync(dir);
         writeFileSync(join(dir, 'README.md'), `# ${i.name.trim()}\n`);
-        writeFileSync(join(dir, 'tandem.json'), JSON.stringify({ name: i.name.trim() }, null, 2) + '\n');
+        // What tandem knows of it is kept in tandem's own folder, not among the project's files.
+        mkdirSync(join(dir, '.tandem'), { recursive: true });
+        writeFileSync(join(dir, '.tandem', 'tandem.json'), JSON.stringify({ name: i.name.trim() }, null, 2) + '\n');
         try { ensureRepo(dir); } catch (e) { throw new CommandError('failed', `a git repository could not be started in ${dir}: ${(e instanceof Error ? e.message : String(e)).split('\n').slice(-2).join(' ')}`); }
         writeState({ ...readState(), project: dir, lastIn: root });
         if (o.restart) setTimeout(o.restart, 300);

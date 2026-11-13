@@ -13,7 +13,7 @@ import { runJob, type JobSpec } from './jobs.ts';
 import { createLocks, type Locks } from './locks.ts';
 import { createPreview, type Preview } from './preview.ts';
 import { encodePng } from './png.ts';
-import { loadProject, prepare, type Project } from './project.ts';
+import { SETUP, loadProject, prepare, type Project } from './project.ts';
 import { createProposals, type Proposals, type RecordValue } from './proposals.ts';
 import { createArt, type Art } from '../art/commands.ts';
 import { ecsCommands } from '../ecs/inspect.ts';
@@ -86,7 +86,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   // repository. What the engine itself writes in the project (concepts, locks, accepted drawings) is committed by
   // it, so the copy can take it in; the person's own uncommitted work is theirs and is left alone.
   const candidate = opts.code === undefined && process.env.TANDEM_CODE !== 'off'
-    ? createCode({ root: project.root, paths: ['.tandem/concepts', '.tandem/locks.json', '.tandem/.gitignore', 'art', 'depth'] }) : undefined;
+    ? createCode({ root: project.root, paths: ['.tandem/concepts', '.tandem/locks.json', '.tandem/.gitignore', '.tandem/tandem.json', '.tandem/page.sh', 'art', 'depth'] }) : undefined;
   const code = opts.code ?? (candidate?.usable() ? candidate : undefined);
   const preview = code && project.pageCommand(0) ? createPreview(() => project.at(code.work)) : undefined;
   if (preview) onStop.push(() => preview.stop());
@@ -126,9 +126,22 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   }
 
   /** Start the core again, when something looks after it that will (core/start.ts): its game code is from when it started. */
-  function restart() {
+  function restart(code = 75) {
     if (!process.env.TANDEM_SUPERVISED) return;
-    setTimeout(() => { for (const stop of onStop) stop(); process.exit(75); }, 600).unref?.();
+    setTimeout(() => { for (const stop of onStop) stop(); process.exit(code); }, 600).unref?.();
+  }
+
+  /** How the project is run, as tandem keeps it: in its own folder in the project, not among the project's files. */
+  const SETUP_FIELDS = ['name', 'page', 'test', 'check', 'run', 'adapter', 'art', 'edit'] as const;
+  function writeSetup(after: RecordValue) {
+    mkdirSync(project.dirs.tandem, { recursive: true });
+    const { script, ...fields } = after;
+    const now: Record<string, unknown> = { ...project.config, ...fields };
+    for (const k of Object.keys(now)) if (now[k] === null || now[k] === '') delete now[k];
+    writeFileSync(project.configFile, JSON.stringify(now, null, 2) + '\n');
+    if (typeof script === 'string') { if (script.trim()) writeFileSync(project.pageScript, script.endsWith('\n') ? script : script + '\n'); else rmSync(project.pageScript, { force: true }); }
+    for (const k of Object.keys(project.config)) delete (project.config as Record<string, unknown>)[k];
+    Object.assign(project.config, now);
   }
 
   /** What the agent says its change set does, in plain words: what the card says, and the commit. Gone when the set is decided. */
@@ -258,13 +271,42 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'project.init', kind: 'write',
-      about: 'Set tandem up for a project that exists already: the agent reads it and proposes the concepts it is made of and a tandem.json that says how it is run. note adds anything it should know. Only the person asks for this.',
+      about: 'Set tandem up for a project that exists already: the agent reads it and proposes the concepts it is made of and how tandem runs it. note adds anything it should know. Only the person asks for this.',
       input: { note: 'string?' },
       run(c, i) {
         const text = readFileSync(join(ROOT, 'core/agent-init.md'), 'utf8').trim();
         // It is the engine that sets the agent to work; what the person added goes with it.
         events.add({ type: 'message', by: 'engine', kind: 'init', text: i.note?.trim() ? `${text}\n\nThe person adds: ${i.note.trim()}` : text, asked: c.by });
         return { asked: true, says: 'the agent is reading the project; what it proposes comes in the chat' };
+      },
+    },
+    {
+      name: 'project.setup', kind: 'read',
+      about: 'How tandem runs this project, as it is written down now: the fields of its tandem.json, the script that starts its page if there is one, and where they are kept.',
+      run: () => ({ config: project.config, script: existsSync(project.pageScript) ? readFileSync(project.pageScript, 'utf8') : null, kept: { config: project.configFile, script: project.pageScript } }),
+    },
+    {
+      name: 'project.configure', kind: 'write', agent: 'proposes',
+      about: 'Say how tandem runs this project. It is kept in tandem\'s own folder in the project (.tandem), not among the project\'s files. Fields, all optional: name; page (the command that starts its page, with {port} where the port goes; {project} is the project\'s folder, {tandem} tandem\'s folder in it); test and check (commands the agent may run); run (a list of more commands it may run); adapter; art ({build}); edit. script is the text of a shell script for when starting the page takes more than one command: it is kept as {tandem}/page.sh, so page is then "sh {tandem}/page.sh {port}". An empty value takes a field away. The agent\'s becomes a proposal.',
+      input: { name: 'string?', page: 'string?', test: 'string?', check: 'string?', run: 'json?', adapter: 'string?', art: 'json?', edit: 'json?', script: 'string?', note: 'string?' },
+      run(c, i) {
+        if (i.page && !i.page.includes('{port}')) throw new CommandError('input', 'page needs {port} where the port goes: tandem starts the page on a port of its choosing, and a second time for the working copy');
+        for (const k of ['run', 'edit'] as const) if (i[k] !== undefined && i[k] !== null && !(Array.isArray(i[k]) && (i[k] as unknown[]).every((x) => typeof x === 'string'))) throw new CommandError('input', `${k} is a list of strings`);
+        const was: Record<string, unknown> = { ...project.config, script: existsSync(project.pageScript) ? readFileSync(project.pageScript, 'utf8') : undefined };
+        const after: Record<string, unknown> = {};
+        for (const k of [...SETUP_FIELDS, 'script'] as const) if (i[k] !== undefined && !same(i[k], was[k] ?? '')) after[k] = i[k];
+        if (!Object.keys(after).length) return { changed: false };
+        if (isAgent(c.by)) {
+          const round = c.round ?? 'loose';
+          const before = Object.fromEntries(Object.keys(after).filter((k) => was[k] !== undefined).map((k) => [k, was[k]]));
+          const p = proposals.add({ round, by: c.by, kind: 'setup', path: 'how it is run', ...(Object.keys(before).length && { before: before as RecordValue }), after: after as RecordValue, note: i.note ?? '' });
+          events.add({ type: 'proposal', by: c.by, round, id: p.id, kind: 'setup', path: 'how it is run', before: p.before, after: p.after, note: p.note });
+          return { proposed: p.id, round, says: 'it is the person\'s to accept; the project\'s page is started again with it when they do' };
+        }
+        writeSetup(after as RecordValue);
+        events.add({ type: 'setup.changed', by: c.by, fields: Object.keys(after), restarting: !!process.env.TANDEM_SUPERVISED });
+        restart(SETUP);
+        return { changed: true };
       },
     },
     {
@@ -329,16 +371,18 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
               const now = concepts.get(p.path);
               concepts.save({ id: p.path, name: p.path, stage: 'idea', links: [], realised: [], text: '', ...now, ...(p.after as Partial<Concept>) });
             }
+            if (p.kind === 'setup') writeSetup(p.after);
           }
         }
         // What was not named is still waiting: the round is over when nothing of it is.
         const left = open.length - set.length;
         if (!left) art.decided(i.round);
-        if (taken.length) {
-          events.add({ type: 'code.changed', by: c.by, files: taken.map((f) => f.path) });
-          // The core has the game's code in it as it was when it started: it starts again with the new code.
-          restart();
-        }
+        const setup = i.accept && set.some((p) => p.kind === 'setup');
+        if (setup) events.add({ type: 'setup.changed', by: c.by, fields: set.filter((p) => p.kind === 'setup').flatMap((p) => Object.keys(p.after)), restarting: !!process.env.TANDEM_SUPERVISED });
+        if (taken.length) events.add({ type: 'code.changed', by: c.by, files: taken.map((f) => f.path) });
+        // The core has the project's code in it as it was when it started: it starts again with the new code. When
+        // how the project is run was changed, the project's page is started again too.
+        if (setup) restart(SETUP); else if (taken.length) restart();
         events.add({ type: 'proposal.decided', by: c.by, round: i.round, status: i.accept ? 'accepted' : 'rejected', count: set.length, ids: set.map((p) => p.id), left, paths: set.map((p) => `${p.kind}:${p.path}`) });
         return { decided: set.length, left };
       },

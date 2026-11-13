@@ -73,6 +73,7 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
     const title = changes.some((c) => c.kind === 'code')
       ? `A change to the project · ${(first.files as unknown[] | undefined)?.length ?? 0} ${(first.files as unknown[] | undefined)?.length === 1 ? 'file' : 'files'}`
       : changes.length > 1 ? `A proposal · ${changes.length} changes`
+        : first.kind === 'setup' ? 'A proposal · how tandem runs the project'
         : `A proposal · ${first.kind} ${first.path}${first.before ? '' : ', new'}`;
     waiting.set(round, {
       title, text: short(String(changes.at(-1)!.note ?? '')), open: ['chat'],

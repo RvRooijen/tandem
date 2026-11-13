@@ -9,12 +9,13 @@
 // The core runs as a child that is started again when it asks to be: after a
 // change to the code is accepted (exit code 75: it holds the project's adapter
 // as it was when it started), and when another project is opened (76: then the
-// project's page is started again too, on the new one). Tandem's page stays up.
+// project's page is started again too, on the new one; 77: how the project is
+// run was changed, and its page is started again with that). Tandem's page stays up.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadProject, stopTree } from './project.ts';
+import { SETUP, loadProject, stopTree } from './project.ts';
 import { SWITCH, readState, writeState } from './projects.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -48,7 +49,9 @@ function startProject() {
   core = spawn(process.execPath, ['--no-warnings', 'core/server.ts'], { cwd: ROOT, stdio: 'inherit', env: { ...env, TANDEM_SUPERVISED: '1' } });
   core.on('exit', (code) => {
     if (stopping) return;
-    if (code === 75 || code === SWITCH) return void startProject();
+    // How the project is run was changed: its page is started again too, with the new command.
+    if (code === SETUP) paging = undefined;
+    if (code === 75 || code === SWITCH || code === SETUP) return void startProject();
     console.log(`the core stopped (${code})`);
     stop(code ?? 1);
   });

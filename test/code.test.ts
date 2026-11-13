@@ -132,3 +132,29 @@ test('files of the engine that are being worked on in the project do not stop a 
   assert.equal(read('core/engine.ts'), 'export const engine = "being changed by hand";\n');
   assert.equal(git('status', '--porcelain').trim(), 'M core/engine.ts');
 });
+
+test('a project that ignores tandem\'s folder keeps tandem out of its history', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tandem-ignored-'));
+  const g = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: dir, encoding: 'utf8' }).trim();
+  try {
+    g('init', '-q', '-b', 'main');
+    put('src/app.js', 'export const app = 1;\n', dir);
+    put('.gitignore', '.tandem/\n', dir);
+    g('add', '-A');
+    g('commit', '-q', '-m', 'start');
+    // Tandem's own things are there, and the engine is asked to keep them as it always is.
+    put('.tandem/concepts/roses.md', 'Roses.\n', dir);
+    put('.tandem/tandem.json', '{"name":"Ignored"}\n', dir);
+    const mine = createCode({ root: dir, paths: ['.tandem/concepts', '.tandem/tandem.json', 'art'] });
+    assert.deepEqual(mine.sync(), { conflicts: [] });
+    assert.equal(g('rev-list', '--count', 'HEAD'), '1', 'nothing of tandem was committed');
+    assert.equal(g('status', '--porcelain'), '');
+    assert.ok(!existsSync(join(mine.work, '.tandem')), 'and the copy holds only the project');
+    // A change still goes in, as the project's own.
+    put('src/app.js', 'export const app = 2;\n', mine.work);
+    mine.accept('The app is two now');
+    assert.equal(read('src/app.js', dir), 'export const app = 2;\n');
+    assert.deepEqual(g('show', '--name-only', '--format=', 'HEAD').split('\n'), ['src/app.js']);
+    rmSync(mine.work, { recursive: true, force: true });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

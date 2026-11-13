@@ -5,8 +5,8 @@ web project. You start it once and choose a project. It shows the project's own
 page with a sheet of tools over it (a chat, concepts, art), and runs an agent
 that works on the project through the same commands your screen uses.
 
-Tandem brings nothing into a project but a small folder of its own (`.tandem`)
-and, if you want, a `tandem.json`. The project stays what it was.
+Tandem brings nothing into a project but a small folder of its own (`.tandem`).
+The project stays what it was.
 
 ## Start
 
@@ -34,7 +34,10 @@ command line.
 A git repository. That is all: tandem then gives you the chat, concepts, locks
 and an agent that reads the project and codes in a working copy.
 
-Everything else is optional, in `tandem.json` at the project's root:
+Everything else is optional, in `.tandem/tandem.json` (tandem's own folder in the project; a `tandem.json` at the
+project's root is read too, when you would rather keep it among the project's files). The agent proposes it
+(`project.configure`) when it sets tandem up; nothing of tandem's is written among the project's own files, so a
+project that wants tandem out of its history ignores `.tandem` and that is all:
 
     {
       "name": "Gnome Garden",
@@ -61,7 +64,7 @@ It also opens any folder; one without a repository gets one, with what is in it 
 In a project tandem has not been in before, the chat opens with a first line. For one that has things in it, that
 is the offer to set tandem up for it (also: the button in the empty Concepts tab, or under the project in the
 project chooser; `project.init`). The agent reads the project (its notes, its scripts, its code) and proposes the
-concepts it is already made of, and a `tandem.json` that says how it is run; both come as proposals. It takes commands
+concepts it is already made of, and how tandem runs it (kept in `.tandem`, not among the project's files); both come as proposals. It takes commands
 from the project's own scripts and notes and cannot start the page itself, so what it writes for `page` is unrun until
 you see it work.
 
@@ -104,7 +107,7 @@ you see it work.
     shell/       tandem's page: the project in a frame, a sheet with Chat, Concepts and Art over it
     test/        on a small fixture project (test/fixture) and, for what needs an adapter, on Gnome Garden
 
-In a project: `tandem.json`, `.tandem/concepts`, `.tandem/locks.json`, and `.tandem/data` (not in git: the event log, proposals, pictures, the agent's session).
+In a project: `.tandem/tandem.json` (and `.tandem/page.sh` when starting the page takes a script), `.tandem/concepts`, `.tandem/locks.json`, and `.tandem/data` (not in git: the event log, proposals, pictures, the agent's session).
 
 ## Where it stands
 

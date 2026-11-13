@@ -203,6 +203,18 @@ export function chatPanel(): Panel {
       h('span.now', {}, short(c.after![k], k === 'text' ? 200 : 40))));
   }
 
+  /** How tandem runs the project: each field in full, and the script that starts its page as it is written. */
+  function setupLines(c: Change): HTMLElement[] {
+    const say = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v));
+    return Object.keys(c.after ?? {}).flatMap((k) => k === 'script'
+      ? [h('div.field', {}, h('span.k', {}, 'page.sh'), !(c.before && k in c.before) && h('span.was.new', {}, 'new')),
+        h('pre.diff', {}, String(c.after![k]).replace(/\n$/, '').split('\n').map((l) => h('span', { data: { how: 'same' } }, l || ' ')))]
+      : [h('div.field.whole', {},
+        h('span.k', {}, k),
+        c.before && k in c.before ? h('span.was', {}, say(c.before[k])) : h('span.was.new', {}, 'new'),
+        h('span.now', {}, say(c.after![k]) || '(taken away)'))]);
+  }
+
   /** What changed in a file, line by line: what came in green, what went in red. */
   function diffLines(diff: string): HTMLElement {
     const lines = diff.split('\n');
@@ -270,12 +282,12 @@ export function chatPanel(): Panel {
       h('div.t-head', {}, h('b', {}, coded ? 'A change to the project' : total === 1 ? 'A proposal' : `A proposal, ${total} changes`), h('span.state', {}, state)),
       r.changes.map((c) => h('div.change', { data: { status: c.status ?? 'pending' } },
         h('div.pathline', {},
-          h('div.path', { onclick: () => c.kind !== 'code' && app.open(c.kind === 'concept' ? 'concepts' : 'art', c.path) }, h('i', {}, c.kind), ' ', c.path),
+          h('div.path', { onclick: () => (c.kind === 'concept' || c.kind === 'drawing') && app.open(c.kind === 'concept' ? 'concepts' : 'art', c.path) }, h('i', {}, c.kind), ' ', c.path),
           total > 1 && c.status && h('span.state', {}, c.status),
           each && !c.status && h('span.each', {},
             h<'button'>('button.yes', { 'aria-label': `Accept ${c.path}`, onclick: () => decide(true, c) }, '✓'),
             h<'button'>('button.no', { 'aria-label': `Reject ${c.path}`, onclick: () => decide(false, c) }, '✕'))),
-        c.kind === 'drawing' ? pictures(c) : c.kind === 'code' ? codeFiles(c, r) : fieldLines(c),
+        c.kind === 'drawing' ? pictures(c) : c.kind === 'code' ? codeFiles(c, r) : c.kind === 'setup' ? setupLines(c) : fieldLines(c),
         c.note && h('div.note', {}, c.note))),
       touched.size > 0 && h('div.touches', {}, 'touches ', [...touched].map(([id, t]) => h('span.t-chip.stage', { data: { stage: t.stage }, onclick: () => app.open('concepts', id) }, `${t.name} · ${t.stage}`))),
       r.status === 'pending' && h('div.t-row', {},
@@ -345,6 +357,8 @@ export function chatPanel(): Panel {
       case 'art.round':
         return h(`div.sys.tap${ev.state === 'failed' ? '.fail' : ''}`, { onclick: () => app.open('art', `worker:${ev.worker}`) },
           ev.state === 'failed' ? `🖌 the worker on ${ev.name} failed` : ev.state === 'stopped' ? `🖌 the worker on ${ev.name} was stopped` : `🖌 ${ev.name}: ${ev.phase === 'silhouette' ? 'a silhouette to approve' : 'a drawing to accept'}. Look in Art`);
+      case 'setup.changed':
+        return h('div.sys', {}, `✓ how tandem runs the project was changed (${(ev.fields as string[]).join(', ')})${ev.restarting ? '. Its page starts again with it' : ''}`);
       case 'code.changed':
         return h('div.sys', {}, `✓ the working copy is the project now: ${(ev.files as string[]).length} ${(ev.files as string[]).length === 1 ? 'file' : 'files'} changed. The core starts again with it`);
       case 'art.changed':

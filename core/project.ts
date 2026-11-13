@@ -1,9 +1,12 @@
 // A project: any folder with a git repository in it, usually a web project.
 // Tandem is started in one and works on it from outside: it brings nothing
 // into the project but a small folder of its own (.tandem: the concepts, the
-// locks, and what is not kept in git) and, if the project wants one, a
-// tandem.json that says how its page is started and its tests are run.
-// Everything in tandem.json is optional. What a project offers decides what
+// locks, what is not kept in git, and how the project is run: a tandem.json
+// that says how its page is started and its tests are run, and a script for
+// starting the page when that takes more than a line). A project that would
+// rather not have tandem in its history ignores that one folder. A
+// tandem.json at the project's root is read too, when there is none in
+// tandem's folder. Everything in tandem.json is optional. What a project offers decides what
 // the agent can do there: with nothing, it talks, keeps concepts and codes in
 // a working copy; with a page command, the person plays the project and the
 // copy inside tandem; with an adapter, the agent can also see inside the
@@ -16,8 +19,9 @@ export interface ProjectConfig {
   name?: string;
   /**
    * How the project's page is started, with {port} where the port goes; {project} is the project's own folder
-   * (the page of the agent's working copy is started with this same line, in the copy: a script named through
-   * {project} is the project's, whatever the copy holds). Guessed for a Vite project.
+   * and {tandem} tandem's folder in it (the page of the agent's working copy is started with this same line, in
+   * the copy: a script named through {project} or {tandem} is the project's, whatever the copy holds). Guessed
+   * for a Vite project.
    */
   page?: string;
   /** How its tests are run, and its type check: the agent may run these in its working copy. */
@@ -42,6 +46,9 @@ export interface Project {
   /** Tandem's own folder in the project: concepts and locks are kept in git, data is not. */
   dirs: { tandem: string; concepts: string; data: string; looks: string; art: string; depth: string };
   locksFile: string;
+  /** Where how the project is run is written down by tandem, and the script that starts its page when a line is not enough. */
+  configFile: string;
+  pageScript: string;
   /** The page command, with a port filled in; undefined when the project has no page to show. */
   pageCommand(port: number): string | undefined;
   /** The paths the agent may edit, as patterns relative to the project. */
@@ -72,14 +79,17 @@ export function loadProject(dir: string, opts: { data?: string; tandem?: string;
   // The working copy is run by the project's own settings, not by whatever its copy of tandem.json says: how a
   // project's page and tests are started is the person's to decide, not something a change set can rewrite.
   let config: ProjectConfig = opts.as?.config ?? {};
-  const file = join(root, 'tandem.json');
+  const tandem = opts.tandem ?? join(root, '.tandem');
+  // In tandem's own folder; a project that keeps it among its own files has it at its root.
+  const file = existsSync(join(tandem, 'tandem.json')) ? join(tandem, 'tandem.json') : join(root, 'tandem.json');
   if (!opts.as && existsSync(file)) {
     try { config = JSON.parse(readFileSync(file, 'utf8')) as ProjectConfig; } catch (e) { throw new Error(`tandem.json is not valid JSON: ${e instanceof Error ? e.message : e}`); }
   }
-  const tandem = opts.tandem ?? join(root, '.tandem');
   const data = opts.data ?? join(tandem, 'data');
+  const ours = opts.as?.dirs.tandem ?? tandem;
   const home = opts.as?.root ?? root;
-  const page = config.page ?? guessPage(home);
+  // (Asked each time: how the project is run can be changed while tandem is on it.)
+  const page = () => config.page ?? guessPage(home);
   const art = config.art?.dir ?? 'art', depth = config.art?.depth ?? 'depth';
   const project: Project = {
     root,
@@ -88,12 +98,17 @@ export function loadProject(dir: string, opts: { data?: string; tandem?: string;
     config,
     dirs: { tandem, concepts: join(tandem, 'concepts'), data, looks: join(data, 'looks'), art: join(root, art), depth: join(root, depth) },
     locksFile: join(tandem, 'locks.json'),
-    pageCommand: (port) => page?.replaceAll('{port}', String(port)).replaceAll('{project}', home),
+    configFile: join(ours, 'tandem.json'),
+    pageScript: join(ours, 'page.sh'),
+    pageCommand: (port) => page()?.replaceAll('{port}', String(port)).replaceAll('{project}', home).replaceAll('{tandem}', ours),
     editable: config.edit ?? ['**'],
     at: (other) => loadProject(other, { ...opts, as: project }),
   };
   return project;
 }
+
+/** How the core ends when how the project is run was changed: whoever looks after it starts it again, and the project's page with it. */
+export const SETUP = 77;
 
 /**
  * Stop a page that was started with a command line: the command and everything it started. A page command is a

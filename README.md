@@ -60,7 +60,7 @@ Works, and is tested:
 - the ECS inspector, in the page (live, on the world being played) and for the agent
 - playtests: a run, a before/after comparison of a proposal, a look at any minute
 - the agent: headless `claude -p` whose only hands are the command line; it answers in the chat, proposes, plays its proposals, takes pictures, points at the garden
-- art: drawings as text in the game, rendered and built into its sprites by the engine (the build gives byte for byte what pixeldraw's export gave); drawing workers with silhouette approval, feedback rounds, proposals with pictures
+- art: drawings as text in the game, rendered and built into its sprites by the engine (the build gives byte for byte what pixeldraw's export gave); drawing workers with silhouette approval, feedback rounds, proposals with pictures (a real worker drew a garden sign through both phases)
 - the shell: the game plays underneath; chat with proposal, picture and playtest cards; concepts; content; art; inspector with pick-in-the-garden; playtest
 - Gnome Garden on it, with its numbers as records and eight concepts
 
@@ -68,7 +68,7 @@ Not there yet:
 
 - **Nobody has looked at the shell on a real screen.** It is driven in jsdom and it builds, but its looks are unseen.
 - **Live shared world.** The page plays its own world and shares a snapshot every five seconds; the agent reads a mirror (right state, not the exact place of every entity) and plays in sandboxes. Syncing one world live with archetype-ecs-net, the way testp does, is not built.
-- **A real drawing worker has not drawn yet.** The whole round trip is tested with a stand-in for Claude that uses the real tools; see below for what a first real run showed.
+- **A restart cuts work off.** The agent and the drawing workers are child processes of the core; restarting it stops whatever is mid-run. A stopped worker keeps its conversation and its copy, and goes on with the next feedback.
 - **Characters with clothes.** pixeldraw's attachments (a body with items per slot) render here, but nothing exports them to a game, and a worker cannot be asked for one from the page.
 - **Drawing by hand.** pixeldraw's viewer (painting pixels, sketching over a frame, watching every edit live) is not here; the page shows renders.
 - **Code.** The agent cannot change code, only content and concepts. A new kind of thing (a new flower with its own sprite, a new rule) still needs a coding session.

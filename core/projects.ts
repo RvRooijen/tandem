@@ -17,7 +17,7 @@ const ENGINE = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '');
 /** Exit code that asks whoever started the core to start it again on the project in the state file. */
 export const SWITCH = 76;
 
-export interface State { project?: string; roots?: string[] }
+export interface State { project?: string; roots?: string[]; /** Where the person last made a project: where choosing a folder starts next time. */ lastIn?: string }
 
 const stateFile = () => process.env.TANDEM_STATE ?? join(homedir(), '.tandem', 'state.json');
 
@@ -111,13 +111,11 @@ export interface ProjectsOptions {
 }
 
 export function projectCommands(o: ProjectsOptions): CommandDef[] {
-  /** Where a new project is made if nothing else is said: beside the one that is open, or beside tandem. */
-  const newIn = () => (o.current ? dirname(resolve(o.current)) : dirname(ENGINE));
   return [
     {
       name: 'projects.list', kind: 'read',
       about: 'The folders that could be a project (next to tandem, and wherever it was told to look): which is open, which have a git repository (one without gets one when it is opened), which tandem has been in before.',
-      run: () => ({ open: o.current ? resolve(o.current) : null, roots: roots(o.current), newIn: newIn(), projects: listProjects(o.current) }),
+      run: () => ({ open: o.current ? resolve(o.current) : null, roots: roots(o.current), projects: listProjects(o.current) }),
     },
     {
       name: 'projects.open', kind: 'write',
@@ -139,12 +137,12 @@ export function projectCommands(o: ProjectsOptions): CommandDef[] {
     },
     {
       name: 'projects.create', kind: 'write',
-      about: 'Make a new project: a new folder with a git repository in it, and open it. name is what it is called; in is the folder to make it in (the one the open project is in, or the one tandem is in, if not said). Only the person does this.',
-      input: { name: 'string', in: 'string?' },
+      about: 'Make a new project: a new folder with a git repository in it, and open it. name is what it is called; in is the folder to make it in, which the person chooses (projects.browse walks the folders). Only the person does this.',
+      input: { name: 'string', in: 'string' },
       run(_c, i) {
         const folder = slug(i.name);
         if (!folder) throw new CommandError('input', 'give it a name with letters or digits in it');
-        const root = resolve(i.in ?? newIn());
+        const root = resolve(i.in);
         if (!existsSync(root) || !statSync(root).isDirectory()) throw new CommandError('missing', `there is no folder ${root} to make it in`);
         const dir = join(root, folder);
         if (existsSync(dir)) throw new CommandError('exists', `there already is a ${folder} in ${root}; open that one, or pick another name`);
@@ -154,9 +152,23 @@ export function projectCommands(o: ProjectsOptions): CommandDef[] {
         writeFileSync(join(dir, 'README.md'), `# ${i.name.trim()}\n`);
         writeFileSync(join(dir, 'tandem.json'), JSON.stringify({ name: i.name.trim() }, null, 2) + '\n');
         try { ensureRepo(dir); } catch (e) { throw new CommandError('failed', `a git repository could not be started in ${dir}: ${(e instanceof Error ? e.message : String(e)).split('\n').slice(-2).join(' ')}`); }
-        writeState({ ...readState(), project: dir });
+        writeState({ ...readState(), project: dir, lastIn: root });
         if (o.restart) setTimeout(o.restart, 300);
         return { opening: dir, restarting: !!o.restart };
+      },
+    },
+    {
+      name: 'projects.browse', kind: 'read',
+      about: 'Walk the folders of this machine, to choose where a new project goes: the folders inside dir, and the one above it. Without dir, it starts where a project was last made, or in the home folder.',
+      input: { dir: 'string?' },
+      run(_c, i) {
+        const last = readState().lastIn;
+        const dir = resolve(i.dir ?? (last && existsSync(last) ? last : homedir()));
+        if (!existsSync(dir) || !statSync(dir).isDirectory()) throw new CommandError('missing', `there is no folder ${dir}`);
+        let names: string[] = [];
+        try { names = readdirSync(dir); } catch { throw new CommandError('permission', `${dir} cannot be looked into`); }
+        const folders = names.filter((n) => !n.startsWith('.') && n !== 'node_modules' && (() => { try { return statSync(join(dir, n)).isDirectory(); } catch { return false; } })()).sort((a, b) => a.localeCompare(b));
+        return { dir, parent: dirname(dir) === dir ? null : dirname(dir), folders, home: homedir() };
       },
     },
     {

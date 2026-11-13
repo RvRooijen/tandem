@@ -2,6 +2,7 @@
 // Stands in for the claude command line in tests: speaks its stream-json, and
 // uses the tandem command line the way the agent does.
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 
 const args = process.argv.slice(2);
 const prompt = args[args.indexOf('-p') + 1];
@@ -12,7 +13,7 @@ say({ type: 'system', subtype: 'init', session_id: 'sess-1' });
 
 // A drawing worker: it draws in the folder it is run in, with the tools of the workspace, the way the guide says.
 if (process.env.PIXEL_WORKER) {
-  const { readFileSync, writeFileSync, existsSync } = await import('node:fs');
+  const { readFileSync, writeFileSync } = await import('node:fs');
   const name = prompt.match(/art\/([\w-]+)\.txt/)[1];
   const file = `art/${name}.txt`;
   if (prompt.includes('make it fail')) {
@@ -59,7 +60,7 @@ if (prompt.startsWith('fail')) {
 }
 // Asked to code: it changes the game's code where it stands, which is its working copy.
 if (prompt.startsWith('code:')) {
-  const { writeFileSync, existsSync } = await import('node:fs');
+  const { writeFileSync } = await import('node:fs');
   if (prompt.includes('undo')) (await import('node:fs')).rmSync('src/seasons.js', { force: true });
   else writeFileSync('src/seasons.js', 'export const SEASONS = 4;\n');
   const tools = args.slice(args.indexOf('--allowedTools') + 1);
@@ -75,6 +76,6 @@ const idea = JSON.stringify({ name: `Tulips ${process.env.TANDEM_ROUND}`, text: 
 const command = `tandem run concepts.create '${idea}'`;
 say({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: { command } }] } });
 const out = spawnSync('tandem', ['run', 'concepts.create', idea], { encoding: 'utf8' });
-const text = `${resumed ? 'Again: ' : ''}I proposed it (${out.status === 0 ? 'ok' : out.stderr.trim()}). Allowed: ${args.slice(args.indexOf('--allowedTools') + 1)[0]}. About: ${prompt.includes('[The message is about:]') ? 'refs' : 'nothing'}.`;
+const text = `${resumed ? 'Again: ' : ''}I proposed it (${out.status === 0 ? 'ok' : out.stderr.trim()}). Allowed: ${args.slice(args.indexOf('--allowedTools') + 1)[0]}. About: ${prompt.includes('[The message is about:]') ? 'refs' : 'nothing'}.${prompt.includes('[The person shared') ? ` Shared: ${[...prompt.matchAll(/^- (\S+) \((a picture|a file), "([^"]+)"\)$/gm)].map((m) => `${m[3]} is ${m[2]}, there: ${existsSync(m[1])}`).join('; ')}.` : ''}`;
 say({ type: 'assistant', message: { usage: { input_tokens: 12, cache_read_input_tokens: resumed ? 60_000 : 30_000, cache_creation_input_tokens: 4_000, output_tokens: 88 }, content: [{ type: 'text', text }] } });
 say({ type: 'result', is_error: false, result: text, session_id: 'sess-1' });

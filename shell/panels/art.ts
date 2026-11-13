@@ -1,8 +1,8 @@
-// The drawings the game is made of, and the drawing work on them. A drawing is
-// a thing of the engine like a concept: look at it, lock it, hand it to the
-// agent, or give a worker a brief. A worker is watched here, live: its
-// drawing appears as it is typed, then its round is decided here too, with a
-// picture before and after. The chat only gets a line that leads back here.
+// The drawings the project is made of, and the drawing work on them. A drawing
+// is a thing of the engine like a concept: look at it, lock it, hand it to the
+// agent. Drawing work is asked for in the chat; a worker is watched here,
+// live: its drawing appears as it is typed, then its round is decided here
+// too, with a picture before and after.
 import type { Event } from '../../core/events.ts';
 import type { App, Panel } from '../app.ts';
 import { drawArt } from '../artview.ts';
@@ -61,15 +61,13 @@ export function artPanel(): Panel {
       ? list.map((w) => h('div.item', { onclick: () => void workerView(w.worker) },
         h('div.line', {}, h('b', {}, w.drawing), h('span.t-chip', { data: { state: w.state } }, stateWords(w))),
         h('p', {}, w.doing || '…')))
-      : h('p.t-hint', {}, 'No worker is drawing. Ask one from a drawing, or for a new one below.'));
+      : h('p.t-hint', {}, 'No worker is drawing. When one does, you watch it here.'));
   }
 
   async function list() {
     open = undefined; live = undefined;
     const all = (await app.act<Drawing[]>('art.list')) ?? [];
     if (!body || open) return;
-    const name = h<'input'>('input', { placeholder: 'a-new-drawing', 'aria-label': 'Name of a new drawing' });
-    const brief = h<'textarea'>('textarea.small', { rows: 2, placeholder: 'What should it be? In plain words.', 'aria-label': 'Brief for a new drawing' });
     clear(body,
       h('h3', {}, 'Workers'),
       workersEl,
@@ -78,13 +76,7 @@ export function artPanel(): Panel {
         h('div.line', {}, h('b', {}, d.locked && '🔒 ', d.name), h('span.count', {}, `${d.w}×${d.h}`)),
         h('p', {}, `${Object.keys(d.anims).length} ${Object.keys(d.anims).length === 1 ? 'animation' : 'animations'}${d.looks.length > 1 ? ` · ${d.looks.length} looks` : ''}${d.depth ? ' · depth map' : ''}`))),
       !all.length && h('div.empty', {}, h('b', {}, 'This project has no drawings yet.')),
-      h('h3', {}, 'A new drawing'),
-      name, brief,
-      h('div.t-row', {}, h<'button'>('button', { onclick: async () => {
-        if (!name.value.trim() || !brief.value.trim()) return app.toast('Give it a name and a few words.');
-        const started = await app.act<{ worker: string }>('art.ask', { name: name.value.trim(), message: brief.value.trim(), new: true });
-        if (started) { know(started.worker, name.value.trim()); void workerView(started.worker); }
-      } }, 'Ask a worker')));
+      h('p.t-hint', {}, 'New drawings and changes are asked for in the chat: say what you want, and point at a drawing with @.'));
     void paintWorkers();
   }
 
@@ -92,7 +84,6 @@ export function artPanel(): Panel {
     open = { drawing: d.name }; live = undefined;
     if (!body) return;
     const pic = h('div.sheet', {}, h('div.working', {}, h('i.spin'), h('span', {}, 'Rendering…')));
-    const brief = h<'textarea'>('textarea.small', { rows: 3, placeholder: 'What should change? In plain words.', 'aria-label': 'Brief for a worker' });
     const mine = () => open && 'drawing' in open && open.drawing === d.name;
     const show = async (input: Record<string, unknown> = {}) => {
       const got = await app.act<{ url: string }>('art.look', { name: d.name, ...input });
@@ -107,15 +98,8 @@ export function artPanel(): Panel {
         Object.entries(d.anims).map(([a, n]) => h('span.t-chip.tap', { onclick: () => void show({ anim: a }) }, n > 1 ? `${a} ×${n}` : a)),
         d.depth && h('span.t-chip.tap', { onclick: () => void show({ depth: true }) }, 'depth map')),
       d.looks.length > 1 && h('div.chips', {}, h('span.k', {}, 'looks'), d.looks.map((l) => h('span.t-chip.tap', { onclick: () => void show({ look: l }) }, l))),
-      h('h3', {}, 'Change it'),
-      brief,
-      h('div.t-row', {},
-        h<'button'>('button', { onclick: async () => {
-          if (!brief.value.trim()) return app.toast('Say what should change.');
-          const started = await app.act<{ worker: string }>('art.ask', { name: d.name, message: brief.value.trim() });
-          if (started) { know(started.worker, d.name); void workerView(started.worker); }
-        } }, 'Ask a worker'),
-        h<'button'>('button.primary', { onclick: () => app.attach(`drawing:${d.name}`) }, 'Talk about this')));
+      h('div.t-row', {}, h<'button'>('button.primary', { onclick: () => app.attach(`drawing:${d.name}`) }, 'Talk about this')),
+      h('p.t-hint', {}, 'A change to it is asked for in the chat.'));
     void show();
   }
 

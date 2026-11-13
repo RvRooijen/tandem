@@ -76,7 +76,7 @@ let pagesUp = false;
 Object.assign(w, { innerHeight: 780, devicePixelRatio: 2 });
 Object.assign(globalThis, {
   window: w, document: w.document, HTMLElement: w.HTMLElement, Node: w.Node, location: w.location, localStorage: w.localStorage,
-  ImageData: FakeImageData, EventSource: FakeEventSource,
+  ImageData: FakeImageData, EventSource: FakeEventSource, FileReader: w.FileReader,
   requestAnimationFrame: (f: (t: number) => void) => { const t = setTimeout(() => f(performance.now()), 40); t.unref(); return 1; },
   confirm: () => true, prompt: () => asked,
   // The project's own page and the working copy's are not really running here: whether they answer yet is the test's to say.
@@ -185,6 +185,62 @@ test('chat: a message goes out, the agent answers with a proposal, and it is acc
   await until(() => !app.agent.busy, 'the agent to be done');
 });
 
+test('chat: @ points at a concept or a drawing, and a photo or a file goes along with a message', async () => {
+  await until(() => !app.agent.busy, 'the agent to be done');
+  await host.run('concepts.create', { name: 'Garden gate' }, 'me');
+  tab('Chat');
+  const box = $('.composer textarea') as HTMLTextAreaElement;
+  const write = (text: string) => { box.value = text; box.setSelectionRange(text.length, text.length); box.dispatchEvent(new w.Event('input', { bubbles: true })); };
+
+  // Typing @ offers what there is, by name; picking one writes it into the message and hangs it on it.
+  write('the hat of @gn');
+  await until(() => all('.offer button').length > 0, 'the offer');
+  assert.deepEqual(all('.offer button').map((b) => b.textContent), ['drawing gnome']);
+  write('about the @ga');
+  await until(() => all('.offer button').length === 7, 'more of them: the concept and the six garden drawings');
+  assert.equal(all('.offer button')[0].textContent, 'concept Garden gate', 'concepts and drawings both');
+  click(all('.offer button')[0]);
+  assert.equal(box.value, 'about the @garden-gate ');
+  assert.ok($('.offer').hidden);
+  assert.deepEqual(app.refs, ['concept:garden-gate']);
+  write('about the @garden-gate and nothing like @zzz');
+  await until(() => /No concept or drawing by that name/.test($('.offer').textContent!), 'nothing by that name');
+
+  // A photo, picked with the paperclip: it is kept by the core, shown as it will go, and can be taken off.
+  const pick = (name: string, type: string, bytes: number[]) => {
+    Object.defineProperty($('input[type=file]'), 'files', { value: [new w.File([new Uint8Array(bytes)], name, { type })], configurable: true });
+    $('input[type=file]').dispatchEvent(new w.Event('change'));
+  };
+  pick('gate.png', 'image/png', [137, 80, 78, 71]);
+  await until(() => all('#t-foot .shared .file').length === 1, 'the photo');
+  assert.match(($('#t-foot .shared .file.image img') as HTMLImageElement).src, /\/api\/file\/files\/[a-z0-9]+-gate\.png$/);
+  pick('junk.bin', 'application/octet-stream', [1, 2, 3]);
+  await until(() => all('#t-foot .shared .file').length === 2, 'a file too');
+  click($('#t-foot .shared .file:not(.image) button'));
+  assert.equal(all('#t-foot .shared .file').length, 1);
+
+  // Sent: what it is about and what was shared go with it, a name typed by hand counts too, and the agent is told.
+  write('make the @garden-gate like this, next to the @gnome');
+  const before = host.events.last();
+  click(button('Send'));
+  await until(() => host.events.since(before).some((e) => e.type === 'message' && e.by === 'me'), 'the message');
+  const sent = host.events.since(before).find((e) => e.by === 'me')!;
+  assert.deepEqual(sent.refs, ['concept:garden-gate', 'drawing:gnome']);
+  assert.deepEqual((sent.files as { label: string; image: boolean }[]).map((f) => [f.label, f.image]), [['gate.png', true]]);
+  assert.equal(all('#t-foot .shared .file').length, 0, 'and the composer is empty again');
+  await until(() => all('.msg.me').at(-1)!.querySelector('.shared .file.image img'), 'the photo in the conversation');
+  await until(() => /Shared: gate\.png is a picture, there: true\./.test(all('.msg.agent').at(-1)?.textContent ?? ''), 'the agent to have been given the photo');
+  await until(() => !app.agent.busy, 'the agent to be done');
+  // A photo can go without words.
+  pick('door.jpg', 'image/jpeg', [255, 216, 255]);
+  await until(() => all('#t-foot .shared .file').length === 1, 'another photo');
+  click(button('Send'));
+  await until(() => /Have a look at this\./.test(all('.msg.me').at(-1)!.textContent!), 'it to be sent with a line of its own');
+  await until(() => !app.agent.busy && /Shared: door\.jpg/.test(all('.msg.agent').at(-1)?.textContent ?? ''), 'the agent to be done');
+  for (const round of new Set((await host.run('proposals.list', { status: 'pending' }, 'me') as { round: string }[]).map((p) => p.round))) await host.run('proposals.decide', { round, accept: false }, 'me');
+  await host.run('concepts.remove', { id: 'garden-gate' }, 'me');
+});
+
 test('concepts: add one, work on it, and hand it to the agent', async () => {
   tab('Concepts');
   await until(() => $('#t-body .empty'), 'the empty list');
@@ -263,12 +319,15 @@ test('art: the drawings are listed, one is looked at and locked, and a worker\'s
   click(all('.chips .t-chip').find((c) => c.textContent === 'walk ×2')!);
   await until(() => $('.sheet img') && ($('.sheet img') as HTMLImageElement).src !== first, 'the walk', 90000);
 
-  // Asking for a change needs words. With words a worker draws, and the tab shows it at work: the drawing as it
-  // is typed, then its round with a picture before and after, to decide right there.
-  click(button('Ask a worker'));
-  assert.equal($('#t-toast').textContent, 'Say what should change.');
-  type($('textarea[aria-label="Brief for a worker"]'), 'a taller hat');
-  click(button('Ask a worker'));
+  // Drawing work is asked for in the chat, not here: this tab is for looking. When a worker draws (here it was
+  // asked for the way the agent would), it is watched here: the drawing as it is typed, then its round with a
+  // picture before and after, to decide right there.
+  assert.ok(!all('#t-body button').some((b) => /worker/i.test(b.textContent!)) && !$('#t-body textarea'), 'no form to ask for art');
+  await host.run('art.ask', { name: 'gnome', message: 'a taller hat' }, AGENT);
+  click(button('‹ Art'));
+  await until(() => $('.workers .item'), 'the worker, in the list');
+  assert.match($('.workers .item').textContent!, /gnome/);
+  click($('.workers .item'));
   await until(() => $('canvas.live'), 'the worker, watched');
   assert.equal($('#t-body .bar b').textContent, 'gnome');
   // Every look of it: three looks, each two rows (stand, walk), the widest two frames of 32 across, a pixel between.
@@ -298,7 +357,7 @@ test('art: the drawings are listed, one is looked at and locked, and a worker\'s
   assert.equal(all('figure.card.look').length, 0, 'and looking at a drawing put nothing in the chat');
   const lines = all('.chat .sys').map((x) => x.textContent!).filter((t) => t.startsWith('🖌'));
   assert.equal(lines.length, 3);
-  assert.match(lines[0], /you asked a worker to change gnome: a taller hat/);
+  assert.match(lines[0], /the agent asked a worker to change gnome: a taller hat/);
   assert.match(lines[1], /gnome: a drawing to accept\. Look in Art/);
   click(all('.chat .sys').find((x) => x.textContent!.startsWith('🖌'))!);
   await until(() => $('canvas.live'), 'the line to lead to the worker');
@@ -312,9 +371,8 @@ test('art: the drawings are listed, one is looked at and locked, and a worker\'s
   await until(() => $('button.lock'), 'the drawing, with its lock');
   click($('button.lock'));
   await until(() => host.locks.has('drawing:gnome'), 'the lock');
-  type($('textarea[aria-label="Brief for a worker"]'), 'a taller hat');
-  click(button('Ask a worker'));
-  await until(() => /locked/.test($('#t-toast').textContent!), 'the refusal');
+  await assert.rejects(host.run('art.ask', { name: 'gnome', message: 'a taller hat' }, AGENT), /locked/);
+  await until(() => $('button.lock').getAttribute('aria-pressed') === 'true', 'the button to show it is locked');
   click($('button.lock'));
   await until(() => !host.locks.has('drawing:gnome'), 'the lock to come off');
   click(button('Talk about this'));
@@ -544,11 +602,24 @@ test('projects: the folders that could be one are listed, and another is chosen 
   click(item('loose-notes'));
   await until(() => existsSync(join(beside, 'loose-notes/.git')), 'the repository to be started');
 
-  // And a project that does not exist yet is made from here: a new folder beside the open one.
-  assert.match($('#t-body').textContent!, new RegExp(`A new folder in ${beside.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
-  click(button('Create'));
-  assert.equal($('#t-toast').textContent, 'Give it a name.');
+  // And a project that does not exist yet is made from here. Where it goes is the person's to choose, every time:
+  // until a folder is chosen it cannot be made.
+  click($('button[aria-label="Open another project"]'));
+  await until(() => $('input[aria-label="Name of a new project"]'), 'the form');
+  assert.match($('.where').textContent!, /Where\? Not chosen yet\./);
+  assert.ok((button('Create') as HTMLButtonElement).disabled);
   type($('input[aria-label="Name of a new project"]'), 'Winter Game');
+  // (The folders are walked from where a project was last made; here that is said to be beside the fixture.)
+  writeFileSync(process.env.TANDEM_STATE!, JSON.stringify({ ...JSON.parse(readFileSync(process.env.TANDEM_STATE!, 'utf8')), lastIn: join(beside, 'other-game') }));
+  click(button('Choose a folder'));
+  await until(() => $('.here')?.textContent === join(beside, 'other-game'), 'the folders');
+  click(all('.item.folder').find((f) => /up/.test(f.textContent!))!);
+  await until(() => $('.here')?.textContent === beside, 'the folder above');
+  assert.ok(all('.item.folder').some((f) => /loose-notes/.test(f.textContent!)));
+  click(button('Here'));
+  await until(() => $('.where'), 'the form again');
+  assert.equal($('.where .k').textContent, `In ${beside}`);
+  assert.equal(($('input[aria-label="Name of a new project"]') as HTMLInputElement).value, 'Winter Game', 'what was typed is still there');
   click(button('Create'));
   await until(() => ran.includes('projects.create'), 'the new project to be asked for');
   await until(() => /It is made/.test($('#t-toast').textContent!), 'the answer');

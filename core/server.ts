@@ -26,7 +26,8 @@ function send(res: ServerResponse, status: number, body: unknown) {
 function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     let raw = '';
-    req.on('data', (d) => { raw += d; if (raw.length > 8e6) { reject(new CommandError('input', 'too much')); req.destroy(); } });
+    // Room for a photo from a phone, sent along as text.
+    req.on('data', (d) => { raw += d; if (raw.length > 60e6) { reject(new CommandError('input', 'that is too much at once (about 40 MB is the most a file can be)')); req.destroy(); } });
     req.on('end', () => {
       if (!raw.trim()) return resolve({});
       try { resolve(JSON.parse(raw)); } catch { reject(new CommandError('input', 'the body is not JSON')); }
@@ -90,6 +91,16 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
         const file = normalize(join(host.dirs.looks, url.pathname.slice('/api/file/looks/'.length)));
         if (!file.startsWith(host.dirs.looks) || !existsSync(file)) return send(res, 404, { ok: false, error: 'no such picture' });
         res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'max-age=31536000' });
+        return void createReadStream(file).pipe(res);
+      }
+
+      // What was shared in the chat: shown in the page as it is.
+      if (req.method === 'GET' && url.pathname.startsWith('/api/file/files/')) {
+        const file = normalize(join(host.dirs.files, decodeURIComponent(url.pathname.slice('/api/file/files/'.length))));
+        if (!file.startsWith(host.dirs.files) || !existsSync(file)) return send(res, 404, { ok: false, error: 'no such file' });
+        const ext = file.slice(file.lastIndexOf('.') + 1).toLowerCase();
+        const type = ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp', svg: 'text/plain', txt: 'text/plain', md: 'text/plain', json: 'application/json', pdf: 'application/pdf' } as Record<string, string>)[ext] ?? 'application/octet-stream';
+        res.writeHead(200, { 'content-type': type, 'cache-control': 'max-age=31536000', 'x-content-type-options': 'nosniff' });
         return void createReadStream(file).pipe(res);
       }
 

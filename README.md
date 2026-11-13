@@ -54,7 +54,8 @@ Everything else is optional, in `tandem.json` at the project's root:
 
 ## A new project, and one that exists already
 
-The project chooser (the folder button in the sheet) makes a new project: a new folder with a git repository in it.
+The project chooser (the folder button in the sheet) makes a new project: a name, and a folder you choose by walking
+the folders of the machine (it is never chosen for you); it makes a new folder there with a git repository in it.
 It also opens any folder; one without a repository gets one, with what is in it as its first commit.
 
 In a project tandem has not been in before, the chat opens with a first line. For one that has things in it, that
@@ -86,6 +87,7 @@ you see it work.
 - **Locks.** A concept or a drawing can be locked: the engine refuses the agent any change or proposal to it, even when you ask the agent for one.
 - **Working files and project files.** The project is what you use. The agent codes in a working copy (a git worktree in a hidden folder right beside the project, so `../something` still resolves). What the copy differs from the project is one change set: a card with the files, the copy played in the frame, accept (one commit) or reject. Your own uncommitted work is never committed, reset or overwritten for you; if it is in the way of an accept, tandem says which files.
 - **The person's change is made; the agent's is proposed**, for concepts and drawings too. Everything proposed while answering one message is one round.
+- **The chat is where things are asked.** Type @ to point at a concept or a drawing; use the paperclip (or paste) to share a photo or a file, which the agent reads. Art is asked for there too: the Art tab is for looking, locking and watching a worker draw. With the tools shut, tandem speaks in a bubble over the project's page; what waits for an answer stays there with Approve and Decline. The tools never open by themselves.
 - **Art is drawn in rounds.** A drawing worker (a headless Claude with pixeldraw's way of working: silhouette first, then colour) draws in its own copy; you watch it in the Art tab as it is typed. Accepted art goes into the project's art files and the agent is told: bringing it into the project is its work.
 
 ## Layout

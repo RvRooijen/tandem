@@ -19,7 +19,7 @@ import { entityView } from '../ecs/inspect.ts';
 function tools(host: Host): { allow: string[]; deny: string[] } {
   const { project } = host;
   // The pictures it takes are outside its working copy; a path from the root is written with two slashes.
-  const allow = ['Bash(tandem run:*)', 'Bash(tandem list:*)', 'Read', 'Glob', 'Grep', `Read(/${project.dirs.looks}/**)`];
+  const allow = ['Bash(tandem run:*)', 'Bash(tandem list:*)', 'Read', 'Glob', 'Grep', `Read(/${project.dirs.looks}/**)`, `Read(/${host.dirs.files}/**)`];
   const deny: string[] = [];
   if (host.code) {
     allow.push(...project.editable.flatMap((p) => [`Edit(${p})`, `Write(${p})`]));
@@ -127,7 +127,11 @@ export function createRunner(host: Host) {
     }
     const from = ev.by === 'engine' ? '[From the engine, not the person:] ' : '';
     const where = host.game ? ` Where the person is: ${firstLine()}` : '';
-    const prompt = `${from}${ev.text}${expand(ev.refs)}\n\n[This is round ${round}.${where}${copy}]`;
+    // What the person shared with the message is on disk: the agent reads it, a picture like any picture.
+    const shared = Array.isArray(ev.files) && ev.files.length
+      ? `\n\n[The person shared ${ev.files.length === 1 ? 'a file' : 'files'} with this message; Read ${ev.files.length === 1 ? 'it' : 'them'} before you answer:]\n${(ev.files as { path: string; label: string; image: boolean }[]).map((f) => `- ${f.path} (${f.image ? 'a picture' : 'a file'}, "${f.label}")`).join('\n')}`
+      : '';
+    const prompt = `${from}${ev.text}${expand(ev.refs)}${shared}\n\n[This is round ${round}.${where}${copy}]`;
     const may = tools(host);
     const args = [
       '-p', prompt, '--append-system-prompt', intro(),

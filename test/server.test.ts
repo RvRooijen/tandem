@@ -106,6 +106,16 @@ test('a message from the person is answered by the agent, whose only hands are c
   assert.equal(JSON.parse(readFileSync(join(dir, '.tandem/data/agent.json'), 'utf8')).context, 64_100, 'and it is kept, for after a restart');
   assert.ok(existsSync(join(dir, '.tandem/data/events.jsonl')));
 
+  // What the person shares with a message, the agent is told where to find.
+  const kept = (await post('chat.attach', { name: 'sketch.png', data: 'iVBORw0KGgo=' })).result;
+  const pic = await fetch(`http://127.0.0.1:${s.port}${kept.url}`);
+  assert.equal(pic.headers.get('content-type'), 'image/png');
+  const nShared = host.events.last();
+  await post('chat.send', { text: 'like this', files: [kept] });
+  await until(() => host.events.since(nShared).some((e) => e.type === 'message' && e.by === 'agent'));
+  assert.match(String(host.events.since(nShared).find((e) => e.by === 'agent')!.text), /Shared: sketch\.png is a picture, there: true\./);
+  await until(() => !s.runner!.status().busy);
+
   // The next message carries on the same conversation.
   const n2 = host.events.last();
   await post('chat.send', { text: 'and again' });

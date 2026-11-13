@@ -81,9 +81,10 @@ test('a folder without a repository gets one when it is opened; a new project is
   // Opened again, nothing is started again.
   assert.equal((await run('projects.open', { dir: join(root, 'notes') })).started, undefined);
 
-  // A new project: a folder beside the open one, named after it, with a repository and nothing much in it.
-  assert.equal((await run('projects.list', {})).newIn, root);
-  const made = await run('projects.create', { name: 'The Lighthouse Keeper!' });
+  // A new project: a folder named after it, in the folder the person chose, with a repository and nothing much
+  // in it. Where it goes is never decided for them.
+  await refused(run('projects.create', { name: 'The Lighthouse Keeper!' }), 'input');
+  const made = await run('projects.create', { name: 'The Lighthouse Keeper!', in: root });
   const dir = join(root, 'the-lighthouse-keeper');
   assert.equal(made.opening, dir);
   assert.equal(readFileSync(join(dir, 'README.md'), 'utf8'), '# The Lighthouse Keeper!\n');
@@ -91,10 +92,20 @@ test('a folder without a repository gets one when it is opened; a new project is
   assert.deepEqual(git(dir, 'ls-files').split('\n'), ['.gitignore', 'README.md', 'tandem.json']);
   assert.equal(readState().project, dir);
   assert.ok(listProjects().some((p) => p.dir === dir && p.name === 'The Lighthouse Keeper!' && p.git));
-  await refused(run('projects.create', { name: 'the lighthouse keeper' }), 'exists');
-  await refused(run('projects.create', { name: '!!!' }), 'input');
+  await refused(run('projects.create', { name: 'the lighthouse keeper', in: root }), 'exists');
+  await refused(run('projects.create', { name: '!!!', in: root }), 'input');
   await refused(run('projects.create', { name: 'x', in: join(root, 'nowhere') }), 'missing');
-  await refused(run('projects.create', { name: 'Another' }, 'agent:main'), 'permission');
+  await refused(run('projects.create', { name: 'Another', in: root }, 'agent:main'), 'permission');
+
+  // Choosing where: the folders are walked. It starts where a project was last made.
+  const here = await run('projects.browse', {});
+  assert.equal(here.dir, root);
+  assert.deepEqual(here.folders, ['garden', 'notes', 'the-lighthouse-keeper', 'website'], 'folders only, and not the hidden ones');
+  assert.equal(here.parent, join(root, '..'));
+  const inside = await run('projects.browse', { dir: join(root, 'garden') });
+  assert.deepEqual([inside.dir, inside.parent, inside.folders], [join(root, 'garden'), root, []]);
+  assert.equal((await run('projects.browse', { dir: '/' })).parent, null);
+  await refused(run('projects.browse', { dir: join(root, 'nowhere') }), 'missing');
 });
 
 test('a project tandem has not been in before gets a first line in its chat, once', async () => {
@@ -125,7 +136,7 @@ test('with no project open, the core has only what it takes to choose one', asyn
   const base = `http://127.0.0.1:${lobby.port}/api`;
   const post = async (name: string, input: unknown = {}) => (await fetch(`${base}/run/${name}`, { method: 'POST', body: JSON.stringify(input) })).json() as Promise<any>;
   assert.deepEqual(await (await fetch(`${base}/info`)).json(), { project: null, name: 'tandem', last: 0, page: null, senses: false, copy: false });
-  assert.deepEqual((await (await fetch(`${base}/commands`)).json() as { name: string }[]).map((c) => c.name), ['projects.list', 'projects.open', 'projects.create', 'projects.look']);
+  assert.deepEqual((await (await fetch(`${base}/commands`)).json() as { name: string }[]).map((c) => c.name), ['projects.list', 'projects.open', 'projects.create', 'projects.browse', 'projects.look']);
   const list = await post('projects.list');
   assert.equal(list.result.open, null);
   assert.ok(mine(list.result.projects).some((p: any) => p.name === 'Gnome Garden'));

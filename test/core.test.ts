@@ -201,6 +201,24 @@ test('art: a drawing is a thing of the engine: listed, read, looked at, changed 
   await refused(agent('art.build'), 'permission');
 });
 
+test('a photo or a file is put with the conversation and goes along with a message', async () => {
+  const png = Buffer.from('89504e470d0a1a0a', 'hex').toString('base64');
+  const photo = await me('chat.attach', { name: '../my photo (1).PNG', data: png });
+  assert.match(photo.name, /^[a-z0-9]+-my photo _1_\.PNG$/, 'kept under a name of its own, with nothing of a path in it');
+  assert.deepEqual([photo.label, photo.image, photo.size], ['my photo _1_.PNG', true, 8]);
+  assert.equal(readFileSync(photo.path).toString('hex'), '89504e470d0a1a0a');
+  assert.ok(photo.path.startsWith(join(dir, '.tandem/data/files/')), 'with what tandem keeps outside git, not among the project\'s files');
+  assert.match(photo.url, /^\/api\/file\/files\//);
+  const notes = await me('chat.attach', { name: 'notes.txt', data: Buffer.from('roses later').toString('base64') });
+  assert.equal(notes.image, false);
+  await refused(me('chat.attach', { name: 'empty.txt', data: '' }), 'input');
+  await refused(agent('chat.attach', { name: 'x.txt', data: 'eA==' }), 'permission');
+
+  const sent = await me('chat.send', { text: 'this is what I mean', files: [photo, notes, { name: '../../etc/passwd' }, { name: 'never-attached.png' }] });
+  assert.deepEqual(sent.files.map((f: any) => f.label), ['my photo _1_.PNG', 'notes.txt'], 'only what was really attached goes along');
+  await refused(me('chat.send', { text: 'x', files: 'photo.png' }), 'input');
+});
+
 test('setting tandem up for a project that exists already: the engine puts the agent to work on it', async () => {
   await refused(agent('project.init'), 'permission');
   const before = host.events.last();

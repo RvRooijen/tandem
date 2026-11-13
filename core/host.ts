@@ -1,7 +1,7 @@
 // The host: one project, its stores, its worlds and every command, in one
 // place. The server puts HTTP around it; the tests use it as it is. Nothing
 // here knows about pages or agents beyond who is asking (`by`).
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCode, type Code, type FileChange } from './code.ts';
@@ -43,7 +43,7 @@ export interface Host {
   proposeCode(by: By, note: string): void;
   /** Things to stop before the core does. */
   onStop: (() => void)[];
-  dirs: { project: string; data: string; looks: string };
+  dirs: { project: string; data: string; looks: string; files: string };
   /** Run a command as somebody. */
   run(name: string, input: Record<string, unknown> | undefined, by: By, round?: string): Promise<unknown>;
   /** A world of the project; only with an adapter. */
@@ -148,6 +148,15 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
 
   // ------------------------------------------------------------ helpers
 
+  /** What the person shared in the chat is kept here; it is theirs, and not part of the project. */
+  const filesDir = join(dataDir, 'files');
+  const IMAGE = /\.(png|jpe?g|gif|webp|bmp|avif)$/i;
+  /** A file that was attached, by the name it was kept under: where it is, for the page and for the agent. */
+  function attached(name: string) {
+    if (!/^[\w.\- ]+$/.test(name) || !existsSync(join(filesDir, name))) return undefined;
+    return { name, label: name.replace(/^[a-z0-9]+-/, ''), path: join(filesDir, name), url: `/api/file/files/${encodeURIComponent(name)}`, image: IMAGE.test(name), size: statSync(join(filesDir, name)).size };
+  }
+
   /** The working copy, made if there is none yet, with everything the project has. */
   function bringUp() {
     try { code!.sync(); } catch (e) { throw new CommandError('failed', `the working copy could not be made or brought up to date: ${(e instanceof Error ? e.message : String(e)).split('\n').slice(-2).join(' ')}`); }
@@ -193,11 +202,30 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     // ---- talking
     {
       name: 'chat.send', kind: 'write', agent: 'free',
-      about: 'Say something in the conversation. refs is a list of things it is about: "concept:<id>", "drawing:<name>", "entity:<id>", "point:<x>,<y>".',
-      input: { text: 'string', refs: 'json?' },
+      about: 'Say something in the conversation. refs is a list of things it is about: "concept:<id>", "drawing:<name>", "entity:<id>", "point:<x>,<y>". files is a list of what chat.attach gave back: photos and files that go with it.',
+      input: { text: 'string', refs: 'json?', files: 'json?' },
       run(c, i) {
         checkList(i.refs, 'refs');
-        return events.add({ type: 'message', by: c.by, text: i.text, ...(i.refs?.length && { refs: i.refs }), ...(c.round && { round: c.round }) });
+        checkList(i.files, 'files');
+        // Only what was really put there with chat.attach goes along: a message cannot point the agent at any file.
+        const files = ((i.files ?? []) as { name?: unknown }[]).map((f) => attached(String(f?.name ?? ''))).filter(Boolean);
+        return events.add({ type: 'message', by: c.by, text: i.text, ...(i.refs?.length && { refs: i.refs }), ...(files.length && { files }), ...(c.round && { round: c.round }) });
+      },
+    },
+    {
+      name: 'chat.attach', kind: 'write',
+      about: 'Put a photo or a file with the conversation, to send along with a message (chat.send: files). name is what it is called, data its contents in base64. Gives back where it is kept.',
+      input: { name: 'string', data: 'string' },
+      run(_c, i) {
+        // Its own name, without whatever folder it came from.
+        const clean = (i.name.split(/[\\/]/).pop() ?? '').replace(/[^\w.\- ]+/g, '_').replace(/^\.+/, '').slice(-80) || 'file';
+        const name = `${Date.now().toString(36)}-${clean}`;
+        let bytes: Buffer;
+        try { bytes = Buffer.from(i.data, 'base64'); } catch { throw new CommandError('input', 'data is the file in base64'); }
+        if (!bytes.length) throw new CommandError('input', 'the file is empty');
+        mkdirSync(filesDir, { recursive: true });
+        writeFileSync(join(filesDir, name), bytes);
+        return attached(name);
       },
     },
     {
@@ -549,7 +577,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
 
   return {
     project, game: hasGame ? game : undefined, registry, events, proposals, concepts, locks, art, code, preview, proposeCode, onStop,
-    dirs: { project: project.root, data: dataDir, looks: looksDir },
+    dirs: { project: project.root, data: dataDir, looks: looksDir, files: filesDir },
     run: (name, input, by, round) => registry.run(name, input, { by, round }),
     world,
   };

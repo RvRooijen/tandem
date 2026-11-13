@@ -218,8 +218,6 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
         if (ev.type === 'art.round') app.badge('art', true);
       }
       for (const p of panels) p.event?.(ev, live);
-      // A project tandem has not been in before opens on its chat, where the first line is waiting.
-      if (ev.type === 'welcome' && app.events.length === 1 && !shown) setTimeout(() => { if (!shown && app.events.at(-1)?.type === 'welcome') app.open('chat'); }, 400);
     },
   };
   // What tandem says while the tools are shut.

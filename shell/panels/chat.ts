@@ -2,6 +2,7 @@
 // and buttons to play, accept or reject it; a look is a picture; a playtest is
 // a small table. All of it is the event log, drawn.
 import type { Event } from '../../core/events.ts';
+import { run } from '../api.ts';
 import type { App, Panel } from '../app.ts';
 import { ago, clear, h, mins, prose, short } from '../dom.ts';
 
@@ -39,28 +40,124 @@ export function chatPanel(): Panel {
   const newBtn = h<'button'>('button.icon.new-chat', { 'aria-label': 'New conversation', title: 'New conversation', onclick: () => {
     if (confirm('Start a new conversation? The chat is cleared and the agent forgets what was said. Pending proposals stay.')) void app.act('chat.new');
   } }, '↺');
-  const EMPTY = () => h('div.empty', {}, h('b', {}, 'Nothing said yet.'), h('p', {}, 'Talk about the game while you play it. Hang a concept or a drawing on a message from the other tabs.'));
+  const EMPTY = () => h('div.empty', {}, h('b', {}, 'Nothing said yet.'), h('p', {}, 'Talk about the project while you use it. Type @ to point at a concept or a drawing, and use the paperclip to share a photo or a file.'));
+
+  // ---------------------------------------------------------------- what goes along with a message
+
+  /** Photos and files that go with the next message: kept by the core when they are picked, sent along by name. */
+  interface Shared { name: string; label: string; url: string; image: boolean }
+  let shared: Shared[] = [];
+  const sharedEl = h('div.shared', { hidden: true });
+  const picker = h<'input'>('input', { type: 'file', multiple: true, hidden: true, 'aria-label': 'Photos or files to share' });
+  const clip = h<'button'>('button.icon.clip', { 'aria-label': 'Share a photo or a file', title: 'Share a photo or a file', onclick: () => picker.click() }, '📎');
+  const fileChip = (f: Shared, onRemove?: () => void) => h(`span.file${f.image ? '.image' : ''}`, {},
+    f.image ? h<'img'>('img', { src: f.url, alt: f.label, loading: 'lazy', onclick: () => app.zoom(f.url) }) : h<'a'>('a', { href: f.url, target: '_blank', rel: 'noopener' }, `📄 ${f.label}`),
+    onRemove && h<'button'>('button', { 'aria-label': `Take ${f.label} off`, onclick: onRemove }, '✕'));
+  function paintShared() {
+    clear(sharedEl, shared.map((f) => fileChip(f, () => { shared = shared.filter((x) => x !== f); paintShared(); })));
+    sharedEl.hidden = !shared.length;
+  }
+  const base64 = (file: Blob) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+  /** Hand files to the core, one by one; what it gives back goes along with the next message. */
+  async function share(files: Iterable<File>) {
+    for (const file of files) {
+      if (file.size > 40e6) { app.toast(`${file.name} is too big to share (40 MB at most).`); continue; }
+      clip.classList.add('busy');
+      try {
+        const kept = await app.act<Shared>('chat.attach', { name: file.name || 'photo.jpg', data: await base64(file) });
+        if (kept) { shared.push(kept); paintShared(); }
+      } catch { app.toast(`${file.name} could not be read.`); }
+      clip.classList.remove('busy');
+    }
+  }
+  picker.addEventListener('change', () => { void share([...(picker.files ?? [])]); picker.value = ''; });
+
+  /**
+   * Pointing at things by name: typing @ offers the concepts and the drawings. What is picked is written into the
+   * message as @name and goes along as what the message is about, so the agent has it in front of it.
+   */
+  interface Thing { ref: string; name: string; id: string; kind: string }
+  let things: Thing[] = [], fetched = 0;
+  const offerEl = h('div.offer', { hidden: true });
+  async function known(): Promise<Thing[]> {
+    if (Date.now() - fetched < 15_000) return things;
+    fetched = Date.now();
+    const [concepts, drawings] = await Promise.all([
+      run<{ id: string; name: string }[]>('concepts.list').catch(() => []),
+      run<{ name: string }[]>('art.list').catch(() => []),
+    ]);
+    things = [
+      ...concepts.map((c) => ({ ref: `concept:${c.id}`, name: c.name, id: c.id, kind: 'concept' })),
+      ...drawings.map((d) => ({ ref: `drawing:${d.name}`, name: d.name, id: d.name, kind: 'drawing' })),
+    ];
+    return things;
+  }
+  /** The @word the caret is in, if it is in one. */
+  function typing(): { from: number; word: string } | null {
+    const at = input.selectionStart ?? input.value.length;
+    const m = input.value.slice(0, at).match(/(^|\s)@([\w-]*)$/);
+    return m ? { from: at - m[2].length - 1, word: m[2].toLowerCase() } : null;
+  }
+  async function offer() {
+    const t = typing();
+    if (!t) { offerEl.hidden = true; return; }
+    const all = await known();
+    const now = typing();
+    if (!now) { offerEl.hidden = true; return; }
+    const hits = all.filter((x) => x.id.includes(now.word) || x.name.toLowerCase().includes(now.word)).slice(0, 8);
+    clear(offerEl, hits.map((x) => h<'button'>('button', { onclick: () => pick(x) }, h('i', {}, x.kind), ' ', x.name)),
+      !hits.length && h('span.none', {}, 'No concept or drawing by that name.'));
+    offerEl.hidden = false;
+  }
+  function pick(x: Thing) {
+    const t = typing();
+    const at = input.selectionStart ?? input.value.length;
+    const from = t ? t.from : at;
+    input.value = `${input.value.slice(0, from)}@${x.id} ${input.value.slice(at)}`;
+    const caret = from + x.id.length + 2;
+    input.setSelectionRange(caret, caret);
+    if (!app.refs.includes(x.ref)) app.refs.push(x.ref);
+    paintRefs();
+    offerEl.hidden = true;
+    input.focus();
+    grow();
+  }
   let body: HTMLElement | undefined;
 
   const nearBottom = () => !body || body.scrollHeight - body.scrollTop - body.clientHeight < 80;
   const toBottom = () => { if (body) body.scrollTop = body.scrollHeight; };
 
   async function send() {
-    const text = input.value.trim();
+    // A photo can go without words.
+    const text = input.value.trim() || (shared.length ? (shared.length === 1 ? 'Have a look at this.' : 'Have a look at these.') : '');
     if (!text) return;
     input.value = '';
     grow();
-    const refs = app.refs.splice(0);
-    paintRefs();
-    const ok = await app.act('chat.send', { text, ...(refs.length && { refs }) });
-    if (ok === undefined) { input.value = text; app.refs.push(...refs); paintRefs(); }
+    // What was written as @name by hand counts as pointed at, too.
+    for (const m of text.matchAll(/(?:^|\s)@([\w-]+)/g)) {
+      const x = (await known()).find((k) => k.id === m[1]);
+      if (x && !app.refs.includes(x.ref)) app.refs.push(x.ref);
+    }
+    const refs = app.refs.splice(0), files = shared;
+    shared = [];
+    paintRefs(); paintShared();
+    offerEl.hidden = true;
+    const ok = await app.act('chat.send', { text, ...(refs.length && { refs }), ...(files.length && { files }) });
+    if (ok === undefined) { input.value = text; app.refs.push(...refs); shared = files; paintRefs(); paintShared(); }
   }
 
   function grow() {
     input.style.height = 'auto';
     input.style.height = `${Math.min(140, input.scrollHeight)}px`;
   }
-  input.addEventListener('input', grow);
+  input.addEventListener('input', () => { grow(); void offer(); });
+  // A photo pasted or dropped into the message is shared like one picked with the paperclip.
+  input.addEventListener('paste', (ev) => { const files = [...(ev.clipboardData?.files ?? [])]; if (files.length) { ev.preventDefault(); void share(files); } });
   input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) void send(); });
 
   function paintRefs() {
@@ -181,6 +278,7 @@ export function chatPanel(): Panel {
         if (ev.by === 'engine') return h('div.sys.engine', {}, ev.kind === 'init' ? '⚙ The agent was asked to read this project and set tandem up for it: its concepts, and how it is run.' : `⚙ to the agent: ${String(ev.text ?? '')}`);
         return h(`div.msg.${ev.by === 'me' ? 'me' : 'agent'}${ev.error ? '.error' : ''}`, {},
           Array.isArray(ev.refs) && h('div.refs', {}, (ev.refs as string[]).map((r) => refChip(app, r))),
+          Array.isArray(ev.files) && h('div.shared', {}, (ev.files as Shared[]).map((f) => fileChip(f))),
           prose(String(ev.text ?? '')),
           h('time', {}, ago(ev.ts)));
       case 'look':
@@ -251,7 +349,8 @@ export function chatPanel(): Panel {
       body = b;
       b.append(list);
       if (!list.children.length) list.append(EMPTY());
-      foot.append(status, usage, refsEl, h('div.composer', {}, newBtn, input, sendBtn));
+      foot.append(status, usage, offerEl, sharedEl, refsEl, picker, h('div.composer', {}, newBtn, clip, input, sendBtn));
+      paintShared();
       paintRefs(); paintStatus();
       for (const r of rounds.values()) roundCard(r);
       requestAnimationFrame(toBottom);

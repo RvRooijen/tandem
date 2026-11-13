@@ -22,6 +22,14 @@ export interface BubbleHost {
   open(tab: string, id?: string): void;
 }
 
+/** Whether the offer to read a project was put off, here on this device. */
+function putOff(name: string, now?: boolean): boolean {
+  try {
+    if (now) localStorage.setItem(`tandem-not-now:${name}`, '1');
+    return localStorage.getItem(`tandem-not-now:${name}`) === '1';
+  } catch { return false; }
+}
+
 const short = (s: string, max = 170) => { const t = s.replace(/\s+/g, ' ').trim(); return t.length > max ? `${t.slice(0, max - 1)}…` : t; };
 
 export function createBubbles(el: HTMLElement, app: BubbleHost) {
@@ -82,10 +90,12 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
           }
           break;
         case 'welcome':
-          if (ev.existing) waiting.set('welcome', {
+          // The tools never open by themselves: the offer waits in a bubble. Put off, it stays put off (the page
+          // remembers, per project); it is still the first line of the chat.
+          if (ev.existing && !putOff(String(ev.name))) waiting.set('welcome', {
             title: `${ev.name} is new to tandem`, text: 'Shall I read the project and write down what it is made of, and how it is run?', open: ['chat'],
             yes: { label: 'Yes, read it', run: () => void app.act('project.init') },
-            no: { label: 'Not now', run: () => { waiting.delete('welcome'); paint(); } },
+            no: { label: 'Not now', run: () => { putOff(String(ev.name), true); waiting.delete('welcome'); paint(); } },
           });
           break;
         case 'proposal': {

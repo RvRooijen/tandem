@@ -5,7 +5,7 @@
 // there, pressed, and ends in a command.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { registerHooks } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -443,6 +443,21 @@ test('a new conversation clears the chat and keeps what is still to be decided',
   await until(() => $('.msg.agent'), 'an answer in the new conversation');
   assert.doesNotMatch($('.msg.agent').textContent!, /^Again: /);
   await until(() => !app.agent.busy, 'the agent to be done');
+
+  // In a project tandem has not been in before, the chat opens with an offer: read the project, or just talk.
+  host.events.add({ type: 'welcome', by: 'engine', existing: true, files: 12, name: 'Fixture' });
+  await until(() => $('.msg.welcome'), 'the first line');
+  assert.match($('.msg.welcome').textContent!, /Fixture is new to tandem\. Shall I read the project/);
+  const before = ran.filter((n) => n === 'project.init').length;
+  click(button('Yes, read the project', $('.msg.welcome')));
+  await until(() => ran.filter((n) => n === 'project.init').length === before + 1, 'the agent to be asked');
+  await until(() => all('button', $('.msg.welcome')).length === 0, 'the offer to be taken');
+  await until(() => !app.agent.busy && all('.msg.agent:not(.welcome)').length >= 2, 'the agent to have read it');
+  // A project with nothing in it yet is asked what it is going to be, and there is nothing to read.
+  host.events.add({ type: 'welcome', by: 'engine', existing: false, files: 0, name: 'Blank' });
+  await until(() => all('.msg.welcome').length === 2, 'the other first line');
+  assert.match(all('.msg.welcome')[1].textContent!, /Blank is a fresh project\. Tell me what you want to make/);
+  assert.equal(all('button', all('.msg.welcome')[1]).length, 0);
 });
 
 test('projects: the folders that could be one are listed, and another is chosen from the page', async () => {
@@ -459,16 +474,27 @@ test('projects: the folders that could be one are listed, and another is chosen 
   assert.equal(all('.item.project')[0], item('Fixture'), 'the one that is open comes first');
   assert.match(item('Fixture').textContent!, /open now/);
   assert.match(item('The Other Game').textContent!, /new to tandem · has a page/);
-  assert.match(item('loose-notes').textContent!, /not a git repository yet/);
-  // A folder without a repository cannot be opened; one with, is.
-  click(item('loose-notes'));
-  await new Promise((r) => setTimeout(r, 100));
-  assert.ok(!ran.includes('projects.open'));
+  assert.match(item('loose-notes').textContent!, /no git repository yet: tandem starts one when you open it/);
   click(item('The Other Game'));
   await until(() => ran.includes('projects.open'), 'the other project to be asked for');
   // (Nothing looks after this core, so it is only remembered; started as `tandem`, the core starts again on it and the page with it.)
   await until(() => /It is chosen/.test($('#t-toast').textContent!), 'the answer');
   assert.equal(JSON.parse(readFileSync(process.env.TANDEM_STATE!, 'utf8')).project, join(beside, 'other-game'));
+
+  // A folder without a repository is opened too: tandem starts one there.
+  click(item('loose-notes'));
+  await until(() => existsSync(join(beside, 'loose-notes/.git')), 'the repository to be started');
+
+  // And a project that does not exist yet is made from here: a new folder beside the open one.
+  assert.match($('#t-body').textContent!, new RegExp(`A new folder in ${beside.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  click(button('Create'));
+  assert.equal($('#t-toast').textContent, 'Give it a name.');
+  type($('input[aria-label="Name of a new project"]'), 'Winter Game');
+  click(button('Create'));
+  await until(() => ran.includes('projects.create'), 'the new project to be asked for');
+  await until(() => /It is made/.test($('#t-toast').textContent!), 'the answer');
+  assert.ok(existsSync(join(beside, 'winter-game/.git')));
+  assert.equal(readFileSync(join(beside, 'winter-game/README.md'), 'utf8'), '# Winter Game\n');
 });
 
 test('parity: everything the shell does is a command the agent could name', async () => {

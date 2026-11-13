@@ -157,10 +157,27 @@ export function chatPanel(): Panel {
       h('div.field', {}, h('span.k', {}, 'whole game'), h('span.now', {}, mins(ev.length as number | undefined))));
   }
 
+  /** In a project tandem has not been in before: the offer to read it, or where to begin. */
+  let asked = false;
+  const welcomes: HTMLElement[] = [];
+  function welcomeCard(ev: Event): HTMLElement {
+    const el = h('div.msg.agent.welcome', {},
+      ev.existing
+        ? prose(`**${ev.name}** is new to tandem. Shall I read the project and write down what it is made of (its concepts) and how it is run? I propose; you accept what is right. Or just start talking.`)
+        : prose(`**${ev.name}** is a fresh project. Tell me what you want to make, and we start by writing the idea down as a concept.`),
+      !!ev.existing && !asked && h('div.t-row', {}, h<'button'>('button.primary', { onclick: () => void app.act('project.init') }, 'Yes, read the project')));
+    welcomes.push(el);
+    return el;
+  }
+
   function card(ev: Event): HTMLElement | null {
     switch (ev.type) {
+      case 'welcome':
+        return welcomeCard(ev);
       case 'message':
         // What the engine tells the agent (art was accepted: bring it into the game) is shown, small: it is why the agent starts working.
+        // Once the agent has been asked to read the project, the offer to do so is no longer one.
+        if (ev.by === 'engine' && ev.kind === 'init') { asked = true; for (const w of welcomes) w.querySelector('.t-row')?.remove(); }
         if (ev.by === 'engine') return h('div.sys.engine', {}, ev.kind === 'init' ? '⚙ The agent was asked to read this project and set tandem up for it: its concepts, and how it is run.' : `⚙ to the agent: ${String(ev.text ?? '')}`);
         return h(`div.msg.${ev.by === 'me' ? 'me' : 'agent'}${ev.error ? '.error' : ''}`, {},
           Array.isArray(ev.refs) && h('div.refs', {}, (ev.refs as string[]).map((r) => refChip(app, r))),
@@ -242,6 +259,7 @@ export function chatPanel(): Panel {
     hide() { body = undefined; },
     event(ev) {
       if (ev.type === 'chat.new') {
+        asked = false; welcomes.length = 0;
         // A new conversation: everything said goes, what is still to be decided stays.
         for (const [key, r] of rounds) if (r.status !== 'pending') rounds.delete(key);
         list.replaceChildren(...[...rounds.values()].map((r) => r.el!).filter(Boolean));

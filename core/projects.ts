@@ -5,6 +5,7 @@
 // starting tandem again opens it. Opening a project starts the core again on
 // that project (core/start.ts does that, when the core asks for it by ending
 // with exit code 76).
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -80,6 +81,26 @@ export function listProjects(current?: string): Found[] {
   return [...out.values()].sort((a, b) => Number(b.open) - Number(a.open) || Number(b.known) - Number(a.known) || Number(b.git) - Number(a.git) || a.name.localeCompare(b.name));
 }
 
+/**
+ * A project needs a git repository: it is how the agent's work is kept apart from the person's. A folder that has
+ * none gets one, with what is in it as its first commit (and, if it has no .gitignore, one that keeps what is
+ * never a project's own out of it).
+ */
+export function ensureRepo(dir: string): boolean {
+  if (existsSync(join(dir, '.git'))) return false;
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  git('init', '-q', '-b', 'main');
+  if (!existsSync(join(dir, '.gitignore'))) writeFileSync(join(dir, '.gitignore'), 'node_modules/\ndist/\n.DS_Store\n*.log\n');
+  // The person's own name on the commit when git knows it; tandem's otherwise.
+  let who: string[] = [];
+  try { git('config', 'user.name'); git('config', 'user.email'); } catch { who = ['-c', 'user.name=tandem', '-c', 'user.email=tandem@localhost']; }
+  git('add', '-A');
+  git(...who, 'commit', '-q', '--allow-empty', '-m', 'The project as tandem found it');
+  return true;
+}
+
+const slug = (name: string) => name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+
 export interface ProjectsOptions {
   /** The project that is open, if any. */
   current?: string;
@@ -90,24 +111,50 @@ export interface ProjectsOptions {
 }
 
 export function projectCommands(o: ProjectsOptions): CommandDef[] {
+  /** Where a new project is made if nothing else is said: beside the one that is open, or beside tandem. */
+  const newIn = () => (o.current ? dirname(resolve(o.current)) : dirname(ENGINE));
   return [
     {
       name: 'projects.list', kind: 'read',
-      about: 'The folders that could be a project (next to tandem, and wherever it was told to look): which is open, which have a git repository, which tandem has been in before.',
-      run: () => ({ open: o.current ? resolve(o.current) : null, roots: roots(o.current), projects: listProjects(o.current) }),
+      about: 'The folders that could be a project (next to tandem, and wherever it was told to look): which is open, which have a git repository (one without gets one when it is opened), which tandem has been in before.',
+      run: () => ({ open: o.current ? resolve(o.current) : null, roots: roots(o.current), newIn: newIn(), projects: listProjects(o.current) }),
     },
     {
       name: 'projects.open', kind: 'write',
-      about: 'Work on another project: tandem starts again on that folder. dir is the folder. Only the person does this.',
+      about: 'Work on another project: tandem starts again on that folder. dir is the folder; if it has no git repository, one is started there with what is in it as its first commit. Only the person does this.',
       input: { dir: 'string' },
       run(_c, i) {
         const dir = resolve(i.dir);
         if (!existsSync(dir) || !statSync(dir).isDirectory()) throw new CommandError('missing', `there is no folder ${dir}`);
-        if (!existsSync(join(dir, '.git'))) throw new CommandError('input', `${dir} is not a git repository. Tandem keeps the agent's work apart from yours with git; run \`git init\` there (and commit what is there) first`);
         const why = o.busy?.();
         if (why) throw new CommandError('busy', why);
+        // A folder that is not a repository yet becomes one, with what is in it as its first commit.
+        let started = false;
+        try { started = ensureRepo(dir); } catch (e) { throw new CommandError('failed', `a git repository could not be started in ${dir}: ${(e instanceof Error ? e.message : String(e)).split('\n').slice(-2).join(' ')}`); }
         writeState({ ...readState(), project: dir });
         // After the answer has gone out.
+        if (o.restart) setTimeout(o.restart, 300);
+        return { opening: dir, restarting: !!o.restart, ...(started && { started: 'a git repository, with what was there as its first commit' }) };
+      },
+    },
+    {
+      name: 'projects.create', kind: 'write',
+      about: 'Make a new project: a new folder with a git repository in it, and open it. name is what it is called; in is the folder to make it in (the one the open project is in, or the one tandem is in, if not said). Only the person does this.',
+      input: { name: 'string', in: 'string?' },
+      run(_c, i) {
+        const folder = slug(i.name);
+        if (!folder) throw new CommandError('input', 'give it a name with letters or digits in it');
+        const root = resolve(i.in ?? newIn());
+        if (!existsSync(root) || !statSync(root).isDirectory()) throw new CommandError('missing', `there is no folder ${root} to make it in`);
+        const dir = join(root, folder);
+        if (existsSync(dir)) throw new CommandError('exists', `there already is a ${folder} in ${root}; open that one, or pick another name`);
+        const why = o.busy?.();
+        if (why) throw new CommandError('busy', why);
+        mkdirSync(dir);
+        writeFileSync(join(dir, 'README.md'), `# ${i.name.trim()}\n`);
+        writeFileSync(join(dir, 'tandem.json'), JSON.stringify({ name: i.name.trim() }, null, 2) + '\n');
+        try { ensureRepo(dir); } catch (e) { throw new CommandError('failed', `a git repository could not be started in ${dir}: ${(e instanceof Error ? e.message : String(e)).split('\n').slice(-2).join(' ')}`); }
+        writeState({ ...readState(), project: dir });
         if (o.restart) setTimeout(o.restart, 300);
         return { opening: dir, restarting: !!o.restart };
       },
@@ -125,4 +172,18 @@ export function projectCommands(o: ProjectsOptions): CommandDef[] {
       },
     },
   ];
+}
+
+/**
+ * A project tandem has not been in before gets a first line in its chat: for one that has things in it already, the
+ * offer to read it and set tandem up for it; for an empty one, where to begin. Said once, when nothing has been
+ * said or written down there yet.
+ */
+export function welcome(host: { events: { last(): number; add(ev: { type: string; by: string; [k: string]: unknown }): unknown }; concepts: { list(): unknown[] }; project: { root: string; name: string } }): boolean {
+  if (host.events.last() > 0 || host.concepts.list().length) return false;
+  let files: string[] = [];
+  try { files = execFileSync('git', ['ls-files'], { cwd: host.project.root, encoding: 'utf8' }).split('\n').filter(Boolean); } catch { /* not a repository: nothing to count */ }
+  const own = files.filter((f) => !/^(README\.md|\.gitignore|tandem\.json|\.tandem\/)/.test(f));
+  host.events.add({ type: 'welcome', by: 'engine', existing: own.length > 0, files: own.length, name: host.project.name });
+  return true;
 }

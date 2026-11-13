@@ -52,10 +52,14 @@ Everything else is optional, in `tandem.json` at the project's root:
 - **adapter**: a module that lets tandem see inside the running project (see below).
 - **edit**: what the agent may change, as patterns; everything but `.tandem`, `art` and `depth` by default.
 
-## A project that exists already
+## A new project, and one that exists already
 
-Open it, and ask the agent to set tandem up for it: the button in the empty Concepts tab, or under the project in the
-project chooser (`project.init`). The agent reads the project (its notes, its scripts, its code) and proposes the
+The project chooser (the folder button in the sheet) makes a new project: a new folder with a git repository in it.
+It also opens any folder; one without a repository gets one, with what is in it as its first commit.
+
+In a project tandem has not been in before, the chat opens with a first line. For one that has things in it, that
+is the offer to set tandem up for it (also: the button in the empty Concepts tab, or under the project in the
+project chooser; `project.init`). The agent reads the project (its notes, its scripts, its code) and proposes the
 concepts it is already made of, and a `tandem.json` that says how it is run; both come as proposals. It takes commands
 from the project's own scripts and notes and cannot start the page itself, so what it writes for `page` is unrun until
 you see it work.

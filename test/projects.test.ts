@@ -6,9 +6,11 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CommandError, createRegistry } from '../core/commands.ts';
-import { listProjects, projectCommands, readState } from '../core/projects.ts';
+import { execFileSync } from 'node:child_process';
+import { createHost } from '../core/host.ts';
+import { listProjects, projectCommands, readState, welcome } from '../core/projects.ts';
 import { startLobby } from '../core/server.ts';
-import './helpers.ts';
+import { fixture } from './helpers.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'tandem-pj-'));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -28,7 +30,7 @@ test('the folders that could be a project: what tandem knows first, then reposit
   assert.deepEqual(list.map((p) => [p.name, p.open, p.git, p.known, p.page, p.adapter]), [
     ['website', true, true, false, true, false],          // open; a Vite project has a page without saying so
     ['Gnome Garden', false, true, true, true, true],      // tandem has been here; named by its tandem.json
-    ['notes', false, false, false, false, false],         // a folder, not a repository
+    ['notes', false, false, false, false, false],         // a folder, not a repository yet
   ], 'hidden folders and files are not projects');
 });
 
@@ -41,7 +43,6 @@ test('opening a project: a repository, when nothing is in the way; then the core
 
   assert.equal((await run('projects.list', {})).open, join(root, 'website'));
   await refused(run('projects.open', { dir: join(root, 'nowhere') }), 'missing');
-  await refused(run('projects.open', { dir: join(root, 'notes') }), 'input');
   await refused(run('projects.open', { dir: join(root, 'garden') }, 'agent:main'), 'permission');
   busy = 'the agent is in the middle of something here';
   await refused(run('projects.open', { dir: join(root, 'garden') }), 'busy');
@@ -61,12 +62,70 @@ test('opening a project: a repository, when nothing is in the way; then the core
   rmSync(elsewhere, { recursive: true, force: true });
 });
 
+test('a folder without a repository gets one when it is opened; a new project is a new folder with one', async () => {
+  const registry = createRegistry();
+  registry.add(...projectCommands({ current: join(root, 'website') }));
+  const run = (name: string, input: Record<string, unknown>, by = 'me') => registry.run(name, input, { by }) as Promise<any>;
+  const refused = (p: Promise<unknown>, code: string) => assert.rejects(p, (e) => e instanceof CommandError && e.code === code);
+  const git = (dir: string, ...args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
+
+  // A folder with things in it and no repository: opening it starts one, with what is there as its first commit.
+  writeFileSync(join(root, 'notes/ideas.md'), 'a game about a lighthouse\n');
+  mkdirSync(join(root, 'notes/node_modules/junk'), { recursive: true });
+  writeFileSync(join(root, 'notes/node_modules/junk/index.js'), 'x');
+  const opened = await run('projects.open', { dir: join(root, 'notes') });
+  assert.match(opened.started, /a git repository/);
+  assert.equal(git(join(root, 'notes'), 'log', '--format=%s'), 'The project as tandem found it');
+  assert.deepEqual(git(join(root, 'notes'), 'ls-files').split('\n'), ['.gitignore', 'ideas.md'], 'what is never a project\'s own is kept out of it');
+  assert.equal(git(join(root, 'notes'), 'status', '--porcelain'), '');
+  // Opened again, nothing is started again.
+  assert.equal((await run('projects.open', { dir: join(root, 'notes') })).started, undefined);
+
+  // A new project: a folder beside the open one, named after it, with a repository and nothing much in it.
+  assert.equal((await run('projects.list', {})).newIn, root);
+  const made = await run('projects.create', { name: 'The Lighthouse Keeper!' });
+  const dir = join(root, 'the-lighthouse-keeper');
+  assert.equal(made.opening, dir);
+  assert.equal(readFileSync(join(dir, 'README.md'), 'utf8'), '# The Lighthouse Keeper!\n');
+  assert.equal(JSON.parse(readFileSync(join(dir, 'tandem.json'), 'utf8')).name, 'The Lighthouse Keeper!');
+  assert.deepEqual(git(dir, 'ls-files').split('\n'), ['.gitignore', 'README.md', 'tandem.json']);
+  assert.equal(readState().project, dir);
+  assert.ok(listProjects().some((p) => p.dir === dir && p.name === 'The Lighthouse Keeper!' && p.git));
+  await refused(run('projects.create', { name: 'the lighthouse keeper' }), 'exists');
+  await refused(run('projects.create', { name: '!!!' }), 'input');
+  await refused(run('projects.create', { name: 'x', in: join(root, 'nowhere') }), 'missing');
+  await refused(run('projects.create', { name: 'Another' }, 'agent:main'), 'permission');
+});
+
+test('a project tandem has not been in before gets a first line in its chat, once', async () => {
+  const { host, cleanup } = await fixture({ code: false });
+  assert.equal(welcome(host), true);
+  const ev = host.events.since(0)[0];
+  assert.deepEqual([ev.type, ev.by, ev.existing, ev.name], ['welcome', 'engine', true, 'Fixture'], 'it has things in it: the offer is to read it');
+  assert.equal(welcome(host), false, 'said once');
+  cleanup();
+  // A project with nothing in it yet is asked what it is going to be.
+  const registry = createRegistry();
+  registry.add(...projectCommands({}));
+  const made = await registry.run('projects.create', { name: 'Blank', in: root }, { by: 'me' }) as { opening: string };
+  const blank = await createHost({ project: made.opening, code: null });
+  assert.equal(welcome(blank), true);
+  assert.equal(blank.events.since(0)[0].existing, false);
+  // And one that already has concepts written down is not new.
+  await blank.run('chat.new', {}, 'me');
+  const known = await fixture({ code: false });
+  await known.host.run('concepts.create', { name: 'An idea' }, 'me');
+  assert.equal(known.host.events.last(), 1);
+  assert.equal(welcome(known.host), false);
+  known.cleanup();
+});
+
 test('with no project open, the core has only what it takes to choose one', async () => {
   const lobby = await startLobby({ port: 0 });
   const base = `http://127.0.0.1:${lobby.port}/api`;
   const post = async (name: string, input: unknown = {}) => (await fetch(`${base}/run/${name}`, { method: 'POST', body: JSON.stringify(input) })).json() as Promise<any>;
   assert.deepEqual(await (await fetch(`${base}/info`)).json(), { project: null, name: 'tandem', last: 0, page: null, senses: false, copy: false });
-  assert.deepEqual((await (await fetch(`${base}/commands`)).json() as { name: string }[]).map((c) => c.name), ['projects.list', 'projects.open', 'projects.look']);
+  assert.deepEqual((await (await fetch(`${base}/commands`)).json() as { name: string }[]).map((c) => c.name), ['projects.list', 'projects.open', 'projects.create', 'projects.look']);
   const list = await post('projects.list');
   assert.equal(list.result.open, null);
   assert.ok(mine(list.result.projects).some((p: any) => p.name === 'Gnome Garden'));

@@ -6,7 +6,7 @@ import type { App, Panel } from '../app.ts';
 import { clear, h } from '../dom.ts';
 
 interface Found { dir: string; name: string; git: boolean; known: boolean; page: boolean; adapter: boolean; open: boolean }
-interface Listing { open: string | null; roots: string[]; projects: Found[] }
+interface Listing { open: string | null; roots: string[]; newIn: string; projects: Found[] }
 
 /** Wait for the core to be back on the project that was asked for, then load the page again on it. */
 export async function reopen(dir: string) {
@@ -36,11 +36,26 @@ export function projectsPanel(): Panel {
       void paint();
       void reopen(ok.opening);
     };
-    const what = (p: Found) => (!p.git ? 'not a git repository yet: run git init there first'
-      : [p.open ? 'open now' : p.known ? 'been here before' : 'new to tandem', p.page && 'has a page', p.adapter && 'can be seen inside'].filter(Boolean).join(' · '));
+    const what = (p: Found) => [p.open ? 'open now' : p.known ? 'been here before' : 'new to tandem', p.page && 'has a page', p.adapter && 'can be seen inside',
+      !p.git && 'no git repository yet: tandem starts one when you open it'].filter(Boolean).join(' · ');
+    const fresh = h<'input'>('input', { placeholder: 'What is it called?', 'aria-label': 'Name of a new project' });
+    const create = async () => {
+      if (!fresh.value.trim()) return app.toast('Give it a name.');
+      const ok = await app.act<{ opening: string; restarting: boolean }>('projects.create', { name: fresh.value.trim() });
+      if (!ok) return;
+      if (!ok.restarting) return app.toast('It is made. Start tandem again to open it.');
+      opening = fresh.value.trim();
+      void paint();
+      void reopen(ok.opening);
+    };
+    fresh.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') void create(); });
     const other = h<'input'>('input', { placeholder: '/path/to/a/folder/with/projects', 'aria-label': 'Another folder to look for projects in', spellcheck: false });
     clear(body,
-      got.projects.map((p) => h(`div.item.project${p.open ? '.open' : ''}${p.git ? '' : '.off'}`, { onclick: () => p.git && void open(p) },
+      h('h3', {}, 'A new project'),
+      h('div.adder', {}, fresh, h<'button'>('button.primary', { onclick: () => void create() }, 'Create')),
+      h('p.t-hint', {}, `A new folder in ${got.newIn}, with a git repository in it.`),
+      h('h3', {}, 'Open a project'),
+      got.projects.map((p) => h(`div.item.project${p.open ? '.open' : ''}`, { onclick: () => void open(p) },
         h('div.line', {}, h('b', {}, p.name), p.open && h('span.t-chip', {}, 'open')),
         h('p', {}, what(p)),
         h('small', {}, p.dir),

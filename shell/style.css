@@ -124,11 +124,12 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 
 #tandem .item.project small { display: block; margin-top: 3px; font-family: var(--t-mono); font-size: 11px; word-break: break-all; }
 #tandem .item.project.open { outline: 1px solid var(--t-accent); }
-#tandem .item.project.off { opacity: 0.55; cursor: default; }
 
 #tandem .t-row.center { justify-content: center; }
 
 /* ---- chat */
+.msg.welcome { max-width: 100%; border: 1px solid #6a5223; }
+.msg.welcome .t-row { margin: 10px 0 2px !important; }
 .chat { display: flex; flex-direction: column; gap: 10px; }
 .msg { max-width: 88%; padding: 9px 12px; border-radius: 14px; position: relative; word-break: break-word; }
 .msg.me { align-self: flex-end; background: #3a3320; border-bottom-right-radius: 4px; }

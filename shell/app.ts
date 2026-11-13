@@ -207,12 +207,14 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
         if (ev.type === 'stage.point') app.point(Number(ev.x), Number(ev.y), String(ev.text ?? ''));
         if (ev.type === 'stage.open') app.open(String(ev.tab), ev.id ? String(ev.id) : undefined);
         if (ev.type === 'proposal.decided' && ev.round === 'code') app.playProject();
-        if (ev.by !== 'me' && ['message', 'look', 'playtest'].includes(ev.type)) app.badge('chat', true);
+        if (ev.by !== 'me' && ['message', 'look', 'playtest', 'welcome'].includes(ev.type)) app.badge('chat', true);
         if (ev.type === 'proposal' && !ev.worker) app.badge('chat', true);
         // A worker's round is ready: that is news in the Art tab.
         if (ev.type === 'art.round') app.badge('art', true);
       }
       for (const p of panels) p.event?.(ev, live);
+      // A project tandem has not been in before opens on its chat, where the first line is waiting.
+      if (ev.type === 'welcome' && app.events.length === 1 && !shown) setTimeout(() => { if (!shown && app.events.at(-1)?.type === 'welcome') app.open('chat'); }, 400);
     },
   };
   for (const p of panels) p.init(app);

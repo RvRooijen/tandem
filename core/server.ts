@@ -9,7 +9,7 @@ import { createReadStream, existsSync } from 'node:fs';
 import { join, normalize } from 'node:path';
 import { CommandError } from './commands.ts';
 import { createHost, type Host } from './host.ts';
-import { SWITCH, projectCommands, readState } from './projects.ts';
+import { SWITCH, projectCommands, readState, welcome } from './projects.ts';
 import { createRegistry } from './commands.ts';
 import { createRunner } from './runner.ts';
 
@@ -151,6 +151,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     await new Promise(() => {});
   }
   const s = await startServer({ host: await createHost({ project: dir }) });
+  // A project tandem has not been in before: its chat opens with a first line.
+  welcome(s.host);
   // Stopped from outside: what the core started stops with it.
   for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, () => { void s.close().then(() => process.exit(0)); setTimeout(() => process.exit(0), 1500).unref(); });
   console.log(`tandem core: ${s.host.project.name} (${s.host.project.root}) on http://127.0.0.1:${s.port}/api  (${s.host.registry.list().length} commands${s.host.game ? ', with an adapter' : ''}${s.host.code ? ', working copy' : ''})`);

@@ -11,7 +11,7 @@ The first game on it is Gnome Garden (`games/gnome-garden`).
 ## Start
 
     npm install
-    npm start          # the core on 127.0.0.1:5201 and the phone page on http://localhost:5200
+    npm start          # the core on 127.0.0.1:5201 and the phone page on http://localhost:5173
 
 Both listen on this machine only: the core can start an agent with a command
 line. `npm start -- --host` puts the page on the network if you want that.

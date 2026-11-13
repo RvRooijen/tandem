@@ -1,5 +1,5 @@
 // Everything at once: the core server and the shell's page. `npm start`.
-//   the shell   http://localhost:5200   (the phone page)
+//   the shell   http://localhost:5173   (the phone page)
 //   the core    http://127.0.0.1:5201   (commands, events, the agent)
 // Both listen on this machine only: the core can start an agent with a command
 // line, which is not something to offer the whole network.

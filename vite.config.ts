@@ -10,7 +10,9 @@ export default defineConfig({
   server: {
     // IPv4 loopback: a phone's browser looks for localhost there, and node on its own picks IPv6 only.
     host: '127.0.0.1',
-    port: 5200,
+    port: 5173,
+    // Never drift to another port quietly: pixeldraw's viewer wants this one too, and only one of them can have it.
+    strictPort: true,
     fs: { strict: false },
     watch: { usePolling: true, interval: 500 },
     proxy: { '/api': { target: 'http://127.0.0.1:5201', changeOrigin: false } },

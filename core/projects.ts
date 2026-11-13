@@ -30,6 +30,14 @@ export function writeState(state: State) {
   writeFileSync(stateFile(), JSON.stringify(state, null, 2) + '\n');
 }
 
+/** The person's own home folder. Inside a proot on Android that is the home of Termux, not the home of the guest system. */
+export function home(): string {
+  const named = process.env.TANDEM_HOME;
+  if (named && existsSync(named)) return resolve(named);
+  const termux = '/data/data/com.termux/files/home';
+  return existsSync(termux) ? termux : homedir();
+}
+
 /** Where projects are looked for: what the person added, what TANDEM_PROJECTS names, and the folder tandem itself is in. */
 export function roots(current?: string): string[] {
   const named = (process.env.TANDEM_PROJECTS ?? '').split(':').filter(Boolean);
@@ -159,16 +167,16 @@ export function projectCommands(o: ProjectsOptions): CommandDef[] {
     },
     {
       name: 'projects.browse', kind: 'read',
-      about: 'Walk the folders of this machine, to choose where a new project goes: the folders inside dir, and the one above it. Without dir, it starts where a project was last made, or in the home folder.',
+      about: 'Walk the folders of this machine, to choose where a new project goes: the folders inside dir, and the one above it. Without dir, it starts where a project was last made, or in the home folder (on Android: the home of Termux).',
       input: { dir: 'string?' },
       run(_c, i) {
         const last = readState().lastIn;
-        const dir = resolve(i.dir ?? (last && existsSync(last) ? last : homedir()));
+        const dir = resolve(i.dir ?? (last && existsSync(last) ? last : home()));
         if (!existsSync(dir) || !statSync(dir).isDirectory()) throw new CommandError('missing', `there is no folder ${dir}`);
         let names: string[] = [];
         try { names = readdirSync(dir); } catch { throw new CommandError('permission', `${dir} cannot be looked into`); }
         const folders = names.filter((n) => !n.startsWith('.') && n !== 'node_modules' && (() => { try { return statSync(join(dir, n)).isDirectory(); } catch { return false; } })()).sort((a, b) => a.localeCompare(b));
-        return { dir, parent: dirname(dir) === dir ? null : dirname(dir), folders, home: homedir() };
+        return { dir, parent: dirname(dir) === dir ? null : dirname(dir), folders, home: home() };
       },
     },
     {

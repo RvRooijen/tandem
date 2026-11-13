@@ -105,6 +105,11 @@ test('a folder without a repository gets one when it is opened; a new project is
   const inside = await run('projects.browse', { dir: join(root, 'garden') });
   assert.deepEqual([inside.dir, inside.parent, inside.folders], [join(root, 'garden'), root, []]);
   assert.equal((await run('projects.browse', { dir: '/' })).parent, null);
+  // Home is the person's own: the one named, before the one of the system tandem runs in.
+  process.env.TANDEM_HOME = join(root, 'notes');
+  assert.equal(inside.home === join(root, 'notes'), false);
+  assert.equal((await run('projects.browse', { dir: root })).home, join(root, 'notes'));
+  delete process.env.TANDEM_HOME;
   await refused(run('projects.browse', { dir: join(root, 'nowhere') }), 'missing');
 });
 

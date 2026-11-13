@@ -33,6 +33,7 @@ export function projectsPanel(): Panel {
       h('div.bar', {}, h<'button'>('button.link', { onclick: () => void paint() }, '‹ Projects'), h('b', {}, 'Where does it go?')),
       h('p.k.here', {}, got.dir),
       h('div.t-row', {}, h<'button'>('button.primary', { onclick: () => { draft.in = got.dir; void paint(); } }, 'Here')),
+      got.dir !== got.home && h('div.item.folder', { onclick: () => void browse(got.home) }, h('b', {}, '⌂ home'), h('small', {}, got.home)),
       got.parent && h('div.item.folder', { onclick: () => void browse(got.parent!) }, h('b', {}, '↑ up'), h('small', {}, got.parent)),
       got.folders.map((n) => h('div.item.folder', { onclick: () => void browse(`${got.dir === '/' ? '' : got.dir}/${n}`) }, h('b', {}, `📁 ${n}`))),
       !got.folders.length && h('p.t-hint', {}, 'No folders in here.'));

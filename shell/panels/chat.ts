@@ -20,7 +20,6 @@ export function refChip(app: App, ref: string, onRemove?: () => void): HTMLEleme
   const open = () => {
     if (kind === 'concept') app.open('concepts', rest);
     else if (kind === 'record') app.open('content', rest);
-    else if (kind === 'entity') app.open('inspect', rest);
     else if (kind === 'drawing') app.open('art', rest);
     else if (kind === 'point') { const [x, y] = rest.split(',').map(Number); app.point(x, y); }
   };
@@ -177,8 +176,7 @@ export function chatPanel(): Panel {
     }
     return h('div.card.test', {},
       h('div.t-head', {}, h('b', {}, 'Playtest'), h('span.state', {}, `${ev.profile} player${ev.proposed ? ', as proposed' : ''}`)),
-      h('div.field', {}, h('span.k', {}, 'whole game'), h('span.now', {}, mins(ev.length as number | undefined))),
-      h<'button'>('button.link', { onclick: () => app.open('playtest') }, 'Every milestone'));
+      h('div.field', {}, h('span.k', {}, 'whole game'), h('span.now', {}, mins(ev.length as number | undefined))));
   }
 
   function card(ev: Event): HTMLElement | null {

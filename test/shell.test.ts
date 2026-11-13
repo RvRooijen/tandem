@@ -106,7 +106,7 @@ test('the game runs in the page and the tools lie over it, shut', async () => {
   assert.ok($('#drawer'), 'with its own drawer');
   assert.ok($('#t-fab'));
   assert.ok($('#t-sheet').classList.contains('shut'));
-  assert.deepEqual(all('.t-tab').map((t) => t.textContent), ['Chat', 'Concepts', 'Content', 'Art', 'Inspect', 'Playtest']);
+  assert.deepEqual(all('.t-tab').map((t) => t.textContent), ['Chat', 'Concepts', 'Content', 'Art']);
   const clock = (app.page.world.game as { s: { clock: number } }).s.clock;
   await until(() => (app.page.world.game as { s: { clock: number } }).s.clock > clock, 'the game to move');
   // The page shares its world with the host, where the agent can read it.
@@ -307,62 +307,6 @@ test('art: the drawings are listed, one is looked at and locked, and a worker\'s
   assert.deepEqual(app.refs.splice(0), ['drawing:gnome']);
 });
 
-test('inspect: the entities of the world being played, one of them live, and a finger that asks instead of plays', async () => {
-  tab('Inspect');
-  await until(() => all('#t-body h3').some((x) => /entities/.test(x.textContent!)), 'the summary');
-  assert.match(all('#t-body h3')[0].textContent!, /^4 entities/);
-  assert.deepEqual(all('.sys-row b').map((b) => b.textContent).slice(0, 3), ['1. grow', '2. ripe', '3. brain']);
-  assert.match($('.sys-row .t-chip.mode').textContent!, /kernel/);
-
-  click(all('#t-body .item').find((i) => /Flower/.test(i.textContent!))!);
-  await until(() => /4 with/.test($('#t-body .bar b')?.textContent ?? ''), 'the flowers');
-  click($('#t-body .item'));
-  await until(() => $('.comp'), 'one flower');
-  // The values on the screen follow the running game: set the flower back and watch it show.
-  const growth = all('.kv').find((k) => $('.k', k).textContent === 'growth')!;
-  const id = Number($('#t-body .bar b').textContent!.match(/#(\d+)/)![1]);
-  await app.act('ecs.set', { id, component: 'Flower', field: 'growth', value: 0.25 });
-  await until(() => Number($('.v', growth).textContent) >= 0.25 && Number($('.v', growth).textContent) < 0.6, 'the value on the screen to follow the game');
-
-  // Touch a value to change it in the running game.
-  const kind = all('.kv').find((k) => $('.k', k).textContent === 'kind')!;
-  asked = '2';
-  click(kind);
-  await until(() => $('.v', kind).textContent === '2', 'the poke to land');
-
-  click(button('Talk about this'));
-  assert.match(app.refs.splice(0)[0], /^entity:\d+$/);
-  tab('Inspect');
-  await until(() => $('.comp'), 'the entity again');
-
-  // Pick: the next finger on the garden asks what is there.
-  click(button(/Pick in the game/));
-  assert.ok(app.page.intercept, 'the stage hands its fingers over');
-  const picked = (app.page.world.game as { s: { stats: { tapped: number } } }).s.stats.tapped;
-  const down = new w.Event('pointerdown', { bubbles: true }) as Event & { clientX: number; clientY: number; pointerId: number };
-  Object.assign(down, { clientX: 180, clientY: 300, pointerId: 1 });
-  $('#garden').dispatchEvent(down);
-  await until(() => !$('#t-ring').hidden, 'the ring');
-  assert.equal((app.page.world.game as { s: { stats: { tapped: number } } }).s.stats.tapped, picked, 'and nothing was picked');
-  tab('Chat');
-  assert.equal(app.page.intercept, null, 'leaving the inspector gives the garden its fingers back');
-});
-
-test('playtest: the buttons are there, and a look at a minute comes back as a picture', async () => {
-  tab('Playtest');
-  assert.ok(button('Play it: eager') && button('Play it: casual') && button('Compare with proposals'));
-  assert.match($('.results .empty').textContent!, /Nothing played yet/);
-  type($('.look-at input'), '0');
-  click(button('Look'));
-  await until(() => $('.working'), 'it to say it is working');
-  await until(() => !$('#t-zoom').hidden, 'the picture', 90000);
-  assert.match(($('#t-zoom img') as HTMLImageElement).src, /\/api\/file\/looks\/look-/);
-  click($('#t-zoom'));
-  assert.equal($('#t-zoom').hidden, true);
-  tab('Chat');
-  assert.ok($('figure.card.look img'), 'and it is in the conversation too');
-});
-
 test('the agent shows things on the person\'s screen', async () => {
   app.close();
   await host.run('stage.point', { x: 72, y: 150, text: 'this bed' }, AGENT);
@@ -372,6 +316,16 @@ test('the agent shows things on the person\'s screen', async () => {
   await until(() => $('input.title'), 'the concept to be opened');
   assert.ok(!$('#t-sheet').classList.contains('shut'));
   assert.equal(($('input.title') as HTMLInputElement).value, 'Night roses');
+  // The ECS and the playtests are the agent's instruments: there is no tab for them. What it looks at and plays
+  // shows up in the conversation.
+  tab('Chat');
+  await host.run('game.look', { caption: 'the garden, now' }, AGENT);
+  host.events.add({ type: 'playtest', by: AGENT, kind: 'run', profile: 'eager', proposed: false, length: 598.9, minutes: { start: 0 } });
+  await until(() => $('figure.card.look img') && all('.card.test').length === 1, 'the look and the playtest in the conversation');
+  assert.match($('.card.test').textContent!, /Playtest.*eager player.*whole game.*9h59/);
+  assert.equal(all('button', $('.card.test')).length, 0);
+  tab('Concepts');
+
   // Something said while the person is elsewhere is news on the chat tab and on the button.
   assert.ok(!$('#t-fab').classList.contains('news'));
   await host.run('chat.send', { text: 'Have a look at this one.' }, AGENT);
@@ -415,18 +369,23 @@ test('a change to the game\'s code is a card: which files, a button to play the 
 
 test('a new conversation clears the chat and keeps what is still to be decided', async () => {
   tab('Chat');
+  // (The engine's message in the test before this one set the agent to work, as it should; let it finish.)
+  await until(() => !app.agent.busy, 'the agent to be done');
   await host.run('records.set', { path: 'flowers/daisy', value: { value: 2 }, note: 'still open' }, AGENT, 'r950');
-  await until(() => all('.card.prop').some((c) => c.dataset.status === 'pending'), 'a pending proposal');
-  assert.ok(all('.msg').length >= 3 && all('.card.prop').length >= 3);
+  await until(() => all('.card.prop').some((c) => /flowers\/daisy/.test(c.textContent!)), 'a pending proposal');
+  const open = all('.card.prop').filter((c) => c.dataset.status === 'pending').length;
+  assert.ok(all('.msg').length >= 3 && all('.card.prop').length > open, 'there is a conversation, with decided proposals in it');
   asked = '7';
   click($('.composer .new-chat'));
   await until(() => all('.msg').length === 0, 'the chat to be cleared');
-  assert.equal(all('.card.prop').length, 1, 'the pending proposal is still there');
-  assert.equal(all('figure.card.look').length, 0);
+  assert.equal(all('.card.prop').length, open, 'what is still to be decided is still there, and nothing else');
+  assert.ok(all('.card.prop').every((c) => c.dataset.status === 'pending'));
+  assert.equal(all('figure.card.look').length + all('.card.test').length, 0);
   assert.equal(app.agent.session, false, 'and the agent has forgotten');
   assert.match($('.usage').textContent!, /nothing in context yet/);
-  click(button('Reject', $('.card.prop')));
-  await until(() => $('.card.prop').dataset.status === 'rejected', 'the rejection');
+  const daisy = all('.card.prop').find((c) => /flowers\/daisy/.test(c.textContent!))!;
+  click(button('Reject', daisy));
+  await until(() => daisy.dataset.status === 'rejected', 'the rejection');
   type($('.composer textarea'), 'hello again');
   click(button('Send'));
   await until(() => $('.msg.agent'), 'an answer in the new conversation');

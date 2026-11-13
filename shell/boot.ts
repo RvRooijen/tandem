@@ -2,7 +2,6 @@
 // lay the content records over it, put the tools on top, and from then on
 // follow the event log.
 import type { GameModule, GamePage, MountOptions, RecordSet } from '../core/game.ts';
-import { ecsCommands } from '../ecs/inspect.ts';
 import { addLocal, follow, info as getInfo, run } from './api.ts';
 import { createApp } from './app.ts';
 import { h } from './dom.ts';
@@ -10,8 +9,6 @@ import { artPanel } from './panels/art.ts';
 import { chatPanel } from './panels/chat.ts';
 import { conceptsPanel } from './panels/concepts.ts';
 import { contentPanel } from './panels/content.ts';
-import { inspectPanel } from './panels/inspect.ts';
-import { playtestPanel } from './panels/playtest.ts';
 
 export interface PageModule { mount(root: HTMLElement, opts?: MountOptions): GamePage; game: GameModule }
 
@@ -37,10 +34,10 @@ export async function boot(loadPage: (game: string) => Promise<PageModule>) {
     layer.append(h('div#t-preview', {}, h('span', {}, 'The working copy: what the agent coded, not yet the game'), h<'button'>('button', { onclick: () => window.close() }, 'Close')));
   }
 
-  // The game's own commands and the inspector's, on the world in this page.
-  addLocal(...game.commands(() => page.world), ...ecsCommands(() => page.world, game, () => {}));
+  // The game's own commands, on the world in this page.
+  addLocal(...game.commands(() => page.world));
 
-  const app = createApp(layer, info, game, page, [chatPanel(), conceptsPanel(), contentPanel(), artPanel(), inspectPanel(), playtestPanel()]);
+  const app = createApp(layer, info, game, page, [chatPanel(), conceptsPanel(), contentPanel(), artPanel()]);
 
   // Everything up to now is history; what comes after is live.
   const since = Math.max(0, info.last - 400);

@@ -1,6 +1,6 @@
 // The one way out of the page. Every button the shell has ends in run(): a
 // command by name with an input, the same call the agent makes from its command
-// line. Commands about the world being played (the game's own, the inspector's)
+// line. Commands about the world being played (the game's own)
 // are answered here in the page, where that world lives; everything else goes
 // to the core server. Nothing else in the shell talks to the network.
 import { CommandError, createRegistry, type CommandDef } from '../core/commands.ts';

@@ -184,19 +184,8 @@ figure.card.look figcaption { padding: 6px 10px; font-size: 12px; color: var(--t
 .field-edit .k { display: block; margin-bottom: 4px; }
 .wants { margin-top: 5px; font-size: 13px; color: var(--t-accent); cursor: pointer; }
 
-/* ---- inspect and playtest */
-.comp { background: var(--t-raise); border-radius: 12px; padding: 4px 12px 8px; margin-bottom: 8px; }
-.comp h3 { margin: 8px 0 4px !important; color: var(--t-accent) !important; text-transform: none !important; letter-spacing: 0 !important; font-size: 14px !important; }
-.kv { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-top: 1px solid var(--t-line); font-family: var(--t-mono); font-size: 13px; cursor: pointer; }
-.kv .v { font-variant-numeric: tabular-nums; }
-.kv .v.blink { animation: t-blink 0.5s; }
-@keyframes t-blink { from { color: var(--t-accent); } }
+/* ---- shared by a few panels */
 .working { display: flex; align-items: center; gap: 10px; padding: 22px 6px; color: var(--t-soft); }
-.ms { display: flex; align-items: baseline; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--t-line); font-size: 14px; cursor: pointer; }
-.ms .t { width: 62px; flex: none; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
-.ms .k { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.look-at { align-items: center; }
-.look-at span { color: var(--t-soft); }
 
 /* ---- art */
 .stage-live { display: grid; place-items: center; background: #101014; border-radius: 12px; padding: 10px; min-height: 120px; overflow: auto; margin-bottom: 10px; }
@@ -241,9 +230,8 @@ body.t-preview #t-fab .mark { background: #8fc7ff; }
 #t-zoom { position: fixed; inset: 0; z-index: 50; background: rgba(8, 8, 12, 0.92); display: grid; place-items: center; padding: 12px; cursor: zoom-out; }
 #t-zoom img { max-width: 100%; max-height: 100%; image-rendering: pixelated; border-radius: 8px; }
 #t-down { position: fixed; inset: 0; display: grid; place-content: center; text-align: center; gap: 8px; background: var(--t-bg); padding: 24px; }
-body.t-picking #garden { cursor: crosshair; outline: 3px solid #f2b84b; outline-offset: -3px; }
 
 @media (prefers-reduced-motion: reduce) {
   #t-sheet, #t-fab { transition: none; }
-  #t-fab.busy, #t-ring.go i, .kv .v.blink { animation: none; }
+  #t-fab.busy, #t-ring.go i { animation: none; }
 }

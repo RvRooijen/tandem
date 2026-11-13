@@ -565,7 +565,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'stage.open', kind: 'write', agent: 'free',
-      about: 'Open something on the person\'s screen: tab is chat, concepts, content, art, inspect or playtest; id is the concept, record path, drawing or entity to open there.',
+      about: 'Open something on the person\'s screen: tab is chat, concepts, content or art; id is the concept, record path or drawing to open there (for a worker: "worker:<id>" in art).',
       input: { tab: 'string', id: 'string?' },
       run: (c, i) => { events.add({ type: 'stage.open', by: c.by, tab: i.tab, id: i.id ?? '' }); return { shown: true }; },
     },

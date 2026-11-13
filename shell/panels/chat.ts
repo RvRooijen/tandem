@@ -17,7 +17,11 @@ interface Change {
   status?: 'accepted' | 'rejected';
 }
 /** A round is 'decided' when its pieces went different ways: some taken, some refused. */
-interface Round { round: string; by: string; changes: Change[]; status: 'pending' | 'accepted' | 'rejected' | 'decided'; el?: HTMLElement }
+interface Round {
+  round: string; by: string; changes: Change[]; status: 'pending' | 'accepted' | 'rejected' | 'decided'; el?: HTMLElement;
+  /** The files of a code change that were tapped open, with what changed in each. */
+  read?: Map<string, string>;
+}
 
 export function refChip(app: App, ref: string, onRemove?: () => void): HTMLElement {
   const [kind, rest] = [ref.slice(0, ref.indexOf(':')), ref.slice(ref.indexOf(':') + 1)];
@@ -199,13 +203,41 @@ export function chatPanel(): Panel {
       h('span.now', {}, short(c.after![k], k === 'text' ? 200 : 40))));
   }
 
-  /** Code is not read on a phone: which files, and how much of each. */
-  function codeFiles(c: Change): HTMLElement[] {
+  /** What changed in a file, line by line: what came in green, what went in red. */
+  function diffLines(diff: string): HTMLElement {
+    const lines = diff.split('\n');
+    // (What git says about the file itself is left out: the lines are what is read.)
+    const from = lines.findIndex((l) => l.startsWith('@@'));
+    const body = (from < 0 ? [] : lines.slice(from)).filter((l) => !l.startsWith('\\'));
+    while (body.length && !body.at(-1)) body.pop();
+    if (!body.length) return h('div.note', {}, 'Nothing to read in it: it is not text, or it only moved.');
+    return h('pre.diff', {}, body.map((l) => h('span', { data: { how: l.startsWith('@@') ? 'at' : l.startsWith('+') ? 'in' : l.startsWith('-') ? 'out' : 'same' } },
+      l.startsWith('@@') ? '⋯' : `${l || ' '}`, '\n')));
+  }
+
+  /** The files of a code change, and how much of each. One that is tapped opens: what changed in it. */
+  function codeFiles(c: Change, r: Round): HTMLElement[] {
     const files = c.files ?? [];
+    const can = r.status === 'pending';
+    const toggle = async (path: string) => {
+      r.read ??= new Map();
+      if (r.read.has(path)) r.read.delete(path);
+      else {
+        const got = await app.act<{ diff: string }>('code.changes', { path });
+        if (!got) return;
+        r.read.set(path, got.diff);
+      }
+      roundCard(r);
+    };
     return [
-      ...files.slice(0, 14).map((f) => h('div.field', {}, h('span.k', {}, f.path), f.status !== 'changed' && h('span.was.new', {}, f.status),
-        h('span.pct', { data: { dir: 'up' } }, `+${f.added}`), f.removed > 0 && h('span.pct.minus', { data: { dir: 'down' } }, `−${f.removed}`))),
+      ...files.slice(0, 14).flatMap((f) => [
+        h(`div.field${can ? '.file' : ''}`, can ? { onclick: () => void toggle(f.path), role: 'button', 'aria-expanded': String(!!r.read?.has(f.path)) } : {},
+          h('span.k', {}, f.path), f.status !== 'changed' && h('span.was.new', {}, f.status),
+          h('span.pct', { data: { dir: 'up' } }, `+${f.added}`), f.removed > 0 && h('span.pct.minus', { data: { dir: 'down' } }, `−${f.removed}`)),
+        ...(can && r.read?.has(f.path) ? [diffLines(r.read.get(f.path)!)] : []),
+      ]),
       ...(files.length > 14 ? [h('div.note', {}, `and ${files.length - 14} more files`)] : []),
+      ...(can && files.length ? [h('div.t-hint.tapfile', {}, 'Tap a file to see what changed in it.')] : []),
     ];
   }
 
@@ -243,7 +275,7 @@ export function chatPanel(): Panel {
           each && !c.status && h('span.each', {},
             h<'button'>('button.yes', { 'aria-label': `Accept ${c.path}`, onclick: () => decide(true, c) }, '✓'),
             h<'button'>('button.no', { 'aria-label': `Reject ${c.path}`, onclick: () => decide(false, c) }, '✕'))),
-        c.kind === 'drawing' ? pictures(c) : c.kind === 'code' ? codeFiles(c) : fieldLines(c),
+        c.kind === 'drawing' ? pictures(c) : c.kind === 'code' ? codeFiles(c, r) : fieldLines(c),
         c.note && h('div.note', {}, c.note))),
       touched.size > 0 && h('div.touches', {}, 'touches ', [...touched].map(([id, t]) => h('span.t-chip.stage', { data: { stage: t.stage }, onclick: () => app.open('concepts', id) }, `${t.name} · ${t.stage}`))),
       r.status === 'pending' && h('div.t-row', {},

@@ -1,7 +1,7 @@
 // The host: one project, its stores, its worlds and every command, in one
 // place. The server puts HTTP around it; the tests use it as it is. Nothing
 // here knows about pages or agents beyond who is asking (`by`).
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCode, type Code, type FileChange } from './code.ts';
@@ -131,11 +131,22 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     setTimeout(() => { for (const stop of onStop) stop(); process.exit(75); }, 600).unref?.();
   }
 
-  function proposeCode(by: By, note: string) {
+  /** What the agent says its change set does, in plain words: what the card says, and the commit. Gone when the set is decided. */
+  const aboutFile = join(dataDir, 'code-about.txt');
+  const about = (text?: string) => {
+    if (text === undefined) return existsSync(aboutFile) ? readFileSync(aboutFile, 'utf8').trim() : '';
+    if (text) writeFileSync(aboutFile, text.trim() + '\n'); else rmSync(aboutFile, { force: true });
+    return text;
+  };
+
+  function proposeCode(by: By, said: string) {
     if (!code) return;
     const files = code.changes();
     const open = proposals.list({ status: 'pending', round: CODE });
+    // What it said the change is, when it said so; otherwise what it answered.
+    const note = about() || said;
     if (!files.length) {
+      about('');
       // The copy is the project again: whatever was proposed is no more.
       if (open.length) { proposals.decide(CODE, 'rejected'); events.add({ type: 'proposal.decided', by, round: CODE, status: 'rejected', count: open.length, paths: ['code:working copy'] }); }
       return;
@@ -305,6 +316,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
           }
           await art.accepting(pending);
         } else if (code && pending.some((p) => p.kind === 'code')) code.reject();
+        if (pending.some((p) => p.kind === 'code')) about('');
         const set = proposals.decide(i.round, i.accept ? 'accepted' : 'rejected', only);
         if (i.accept) {
           for (const p of set) {
@@ -491,6 +503,19 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       run(_c, i) {
         if (!code) throw new CommandError('unsupported', 'there is no working copy here: the project is not in a repository');
         return i.path ? { path: i.path, diff: code.diff(i.path) } : { files: code.changes() };
+      },
+    },
+    {
+      name: 'code.describe', kind: 'write', agent: 'free',
+      about: 'Say what the working copy\'s change set does, for the person: a sentence or two in plain words about what is different when the project is used, not which files or how. It is what the proposal says, and its first line is the commit when it is accepted. Say it again when the change set becomes something else.',
+      input: { text: 'string' },
+      run(c, i) {
+        if (!code) throw new CommandError('unsupported', 'there is no working copy here: the project is not in a repository');
+        if (!i.text.trim()) throw new CommandError('input', 'say what the change does');
+        about(i.text);
+        // Said by hand while a proposal is open, the card says it at once; the agent's is shown when its reply is done.
+        if (proposals.list({ status: 'pending', round: CODE }).length) proposeCode(c.by, i.text);
+        return { said: i.text.trim() };
       },
     },
     {

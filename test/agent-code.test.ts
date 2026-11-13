@@ -27,6 +27,9 @@ async function until(what: () => unknown, says: string, ms = 60000) {
     await new Promise((r) => setTimeout(r, 40));
   }
 }
+async function refused(p: Promise<unknown>, code: string) {
+  await assert.rejects(p, (e: any) => { assert.equal(e.code, code); return true; });
+}
 const idle = () => until(() => !s.runner!.status().busy, 'the agent to be done');
 const answers = () => host.events.since(0).filter((e) => e.type === 'message' && e.by === 'agent');
 
@@ -68,9 +71,15 @@ test('when the copy is the project again, the proposal is gone; rejected, the co
   await me('chat.send', { text: 'code: seasons, really' });
   await until(() => answers().length === 4, 'the answer');
   await idle();
+  // What the change does, in the agent's plain words, is what the proposal says from then on, and the commit.
+  await refused(me('code.describe', { text: ' ' }), 'input');
+  await host.run('code.describe', { text: 'The year has four seasons now.\nNothing uses them yet.' }, 'agent:main');
+  assert.equal(host.events.since(0).filter((e) => e.type === 'proposal').at(-1)!.note, 'The year has four seasons now.\nNothing uses them yet.');
+  assert.equal((await me('proposals.list', { status: 'pending' })).length, 1, 'still the one proposal');
   await me('proposals.decide', { round: 'code', accept: true });
   assert.equal(readFileSync(join(dir, 'src/seasons.js'), 'utf8'), 'export const SEASONS = 4;\n', 'accepted: the project has it');
-  assert.match(git('log', '--oneline', '-1'), /Seasons added/, 'as one commit that says what it is');
+  assert.match(git('log', '--oneline', '-1'), /The year has four seasons now\.$/, 'as one commit that says what it is');
+  assert.ok(!existsSync(join(host.dirs.data, 'code-about.txt')), 'what was said about it goes with it');
   assert.deepEqual(host.events.since(0).filter((e) => e.type === 'code.changed').at(-1)!.files, ['src/seasons.js']);
   assert.deepEqual((await me('code.changes')).files, []);
   assert.equal(git('status', '--porcelain'), '');

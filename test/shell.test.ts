@@ -97,7 +97,14 @@ const fromFrame = (data: Record<string, unknown>) => { listen(); w.dispatchEvent
 /** Every command the page ran, by name: to see what it asks of the core. */
 const ran: string[] = [];
 const fetchNow = globalThis.fetch;
-globalThis.fetch = ((url: string, init?: RequestInit) => { const m = String(url).match(/\/api\/run\/([\w.]+)/); if (m) ran.push(m[1]); return fetchNow(url, init); }) as typeof fetch;
+/** Answers given here instead of by the core, for what this fixture does not have (a working copy). */
+const canned = new Map<string, unknown>();
+globalThis.fetch = ((url: string, init?: RequestInit) => {
+  const m = String(url).match(/\/api\/run\/([\w.]+)/);
+  if (m) ran.push(m[1]);
+  if (m && canned.has(m[1])) return Promise.resolve(new Response(JSON.stringify({ ok: true, result: canned.get(m[1]) }), { headers: { 'content-type': 'application/json' } }));
+  return fetchNow(url, init);
+}) as typeof fetch;
 
 const $ = (sel: string, root: ParentNode = w.document) => root.querySelector(sel) as HTMLElement;
 const all = (sel: string, root: ParentNode = w.document) => [...root.querySelectorAll(sel)] as HTMLElement[];
@@ -463,6 +470,18 @@ test('a change to the project is a card: which files, the copy played in the fra
   assert.match(card.textContent!, /\+12−3/);
   assert.match($('.note', card).textContent!, /The cottage follows the season/);
   assert.deepEqual(all('button', card).map((b) => b.textContent), ['Play the copy', 'Accept', 'Reject']);
+
+  // What changed in a file is read by tapping it: what came in and what went, without what git says about the file.
+  canned.set('code.changes', { path: 'src/game.ts', diff: 'diff --git a/src/game.ts b/src/game.ts\nindex 1..2 100644\n--- a/src/game.ts\n+++ b/src/game.ts\n@@ -1,3 +1,3 @@\n const a = 1;\n-const season = 0;\n+const season = seasonOf(day);\n' });
+  const file = () => all('.field.file', card).find((f) => /src\/game\.ts/.test(f.textContent!))!;
+  click(file());
+  await until(() => $('pre.diff', card), 'what changed in it');
+  assert.deepEqual(all('pre.diff span', card).map((l) => [l.dataset.how, l.textContent!.trimEnd()]).filter(([, t]) => t),
+    [['at', '⋯'], ['same', ' const a = 1;'], ['out', '-const season = 0;'], ['in', '+const season = seasonOf(day);']]);
+  assert.equal(file().getAttribute('aria-expanded'), 'true');
+  click(file());
+  await until(() => !$('pre.diff', card), 'it to fold away again');
+  canned.delete('code.changes');
 
   // Playing the copy: the frame shows the working copy's page instead, started from the world the person is in,
   // and says so. (Here there is no working copy to start, so the frame is switched by hand.)

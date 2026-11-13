@@ -16,6 +16,17 @@ import { entityView } from '../ecs/inspect.ts';
  * through commands, where they are proposals and can be locked), run what the project says may be run (its tests,
  * its type check, its builds), and see what it changed.
  */
+/**
+ * What the agent may run in its working copy: what tandem was told (the project's tests, its check, its builds),
+ * and, without being told, the project's tests. It writes the code and the tests there; a test it may not run is
+ * a change it cannot stand behind, and the first test of a project would otherwise wait for a setup to be accepted.
+ */
+export function runnable(project: Host['project']): string[] {
+  const told = [project.config.test, project.config.check, project.config.art?.build, ...(project.config.run ?? [])].filter((c): c is string => !!c);
+  const own = existsSync(join(project.root, 'package.json')) ? ['npm test', 'npm run test', 'node --test'] : [];
+  return [...new Set([...told, ...own])];
+}
+
 function tools(host: Host): { allow: string[]; deny: string[] } {
   const { project } = host;
   // The pictures it takes are outside its working copy; a path from the root is written with two slashes.
@@ -23,7 +34,7 @@ function tools(host: Host): { allow: string[]; deny: string[] } {
   const deny: string[] = [];
   if (host.code) {
     allow.push(...project.editable.flatMap((p) => [`Edit(${p})`, `Write(${p})`]));
-    for (const cmd of [project.config.test, project.config.check, project.config.art?.build, ...(project.config.run ?? [])]) if (cmd) allow.push(`Bash(${cmd}:*)`);
+    for (const cmd of runnable(project)) allow.push(`Bash(${cmd}:*)`);
     allow.push('Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)');
     deny.push(...['.tandem/**', 'art/**', 'depth/**'].flatMap((p) => [`Edit(${p})`, `Write(${p})`]));
   }
@@ -96,6 +107,7 @@ export function createRunner(host: Host) {
       project.config.check && `Its type check: \`${project.config.check}\`.`,
       project.config.art?.build && `The build of its drawings: \`${project.config.art.build}\`.`,
       ...(project.config.run ?? []).map((c) => `Also: \`${c}\`.`),
+      ...runnable(project).filter((c) => ![project.config.test, project.config.check, project.config.art?.build, ...(project.config.run ?? [])].includes(c)).map((c) => `Its tests also as \`${c}\`.`),
     ].filter(Boolean).join(' ');
     const about = [
       `${project.name}, in ${project.root}.`,

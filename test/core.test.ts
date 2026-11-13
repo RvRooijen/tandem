@@ -4,11 +4,14 @@
 // game.test.ts.)
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { CommandError } from '../core/commands.ts';
+import { loadProject } from '../core/project.ts';
+import { runnable } from '../core/runner.ts';
 import { AGENT, fixture } from './helpers.ts';
 
 // Without a working copy: drawings taken into the project are built straight in.
@@ -384,6 +387,19 @@ test('the project\'s own server is called the way another device would: someone 
     if (was === undefined) delete process.env.TANDEM_PAGE_PORT; else process.env.TANDEM_PAGE_PORT = was;
     await me('project.configure', { page: '' });
   }
+});
+
+test('in its working copy the agent may run the project\'s tests without tandem being told how', () => {
+  const bare = mkdtempSync(join(tmpdir(), 'tandem-run-'));
+  try {
+    assert.deepEqual(runnable(loadProject(bare)), [], 'a folder that says nothing about itself');
+    writeFileSync(join(bare, 'package.json'), '{"scripts":{"test":"node --test"}}');
+    assert.deepEqual(runnable(loadProject(bare)), ['npm test', 'npm run test', 'node --test']);
+    // What tandem was told comes first, and nothing is there twice.
+    mkdirSync(join(bare, '.tandem'));
+    writeFileSync(join(bare, '.tandem/tandem.json'), JSON.stringify({ test: 'npm test', check: 'npx tsc --noEmit', run: ['npm run build'] }));
+    assert.deepEqual(runnable(loadProject(bare)), ['npm test', 'npx tsc --noEmit', 'npm run build', 'npm run test', 'node --test']);
+  } finally { rmSync(bare, { recursive: true, force: true }); }
 });
 
 test('the conversation and the stage are events like everything else', async () => {

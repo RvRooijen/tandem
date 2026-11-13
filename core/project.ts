@@ -46,10 +46,17 @@ export interface Project {
   at(root: string): Project;
 }
 
+/**
+ * How a project's page is started, when it does not say: for a project with Vite, Vite on the port asked for.
+ * Through its own `dev` script when that ends in Vite, because such a script often starts more than Vite (a server
+ * beside it) and the page does not work without the rest; what is added lands on the last command, which is Vite.
+ */
 function guessPage(root: string): string | undefined {
   try {
-    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
-    if ({ ...pkg.dependencies, ...pkg.devDependencies }.vite) return 'npx vite --port {port} --strictPort --host 127.0.0.1';
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { scripts?: Record<string, string>; dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    if (!{ ...pkg.dependencies, ...pkg.devDependencies }.vite) return undefined;
+    const flags = '--port {port} --strictPort --host 127.0.0.1';
+    return /(^|[;&|]\s*)(npx\s+)?vite(\s[^;&|]*)?$/.test(pkg.scripts?.dev?.trim() ?? '') ? `npm run dev -- ${flags}` : `npx vite ${flags}`;
   } catch { /* no package.json: no guess */ }
   return undefined;
 }

@@ -30,6 +30,16 @@ export async function info(): Promise<Info> {
   return (await fetch('/api/info')).json();
 }
 
+/** Does a page at another address answer yet? (A project's own page takes a moment to start.) */
+export async function reachable(url: string): Promise<boolean> {
+  try {
+    await fetch(url, { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(3000) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Follow the event log: what is already in it from `since` on, then everything as it happens. */
 export function follow(since: number, on: (ev: Event) => void, state?: (live: boolean) => void): () => void {
   let last = since, source: EventSource | undefined, closed = false;

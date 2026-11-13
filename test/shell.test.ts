@@ -72,13 +72,15 @@ class FakeEventSource {
 }
 
 let asked = '7';
+let pagesUp = false;
 Object.assign(w, { innerHeight: 780, devicePixelRatio: 2 });
 Object.assign(globalThis, {
   window: w, document: w.document, HTMLElement: w.HTMLElement, Node: w.Node, location: w.location, localStorage: w.localStorage,
   ImageData: FakeImageData, EventSource: FakeEventSource,
   requestAnimationFrame: (f: (t: number) => void) => { const t = setTimeout(() => f(performance.now()), 40); t.unref(); return 1; },
   confirm: () => true, prompt: () => asked,
-  fetch: (url: string, init?: RequestInit) => realFetch(url.startsWith('/') ? origin + url : url, init),
+  // The project's own page and the working copy's are not really running here: whether they answer yet is the test's to say.
+  fetch: (url: string, init?: RequestInit) => (/^http:\/\/localhost:521[01]\//.test(url) ? (pagesUp ? Promise.resolve(new Response('')) : Promise.reject(new Error('refused'))) : realFetch(url.startsWith('/') ? origin + url : url, init)),
 });
 
 const { boot } = await import('../shell/boot.ts');
@@ -117,13 +119,19 @@ async function until(what: () => unknown, says = 'it', ms = 30000) {
   }
 }
 
-test('the project\'s page is in a frame and the tools lie over it, shut', () => {
-  assert.equal(frame.src, 'http://localhost:5210/', 'the project\'s own page, where tandem started it');
+test('the project\'s page is in a frame and the tools lie over it, shut', async () => {
   assert.equal(w.document.title, 'Fixture · tandem');
-  assert.ok($('#t-nopage').hidden);
+  // The project's page is started when tandem is and takes a moment: until it answers, the frame is not pointed
+  // at it (it would show an error and stay that way), and the space says what is happening.
+  assert.ok(frame.hidden);
+  assert.equal(frame.src, '');
+  assert.match($('#t-nopage').textContent!, /Starting Fixture…/);
+  pagesUp = true;
   assert.ok($('#t-fab'));
   assert.ok($('#t-sheet').classList.contains('shut'));
   assert.deepEqual(all('.t-tab').map((t) => t.textContent), ['Chat', 'Concepts', 'Art', 'Projects']);
+  await until(() => frame.src === 'http://localhost:5210/', 'the frame to show the project\'s own page');
+  assert.ok(!frame.hidden && $('#t-nopage').hidden);
   assert.deepEqual(app.stage.can, { snapshot: false, point: false }, 'a page that says nothing is simply shown');
 });
 
@@ -367,7 +375,7 @@ test('a change to the project is a card: which files, the copy played in the fra
   await until(() => ran.includes('code.play'), 'the copy to be asked for');
   await until(() => /no working copy/.test($('#t-toast').textContent!), 'the answer that there is none here');
   app.stage.showCopy('http://localhost:5211/');
-  assert.equal(frame.src, 'http://localhost:5211/');
+  await until(() => frame.src === 'http://localhost:5211/', 'the frame to show the copy');
   assert.equal($('#t-copy').hidden, false);
   assert.match($('#t-copy').textContent!, /The working copy/);
   toFrame.length = 0;
@@ -388,7 +396,7 @@ test('a change to the project is a card: which files, the copy played in the fra
   host.events.add({ type: 'code.changed', by: 'me', files: [files[0].path] });
   await until(() => card.dataset.status === 'accepted', 'the decision');
   assert.match(all('.chat .sys').at(-1)!.textContent!, /the working copy is the project now: 1 file changed/);
-  assert.equal(frame.src, 'http://localhost:5210/', 'the frame shows the project again');
+  await until(() => frame.src === 'http://localhost:5210/', 'the frame to show the project again');
   assert.equal($('#t-copy').hidden, true);
   // A page that was once asked to start from a world is told it is its own again.
   toFrame.length = 0;

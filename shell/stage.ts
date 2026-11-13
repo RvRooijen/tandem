@@ -3,7 +3,7 @@
 // copy of it. A page that uses the bridge (bridge/tandem.bridge.ts) tells
 // tandem the world being played and where things are; one that does not is
 // simply shown.
-import type { Info } from './api.ts';
+import { reachable, type Info } from './api.ts';
 import { clear, h } from './dom.ts';
 
 export interface Stage {
@@ -19,19 +19,36 @@ export interface Stage {
 }
 
 export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapshot: unknown): void; changed(): void }): Stage {
-  const frame = h<'iframe'>('iframe#t-frame', { title: info.name, allow: 'autoplay; fullscreen; vibrate' });
-  const none = h('div#t-nopage', { hidden: true },
+  const frame = h<'iframe'>('iframe#t-frame', { title: info.name, allow: 'autoplay; fullscreen; vibrate', hidden: true });
+  const none = h('div#t-nopage');
+  root.append(frame, none);
+
+  /** Point the frame at a page, once that page answers: it is started when tandem is, and may take a moment. */
+  let wanted = '';
+  async function show(url: string, what: string) {
+    wanted = url;
+    frame.hidden = true;
+    none.hidden = false;
+    clear(none, h('i.spin'), h('b', {}, `Starting ${what}…`));
+    for (let tries = 0; wanted === url; tries++) {
+      if (await reachable(url)) break;
+      if (tries === 30) clear(none, h('i.spin'), h('b', {}, `${what[0].toUpperCase()}${what.slice(1)} is not answering yet.`),
+        h('p', {}, 'Its page is started with the command in tandem.json ("page"). If that command is wrong, or needs something else to run first, it will not come up; what it says is in the terminal tandem was started in.'));
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    if (wanted !== url) return;
+    frame.src = url;
+    frame.hidden = false;
+    none.hidden = true;
+  }
+
+  if (info.page) void show(info.page, `${info.name}`);
+  else if (info.project) clear(none,
     h('b', {}, `${info.name} has no page here.`),
     h('p', {}, 'Tandem shows a project\'s own page in this space. Say how it is started in tandem.json: "page": "npm run dev -- --port {port}".'),
     h('p', {}, 'The tools work without it: open them with the round button.'));
-  root.append(frame, none);
-  if (info.page) frame.src = info.page;
-  else {
-    frame.hidden = true;
-    none.hidden = false;
-    // No project at all: the page is there to choose one.
-    if (!info.project) clear(none, h('b', {}, 'Which project?'), h('p', {}, 'Tandem works on a project: a folder with a git repository in it. Choose one from the list.'));
-  }
+  // No project at all: the page is there to choose one.
+  else clear(none, h('b', {}, 'Which project?'), h('p', {}, 'Tandem works on a project: a folder with a git repository in it. Choose one from the list.'));
 
   /** The last world the project's page shared: what the copy is started from. */
   let world: unknown;
@@ -45,14 +62,14 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
     showCopy(url) {
       stage.showing = 'copy';
       stage.can = { snapshot: false, point: false };
-      frame.src = url;
+      void show(url, 'the working copy');
       on.changed();
     },
     showProject() {
       if (stage.showing === 'project') return;
       stage.showing = 'project';
       stage.can = { snapshot: false, point: false };
-      if (info.page) frame.src = info.page;
+      if (info.page) void show(info.page, info.name);
       on.changed();
     },
     where(x, y) {

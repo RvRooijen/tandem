@@ -1,7 +1,7 @@
 // Locks: anything can get one. A locked thing is the person's alone: the agent
 // cannot change it or propose a change to it, not even when asked to. Only the
 // person locks and unlocks. A thing is named the way a message refers to it:
-// "concept:<id>", "record:<path>", "drawing:<name>". One small file per game.
+// "concept:<id>", "drawing:<name>". One small file per game.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { CommandError, isAgent, type By } from './commands.ts';
 
@@ -13,7 +13,7 @@ export interface Locks {
   guard(ref: string, by: By): void;
 }
 
-const KINDS = ['concept', 'record', 'drawing'];
+const KINDS = ['concept', 'drawing'];
 
 export function createLocks(file: string): Locks {
   let refs: string[] = [];
@@ -22,7 +22,7 @@ export function createLocks(file: string): Locks {
     has: (ref) => refs.includes(ref),
     list: () => [...refs],
     set(ref, locked) {
-      if (!KINDS.includes(ref.slice(0, ref.indexOf(':'))) || ref.endsWith(':')) throw new CommandError('input', `a lock is on "concept:<id>", "record:<path>" or "drawing:<name>", not "${ref}"`);
+      if (!KINDS.includes(ref.slice(0, ref.indexOf(':'))) || ref.endsWith(':')) throw new CommandError('input', `a lock is on "concept:<id>" or "drawing:<name>", not "${ref}"`);
       refs = locked ? [...new Set([...refs, ref])].sort() : refs.filter((r) => r !== ref);
       writeFileSync(file, JSON.stringify(refs, null, 2) + '\n');
     },

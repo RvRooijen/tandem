@@ -106,14 +106,14 @@ test('the game runs in the page and the tools lie over it, shut', async () => {
   assert.ok($('#drawer'), 'with its own drawer');
   assert.ok($('#t-fab'));
   assert.ok($('#t-sheet').classList.contains('shut'));
-  assert.deepEqual(all('.t-tab').map((t) => t.textContent), ['Chat', 'Concepts', 'Content', 'Art']);
+  assert.deepEqual(all('.t-tab').map((t) => t.textContent), ['Chat', 'Concepts', 'Art']);
   const clock = (app.page.world.game as { s: { clock: number } }).s.clock;
   await until(() => (app.page.world.game as { s: { clock: number } }).s.clock > clock, 'the game to move');
   // The page shares its world with the host, where the agent can read it.
   await until(() => String((host.world().game as { s: { stats: { tapped: number } } }).s.stats.tapped) === '0', 'the mirror');
 });
 
-test('chat: a message goes out, the agent answers with a proposal, and it is played and accepted from its card', async () => {
+test('chat: a message goes out, the agent answers with a proposal, and it is accepted from its card', async () => {
   click($('#t-fab'));
   assert.ok(!$('#t-sheet').classList.contains('shut'));
   assert.ok($('.t-tab.on').textContent === 'Chat');
@@ -132,27 +132,19 @@ test('chat: a message goes out, the agent answers with a proposal, and it is pla
 
   const card = $('.card.prop');
   assert.equal(card.dataset.status, 'pending');
-  assert.match($('.change .path', card).textContent!, /record flowers\/tulip/);
-  assert.equal($('.field .was', card).textContent, '6');
-  assert.equal($('.field .now', card).textContent, '8');
-  assert.match($('.note', card).textContent!, /a little more/);
+  assert.match($('.change .path', card).textContent!, /concept tulips-r\d+/);
+  assert.ok(all('.field', card).some((f) => /text.*new.*Tulips are worth a bit more\./.test(f.textContent!)), 'what it would be, spelled out');
+  assert.match($('.note', card).textContent!, /a new concept/);
+  assert.deepEqual(all('button', card).map((b) => b.textContent), ['Accept', 'Reject'], 'a proposal is decided; there is nothing else to press');
 
-  // Play it: the page lays the proposed content over the running game, and takes it off again.
-  click(button('Play it', card));
-  await until(() => app.playing, 'the proposal to be played');
-  assert.equal(app.game.exportRecords()['flowers/tulip'].value, 8);
-  assert.equal($('#t-banner').hidden, false);
-  assert.ok($('#t-sheet').classList.contains('shut'), 'the sheet gets out of the way');
-  click(button('Back to how it is', $('#t-banner')));
-  await until(() => !app.playing, 'play to stop');
-  assert.equal(app.game.exportRecords()['flowers/tulip'].value, 6);
-  assert.equal($('#t-banner').hidden, true);
-
-  click($('#t-fab'));
   click(button('Accept', card));
   await until(() => card.dataset.status === 'accepted', 'the card to say accepted');
-  assert.equal(host.records.get('flowers/tulip')!.value, 8);
+  const id = $('.change .path', card).textContent!.split(' ')[1];
+  assert.equal(host.concepts.get(id)!.text, 'Tulips are worth a bit more.');
   assert.equal(all('button', card).length, 0, 'a decided proposal has no buttons');
+  await until(() => !app.agent.busy, 'the agent to be done');
+  // (It is out of the way of the tests that follow.)
+  await host.run('concepts.remove', { id }, 'me');
   await until(() => !app.agent.busy, 'the agent to be done');
 });
 
@@ -169,12 +161,12 @@ test('concepts: add one, work on it, and hand it to the agent', async () => {
   click(all('.segments button').find((b) => b.textContent === 'design')!);
   type($('textarea.words'), 'A rose that only opens after dark.');
   assert.ok(!all('#t-body h3').some((x) => /promise/i.test(x.textContent!)), 'a concept has no timings to fill in');
-  type($('textarea[aria-label="What makes it real"]'), 'flowers/rose\nabilities/nap');
+  type($('textarea[aria-label="What makes it real"]'), 'a new flower\nthe nap');
   click(button('Save'));
   await until(() => host.concepts.get('night-roses')?.stage === 'design', 'the concept to be saved');
   const c = host.concepts.get('night-roses')!;
   assert.equal(c.text, 'A rose that only opens after dark.');
-  assert.deepEqual(c.realised, ['flowers/rose', 'abilities/nap']);
+  assert.deepEqual(c.realised, ['a new flower', 'the nap']);
 
   click(button('Talk about this'));
   assert.equal($('.t-tab.on').textContent, 'Chat');
@@ -211,29 +203,6 @@ test('concepts: add one, work on it, and hand it to the agent', async () => {
   await until(() => $('button.lock'), 'the concept again');
   click($('button.lock'));
   await until(() => !host.locks.has('concept:night-roses'), 'the lock to come off');
-});
-
-test('content: a record is changed by hand, and the game in the page follows', async () => {
-  tab('Content');
-  await until(() => all('#t-body .item').length >= 6, 'the kinds');
-  click(all('#t-body .item').find((i) => /^flowers/.test(i.textContent!))!);
-  await until(() => all('#t-body .item').some((i) => /Tulips/.test(i.textContent!)), 'the flowers');
-  click(all('#t-body .item').find((i) => /Tulips/.test(i.textContent!))!);
-  await until(() => $('.field-edit'), 'the tulip');
-  const value = all('.field-edit').find((f) => $('.k', f).textContent === 'value')!;
-  assert.equal(($('input', value) as HTMLInputElement).value, '8');
-  type($('input', value), '11');
-  const cost = all('.field-edit').find((f) => $('.k', f).textContent === 'cost')!;
-  type($('textarea', cost), '{"blooms": 150');
-  assert.ok($('textarea', cost).classList.contains('bad'), 'half-typed JSON is marked');
-  type($('textarea', cost), '{"blooms": 150}');
-  click(button('Save'));
-  await until(() => host.records.get('flowers/tulip')!.value === 11, 'the record to be saved');
-  assert.deepEqual(host.records.get('flowers/tulip')!.cost, { blooms: 150 });
-  assert.equal(app.game.exportRecords()['flowers/tulip'].value, 11);
-  assert.equal(host.events.since(0).at(-1)!.type, 'record.changed');
-  click(button('Talk about this'));
-  assert.deepEqual(app.refs.splice(0), ['record:flowers/tulip']);
 });
 
 test('art: the drawings are listed, one is looked at and locked, and a worker\'s drawing comes back as a card with pictures', async () => {
@@ -371,8 +340,8 @@ test('a new conversation clears the chat and keeps what is still to be decided',
   tab('Chat');
   // (The engine's message in the test before this one set the agent to work, as it should; let it finish.)
   await until(() => !app.agent.busy, 'the agent to be done');
-  await host.run('records.set', { path: 'flowers/daisy', value: { value: 2 }, note: 'still open' }, AGENT, 'r950');
-  await until(() => all('.card.prop').some((c) => /flowers\/daisy/.test(c.textContent!)), 'a pending proposal');
+  await host.run('concepts.create', { name: 'Daisies everywhere' }, AGENT, 'r950');
+  await until(() => all('.card.prop').some((c) => /daisies-everywhere/.test(c.textContent!)), 'a pending proposal');
   const open = all('.card.prop').filter((c) => c.dataset.status === 'pending').length;
   assert.ok(all('.msg').length >= 3 && all('.card.prop').length > open, 'there is a conversation, with decided proposals in it');
   asked = '7';
@@ -383,7 +352,7 @@ test('a new conversation clears the chat and keeps what is still to be decided',
   assert.equal(all('figure.card.look').length + all('.card.test').length, 0);
   assert.equal(app.agent.session, false, 'and the agent has forgotten');
   assert.match($('.usage').textContent!, /nothing in context yet/);
-  const daisy = all('.card.prop').find((c) => /flowers\/daisy/.test(c.textContent!))!;
+  const daisy = all('.card.prop').find((c) => /daisies-everywhere/.test(c.textContent!))!;
   click(button('Reject', daisy));
   await until(() => daisy.dataset.status === 'rejected', 'the rejection');
   type($('.composer textarea'), 'hello again');

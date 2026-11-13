@@ -5,8 +5,6 @@
 import type { EntityManager } from 'archetype-ecs';
 import type { CommandDef } from './commands.ts';
 
-export type RecordSet = Record<string, Record<string, unknown>>;
-
 /** A running game: an ECS world and the rules that step it. */
 export interface World {
   em: EntityManager;
@@ -40,9 +38,6 @@ export interface GameModule {
   position?: { component: string; x: string; y: string };
   /** The size of the world in its own units, and how many picture pixels one unit is. */
   size: { w: number; h: number; zoom: number };
-  /** The content as records, and laying records over it. */
-  exportRecords(): RecordSet;
-  applyRecords(set: RecordSet): void;
   createWorld(saved?: unknown, opts?: { seed?: number }): World;
   /** Draw a world. `time` is the animation clock in seconds. */
   render(world: World, opts?: { w?: number; h?: number; time?: number }): Picture;

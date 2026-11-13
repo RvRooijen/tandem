@@ -1,13 +1,16 @@
 // Starting a job (see job.ts) and waiting for what it says.
 import { spawn } from 'node:child_process';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { JobSpec } from './job.ts';
 
-const JOB = fileURLToPath(new URL('./job.ts', import.meta.url));
+const ENGINE = fileURLToPath(new URL('..', import.meta.url));
 
-export function runJob<T>(spec: JobSpec, timeoutMs = 10 * 60_000): Promise<T> {
+/** Run a job. `root` is the copy of the project to run it in: the project itself, or the agent's working copy. */
+export function runJob<T>(spec: JobSpec, opts: { root?: string; timeoutMs?: number } = {}): Promise<T> {
+  const root = opts.root ?? ENGINE, timeoutMs = opts.timeoutMs ?? 10 * 60_000;
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ['--no-warnings', JOB], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, ['--no-warnings', join(root, 'core/job.ts')], { cwd: root, stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '', err = '';
     const timer = setTimeout(() => { child.kill(); reject(new Error(`the ${spec.do} job took more than ${timeoutMs / 1000}s and was stopped`)); }, timeoutMs);
     child.stdout.on('data', (d) => { out += d; });

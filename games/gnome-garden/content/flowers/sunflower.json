@@ -1,9 +1,0 @@
-{
-  "name": "Sunflowers",
-  "value": 36,
-  "grow": 5.5,
-  "depth": 0,
-  "cost": {
-    "blooms": 8000
-  }
-}

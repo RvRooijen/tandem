@@ -3,15 +3,18 @@
 // one. Each proposal keeps the thing as it was, so the card can show before and after.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { RecordValue } from './records.ts';
+
+export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
+/** The fields of a thing, as they were or as they would be. */
+export type RecordValue = { [key: string]: Json };
 
 export interface Proposal {
   id: string;
   round: string;
   by: string;
-  /** What kind of thing it changes: a record, a concept, a drawing, or the game's code (the agent's working copy). */
-  kind: 'record' | 'concept' | 'drawing' | 'code';
-  /** The record's path, the concept's id, the drawing's name; for code, 'working copy'. */
+  /** What kind of thing it changes: a concept, a drawing, or the game's code (the agent's working copy). */
+  kind: 'concept' | 'drawing' | 'code';
+  /** The concept's id or the drawing's name; for code, 'working copy'. */
   path: string;
   /** The fields as they were (undefined for something new) and as they would be. */
   before?: RecordValue;

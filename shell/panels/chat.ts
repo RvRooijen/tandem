@@ -19,7 +19,6 @@ export function refChip(app: App, ref: string, onRemove?: () => void): HTMLEleme
   const [kind, rest] = [ref.slice(0, ref.indexOf(':')), ref.slice(ref.indexOf(':') + 1)];
   const open = () => {
     if (kind === 'concept') app.open('concepts', rest);
-    else if (kind === 'record') app.open('content', rest);
     else if (kind === 'drawing') app.open('art', rest);
     else if (kind === 'point') { const [x, y] = rest.split(',').map(Number); app.point(x, y); }
   };
@@ -40,7 +39,7 @@ export function chatPanel(): Panel {
   const newBtn = h<'button'>('button.icon.new-chat', { 'aria-label': 'New conversation', title: 'New conversation', onclick: () => {
     if (confirm('Start a new conversation? The chat is cleared and the agent forgets what was said. Pending proposals stay.')) void app.act('chat.new');
   } }, '↺');
-  const EMPTY = () => h('div.empty', {}, h('b', {}, 'Nothing said yet.'), h('p', {}, 'Talk about the game while you play it. Hang a concept, a record or something in the game on a message from the other tabs.'));
+  const EMPTY = () => h('div.empty', {}, h('b', {}, 'Nothing said yet.'), h('p', {}, 'Talk about the game while you play it. Hang a concept or a drawing on a message from the other tabs.'));
   let body: HTMLElement | undefined;
 
   const nearBottom = () => !body || body.scrollHeight - body.scrollTop - body.clientHeight < 80;
@@ -136,30 +135,19 @@ export function chatPanel(): Panel {
     el.dataset.status = r.status;
     const touched = new Map<string, { name: string; stage: string }>();
     for (const c of r.changes) for (const t of c.touches ?? []) touched.set(t.id, t);
-    const records = r.changes.some((c) => c.kind === 'record');
     const coded = r.changes.some((c) => c.kind === 'code');
     clear(el,
       h('div.t-head', {}, h('b', {}, coded ? 'A change to the game\'s code' : r.changes.length === 1 ? 'A proposal' : `A proposal, ${r.changes.length} changes`), h('span.state', {}, r.status)),
       r.changes.map((c) => h('div.change', {},
-        h('div.path', { onclick: () => app.open(c.kind === 'concept' ? 'concepts' : c.kind === 'drawing' ? 'art' : 'content', c.path) }, h('i', {}, c.kind), ' ', c.path),
+        h('div.path', { onclick: () => c.kind !== 'code' && app.open(c.kind === 'concept' ? 'concepts' : 'art', c.path) }, h('i', {}, c.kind), ' ', c.path),
         c.kind === 'drawing' ? pictures(c) : c.kind === 'code' ? codeFiles(c) : fieldLines(c),
         c.note && h('div.note', {}, c.note))),
       touched.size > 0 && h('div.touches', {}, 'touches ', [...touched].map(([id, t]) => h('span.t-chip.stage', { data: { stage: t.stage }, onclick: () => app.open('concepts', id) }, `${t.name} · ${t.stage}`))),
       r.status === 'pending' && h('div.t-row', {},
-        records && h<'button'>('button', { onclick: () => void app.play(r.round) }, app.playing === r.round ? 'Playing…' : 'Play it'),
         coded && h<'button'>('button', { onclick: (ev: MouseEvent) => void playCopy(ev.currentTarget as HTMLButtonElement) }, 'Play the copy'),
-        records && h<'button'>('button', { onclick: (ev: MouseEvent) => void compareRound(r, ev.currentTarget as HTMLButtonElement) }, 'Compare'),
         h<'button'>('button.primary', { onclick: () => void app.act('proposals.decide', { round: r.round, accept: true }) }, 'Accept'),
         h<'button'>('button.danger', { onclick: () => void app.act('proposals.decide', { round: r.round, accept: false }) }, 'Reject')));
     return el;
-  }
-
-  async function compareRound(r: Round, btn: HTMLButtonElement) {
-    btn.disabled = true;
-    btn.textContent = 'Playing twice…';
-    await app.act('playtest.compare', { round: r.round });
-    btn.disabled = false;
-    btn.textContent = 'Compare';
   }
 
   function playtestCard(ev: Event): HTMLElement {
@@ -167,7 +155,7 @@ export function chatPanel(): Panel {
       const len = ev.length as { before?: number; after?: number };
       const moved = ev.moved as { milestone: string; before?: number; after?: number; change?: number }[];
       return h('div.card.test', {},
-        h('div.t-head', {}, h('b', {}, 'Played twice'), h('span.state', {}, `${ev.profile} player`)),
+        h('div.t-head', {}, h('b', {}, 'Played twice: the game, and the working copy'), h('span.state', {}, `${ev.profile} player`)),
         h('div.field', {}, h('span.k', {}, 'whole game'), h('span.was', {}, mins(len.before)), h('span.arrow', {}, '→'), h('span.now', {}, mins(len.after))),
         moved.length ? moved.slice(0, 12).map((m) => h('div.field', {}, h('span.k', {}, m.milestone), h('span.was', {}, mins(m.before)), h('span.arrow', {}, '→'), h('span.now', {}, mins(m.after)),
           m.change !== undefined && h('span.pct', { data: { dir: m.change < 0 ? 'down' : 'up' } }, `${m.change > 0 ? '+' : ''}${Math.round(m.change)}%`)))
@@ -175,7 +163,7 @@ export function chatPanel(): Panel {
         moved.length > 12 && h('div.note', {}, `and ${moved.length - 12} more`));
     }
     return h('div.card.test', {},
-      h('div.t-head', {}, h('b', {}, 'Playtest'), h('span.state', {}, `${ev.profile} player${ev.proposed ? ', as proposed' : ''}`)),
+      h('div.t-head', {}, h('b', {}, 'Playtest'), h('span.state', {}, `${ev.profile} player${ev.copy ? ', the working copy' : ''}`)),
       h('div.field', {}, h('span.k', {}, 'whole game'), h('span.now', {}, mins(ev.length as number | undefined))));
   }
 
@@ -198,8 +186,6 @@ export function chatPanel(): Panel {
         return h('div.sys.tap', { onclick: () => { app.close(); app.point(Number(ev.x), Number(ev.y), String(ev.text ?? '')); } }, '◎ pointed at the game', ev.text ? `: ${ev.text}` : '');
       case 'stage.open':
         return h('div.sys.tap', { onclick: () => app.open(String(ev.tab), ev.id ? String(ev.id) : undefined) }, `↗ opened ${ev.tab}${ev.id ? ` · ${ev.id}` : ''}`);
-      case 'record.changed':
-        return h('div.sys.tap', { onclick: () => app.open('content', String(ev.path)) }, `✎ ${ev.path} changed: ${Object.entries(ev.after as object).map(([k, v]) => `${k} ${short(v, 24)}`).join(', ')}`);
       // Drawing work lives in the Art tab; here it is one line that leads there.
       case 'art.asked':
         return h('div.sys.tap', { onclick: () => app.open('art', `worker:${ev.worker}`) }, `🖌 ${ev.by === 'me' ? 'you' : 'the agent'} asked a worker ${ev.isNew ? 'for a new drawing,' : 'to change'} ${ev.name}: ${String(ev.message).slice(0, 140)}`);

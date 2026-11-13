@@ -6,8 +6,8 @@ import type { State } from './state.ts';
 export type Res = 'blooms' | 'teeth' | 'whispers' | 'hats';
 
 /**
- * The numbers the game is tuned with that are not part of one flower or one upgrade. They are plain data so they
- * can live in records (content/settings/*.json) and be changed by a proposal without touching code.
+ * The numbers the game is tuned with that are not part of one flower or one upgrade: the length of a day, what
+ * a gnome adds, how digging slows down. This file is the one place the game's numbers are.
  */
 export const TUNE = {
   day: { dayLen: 30, nightBase: 45, nightPerPorch: 10, sleepSeconds: 6 },

@@ -10,7 +10,7 @@ import { clear, h } from '../dom.ts';
 const FIRM: { id: Stage; says: string }[] = [
   { id: 'idea', says: 'A thought: the agent explores and offers directions.' },
   { id: 'design', says: 'Being worked out in words: the agent helps settle what it is, and leaves the game alone.' },
-  { id: 'build', says: 'Being made real: the agent proposes the content and asks for the art.' },
+  { id: 'build', says: 'Being made real: the agent codes it in its working copy and asks for the art.' },
   { id: 'playtest', says: 'In the game: the agent plays it, measures it and tunes it with small proposals.' },
 ];
 const LINKS = ['part-of', 'leads-to', 'clashes-with'];
@@ -96,7 +96,7 @@ export function conceptsPanel(): Panel {
       touch(); paintLinks();
     });
 
-    const realised = h<'textarea'>('textarea.small', { value: draft.realised.join('\n'), rows: Math.max(2, draft.realised.length), placeholder: 'One per line: flowers/rose, upgrades/*, a drawing, a test', 'aria-label': 'What makes it real',
+    const realised = h<'textarea'>('textarea.small', { value: draft.realised.join('\n'), rows: Math.max(2, draft.realised.length), placeholder: 'One per line: a rule, a drawing, a test', 'aria-label': 'What makes it real',
       oninput: () => { draft.realised = realised.value.split('\n').map((s) => s.trim()).filter(Boolean); touch(); } });
 
     clear(body,

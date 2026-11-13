@@ -6,7 +6,6 @@ import { Critter, Flower, Gnome, Move, Pos, Spark, Visitor } from './src/sim/com
 import { ABILITIES, BEATS, FLOWERS, GNOMES, UPGRADES, type RoleId } from './src/sim/content.ts';
 import { totalGnomes } from './src/sim/economy.ts';
 import { createGame, type Game } from './src/sim/game.ts';
-import { applyRecords, exportRecords } from './src/sim/records.ts';
 import { newState } from './src/sim/state.ts';
 import { WORLD_H, WORLD_W } from './src/sim/world.ts';
 import { ZOOM, createScene, type Scene } from './src/render/scene.ts';
@@ -62,8 +61,6 @@ export const game: GameModule = {
     ...GNOMES.map((d) => ({ id: `gnome:${d.id}`, about: `the first ${d.id} gnome is bought` })),
     { id: 'unearth', about: 'the last rite: this owner is done' },
   ],
-  exportRecords,
-  applyRecords,
   createWorld: (saved, opts = {}) => wrap(createGame(saved, { seed: opts.seed ?? 1, quiet: true })),
   render(world, opts = {}) {
     const w = opts.w ?? WORLD_W * ZOOM, h = opts.h ?? WORLD_H * ZOOM;

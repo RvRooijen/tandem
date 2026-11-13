@@ -37,6 +37,6 @@ test('every module of the page is served as a module, and /api/ reaches the core
 
   const info = await (await fetch(`${base}/api/info`)).json() as { game: string };
   assert.equal(info.game, 'gnome-garden');
-  const run = await (await fetch(`${base}/api/run/records.get`, { method: 'POST', body: '{"path":"flowers/tulip"}' })).json() as { ok: boolean };
+  const run = await (await fetch(`${base}/api/run/art.get`, { method: 'POST', body: '{"name":"gnome"}' })).json() as { ok: boolean };
   assert.equal(run.ok, true);
 });

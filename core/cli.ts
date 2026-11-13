@@ -2,7 +2,7 @@
 // works, and how anything can be tried by hand.
 //   node core/cli.ts list                      every command
 //   node core/cli.ts run game.state            run one
-//   node core/cli.ts run records.set '{"path":"flowers/tulip","value":{"value":7}}'
+//   node core/cli.ts run concepts.update '{"id":"seasons","stage":"build"}'
 // Who is asking comes from TANDEM_BY (default: me), the round from TANDEM_ROUND.
 export {};
 const [, , verb, name, json] = process.argv;

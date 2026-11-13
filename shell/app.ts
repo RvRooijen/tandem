@@ -3,7 +3,7 @@
 // at the game. The game underneath keeps running and stays in view, so it
 // can be played and talked about at once.
 import type { Event } from '../core/events.ts';
-import type { GameModule, GamePage, RecordSet } from '../core/game.ts';
+import type { GameModule, GamePage } from '../core/game.ts';
 import type { AgentStatus } from '../core/runner.ts';
 import { run, type Info } from './api.ts';
 import { clear, h } from './dom.ts';
@@ -27,24 +27,20 @@ export interface App {
   page: GamePage;
   events: Event[];
   agent: AgentStatus;
-  /** What the next message is about: "concept:<id>", "record:<path>", "entity:<id>", "point:<x>,<y>". */
+  /** What the next message is about: "concept:<id>", "drawing:<name>", "point:<x>,<y>". */
   refs: string[];
-  /** The round of proposals being played in the page right now, if any. */
-  playing: string | null;
   open(tab: string, id?: string): void;
   close(): void;
   current(): string | null;
   /** Hang something on the next message and go to the chat. */
   attach(ref: string): void;
   point(x: number, y: number, text?: string): void;
-  play(round: string): Promise<void>;
-  stopPlaying(): Promise<void>;
   zoom(url: string): void;
   toast(text: string): void;
   /** Run a command for a button: failures are said, not thrown. */
   act<T>(name: string, input?: Record<string, unknown>): Promise<T | undefined>;
   badge(tab: string, on: boolean): void;
-  /** A button that locks or unlocks something ("concept:<id>", "record:<path>", "drawing:<name>") against the agent. */
+  /** A button that locks or unlocks something ("concept:<id>", "drawing:<name>") against the agent. */
   lockButton(ref: string, locked: boolean, changed?: (locked: boolean) => void): HTMLButtonElement;
 }
 
@@ -59,11 +55,10 @@ export function createApp(root: HTMLElement, info: Info, game: GameModule, page:
       h<'button'>('button.icon', { 'aria-label': 'Taller or shorter', onclick: () => sheet.classList.toggle('tall') }, '⇕'),
       h<'button'>('button.icon', { 'aria-label': 'Close', onclick: () => app.close() }, '✕')),
     body, foot);
-  const banner = h('div#t-banner', { hidden: true });
   const ring = h('div#t-ring', { hidden: true }, h('i'), h('span'));
   const toastEl = h('div#t-toast', { hidden: true });
   const zoomEl = h('div#t-zoom', { hidden: true, onclick: () => { zoomEl.hidden = true; } }, h<'img'>('img'));
-  root.append(fab, banner, ring, sheet, toastEl, zoomEl);
+  root.append(fab, ring, sheet, toastEl, zoomEl);
 
   let shown: string | null = null, last = 'chat';
   let ringTimer = 0, toastTimer = 0;
@@ -82,17 +77,11 @@ export function createApp(root: HTMLElement, info: Info, game: GameModule, page:
     fab.classList.toggle('busy', app.agent.busy);
   }
 
-  async function apply(set: RecordSet) {
-    game.applyRecords(set);
-    page.contentChanged();
-  }
-
   const app: App & { feed(ev: Event, live: boolean): void } = {
     info, game, page,
     events: [],
     agent: { busy: false, doing: '', text: '', waiting: 0, session: false, off: false, context: 0, limit: 0 },
     refs: [],
-    playing: null,
     current: () => shown,
 
     open(tab, id) {
@@ -133,23 +122,6 @@ export function createApp(root: HTMLElement, info: Info, game: GameModule, page:
       ring.classList.add('go');
       clearTimeout(ringTimer);
       ringTimer = window.setTimeout(() => { ring.hidden = true; }, 7000);
-    },
-
-    async play(round) {
-      const set = await app.act<RecordSet>('records.all', { proposed: true, round });
-      if (!set) return;
-      await apply(set);
-      app.playing = round;
-      clear(banner, h('span', {}, 'Playing the proposal'), h<'button'>('button', { onclick: () => app.stopPlaying() }, 'Back to how it is'));
-      banner.hidden = false;
-      app.close();
-    },
-
-    async stopPlaying() {
-      const set = await app.act<RecordSet>('records.all');
-      if (set) await apply(set);
-      app.playing = null;
-      banner.hidden = true;
     },
 
     zoom(url) {
@@ -211,11 +183,6 @@ export function createApp(root: HTMLElement, info: Info, game: GameModule, page:
         // What the agent shows, it shows on the stage itself.
         if (ev.type === 'stage.point') app.point(Number(ev.x), Number(ev.y), String(ev.text ?? ''));
         if (ev.type === 'stage.open') app.open(String(ev.tab), ev.id ? String(ev.id) : undefined);
-        // The content changed: the game in the page follows, unless a proposal is being tried out.
-        if (ev.type === 'record.changed' || ev.type === 'proposal.decided') {
-          if (app.playing && (ev.type !== 'proposal.decided' || ev.round === app.playing)) void app.stopPlaying();
-          else if (!app.playing) void run<RecordSet>('records.all').then(apply).catch(() => {});
-        }
         if (ev.by !== 'me' && ['message', 'look', 'playtest'].includes(ev.type)) app.badge('chat', true);
         if (ev.type === 'proposal' && !ev.worker) app.badge('chat', true);
         // A worker's round is ready: that is news in the Art tab.

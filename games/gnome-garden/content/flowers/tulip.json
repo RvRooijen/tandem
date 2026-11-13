@@ -1,9 +1,0 @@
-{
-  "name": "Tulips",
-  "value": 6,
-  "grow": 4.5,
-  "depth": 0,
-  "cost": {
-    "blooms": 120
-  }
-}

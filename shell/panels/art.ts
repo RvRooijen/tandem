@@ -1,5 +1,5 @@
 // The drawings the game is made of, and the drawing work on them. A drawing is
-// a thing of the engine like a record: look at it, lock it, hand it to the
+// a thing of the engine like a concept: look at it, lock it, hand it to the
 // agent, or give a worker a brief. A worker is watched here, live: its
 // drawing appears as it is typed, then its round is decided here too, with a
 // picture before and after. The chat only gets a line that leads back here.

@@ -18,8 +18,8 @@ const TOOLS = [
 
 /**
  * What the agent may do in its working copy, on top of the above: change the game's code, build its drawings in,
- * run its tests and the type check, and see what it changed. Not the game's content, concepts or drawings (those
- * go through commands, where they are proposals and can be locked), and not the engine.
+ * run its tests and the type check, and see what it changed. Not the game's concepts or drawings (those go through
+ * commands, where they are proposals and can be locked), and not the engine.
  */
 const codeTools = (game: string) => [
   ...['src/**', 'test/**', 'tools/**', 'module.ts', 'page.ts', 'index.html'].flatMap((p) => [`Edit(games/${game}/${p})`, `Write(games/${game}/${p})`]),
@@ -71,7 +71,7 @@ export function createRunner(host: Host) {
       const may = c.agent === 'yes' ? '' : c.agent === 'no' ? ' [the person only]' : ' [from you: a proposal]';
       return `- ${c.name}${may}: ${c.about}${input ? ` Takes { ${input} }.` : ''}`;
     }).join('\n');
-    return `${readFileSync(join(ROOT, 'core/agent-intro.md'), 'utf8')}${host.code ? `\n${readFileSync(join(ROOT, 'core/agent-code.md'), 'utf8').replaceAll('<game>', host.game.id)}` : ''}\n## The game\n\n${host.game.name} (${host.game.id}). Its content is under games/${host.game.id}/content, its concepts under games/${host.game.id}/concepts; you may read the code under games/${host.game.id}/src to understand a rule.\n\n## The commands\n\n${list}\n`;
+    return `${readFileSync(join(ROOT, 'core/agent-intro.md'), 'utf8')}${host.code ? `\n${readFileSync(join(ROOT, 'core/agent-code.md'), 'utf8').replaceAll('<game>', host.game.id)}` : ''}\n## The game\n\n${host.game.name} (${host.game.id}). Its code is under games/${host.game.id}/src, its concepts under games/${host.game.id}/concepts, its drawings under games/${host.game.id}/art.\n\n## The commands\n\n${list}\n`;
   }
 
   /** What a message points at, written out, so the agent does not have to go and fetch it. */
@@ -84,9 +84,6 @@ export function createRunner(host: Host) {
         if (kind === 'concept') {
           const c = host.concepts.get(rest);
           if (c) out.push(`Concept "${c.name}" (${c.id}, stage ${c.stage}${host.locks.has(`concept:${c.id}`) ? ', LOCKED' : ''}):\n${c.text || '(no description yet)'}`);
-        } else if (kind === 'record') {
-          const r = host.records.get(rest);
-          if (r) out.push(`Record ${rest}${host.locks.has(`record:${rest}`) ? ' (LOCKED)' : ''}: ${JSON.stringify(r)}`);
         } else if (kind === 'entity') {
           const e = entityView(host.world(), host.game, Number(rest));
           out.push(e ? `Entity ${rest} in the world being played: ${JSON.stringify(e.components)}` : `Entity ${rest} (no longer there)`);

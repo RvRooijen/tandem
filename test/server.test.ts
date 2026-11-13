@@ -35,17 +35,17 @@ test('commands over HTTP: the list, a run, who is asking, what goes wrong', asyn
   assert.equal(info.game, 'gnome-garden');
   assert.equal(info.size.w, 144);
 
-  const tulip = await post('records.get', { path: 'flowers/tulip' });
-  assert.equal(tulip.status, 200);
-  assert.equal(tulip.result.name, 'Tulips');
+  const gnome = await post('art.get', { name: 'gnome' });
+  assert.equal(gnome.status, 200);
+  assert.equal(gnome.result.name, 'gnome');
 
-  assert.deepEqual(await post('records.get', { path: 'flowers/orchid' }), { status: 404, ok: false, code: 'missing', error: 'there is no record flowers/orchid; see records.list' });
+  assert.deepEqual(await post('concepts.get', { id: 'orchids' }), { status: 404, ok: false, code: 'missing', error: 'there is no concept orchids; see concepts.list' });
   assert.equal((await post('nope.nothing')).status, 404);
-  assert.equal((await post('records.get', {})).code, 'input');
+  assert.equal((await post('concepts.get', {})).code, 'input');
   const denied = await post('proposals.decide', { round: 'x', accept: true }, { 'x-tandem-by': 'agent:main' });
   assert.equal(denied.status, 400);
   assert.equal(denied.code, 'permission');
-  const bad = await fetch(`${base}/run/records.get`, { method: 'POST', body: '{nope' });
+  const bad = await fetch(`${base}/run/concepts.get`, { method: 'POST', body: '{nope' });
   assert.equal(bad.status, 400);
   assert.equal((await fetch(`${base}/elsewhere`)).status, 404);
 });
@@ -82,7 +82,7 @@ test('the event log is a stream: what was, then what happens', async () => {
 
 test('a message from the person is answered by the agent, whose only hands are commands', async () => {
   const before = host.events.last();
-  const sent = await post('chat.send', { text: 'make the tulips worth a bit more', refs: ['record:flowers/tulip'] });
+  const sent = await post('chat.send', { text: 'make the tulips worth a bit more', refs: ['drawing:garden-flowers'] });
   const round = `r${sent.result.n}`;
   await until(() => host.events.since(before).some((e) => e.type === 'message' && e.by === 'agent'));
   await until(() => !s.runner!.status().busy);
@@ -90,14 +90,14 @@ test('a message from the person is answered by the agent, whose only hands are c
   const proposal = evs.find((e) => e.type === 'proposal')!;
   assert.equal(proposal.by, 'agent:main');
   assert.equal(proposal.round, round, 'what it proposes belongs to the round of the message it answers');
-  assert.deepEqual(proposal.after, { value: 8 });
+  assert.deepEqual([proposal.kind, proposal.path, (proposal.after as { text: string }).text], ['concept', `tulips-${round}`, 'Tulips are worth a bit more.']);
   const reply = evs.find((e) => e.type === 'message' && e.by === 'agent')!;
   assert.match(String(reply.text), /I proposed it \(ok\)/);
   assert.match(String(reply.text), /Allowed: Bash\(node core\/cli\.ts:\*\)/, 'it is given the command line and little else');
   assert.match(String(reply.text), /About: refs/, 'what the message points at is written out for it');
   assert.equal(reply.round, round);
   assert.equal(evs.filter((e) => e.type === 'message' && e.by === 'agent').length, 1, 'said once');
-  assert.equal((await post('records.get', { path: 'flowers/tulip' })).result.value, 6, 'and nothing is changed until the person says so');
+  assert.equal((await post('concepts.get', { id: `tulips-${round}` })).status, 404, 'and nothing is changed until the person says so');
 
   assert.equal(JSON.parse(readFileSync(join(dir, 'data/agent.json'), 'utf8')).session, 'sess-1');
   // How big the conversation is: everything the last request carried, in tokens.

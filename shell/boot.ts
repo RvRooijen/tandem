@@ -1,14 +1,12 @@
 // Starting the shell: ask the core which game this is, load that game's page,
-// lay the content records over it, put the tools on top, and from then on
-// follow the event log.
-import type { GameModule, GamePage, MountOptions, RecordSet } from '../core/game.ts';
+// put the tools on top, and from then on follow the event log.
+import type { GameModule, GamePage, MountOptions } from '../core/game.ts';
 import { addLocal, follow, info as getInfo, run } from './api.ts';
 import { createApp } from './app.ts';
 import { h } from './dom.ts';
 import { artPanel } from './panels/art.ts';
 import { chatPanel } from './panels/chat.ts';
 import { conceptsPanel } from './panels/concepts.ts';
-import { contentPanel } from './panels/content.ts';
 
 export interface PageModule { mount(root: HTMLElement, opts?: MountOptions): GamePage; game: GameModule }
 
@@ -23,8 +21,6 @@ export async function boot(loadPage: (game: string) => Promise<PageModule>) {
   }
   const { mount, game } = await loadPage(info.game);
 
-  // The content is what is on the host, not what happens to be in the code.
-  game.applyRecords(await run<RecordSet>('records.all'));
   // The page of the agent's working copy (?preview): the game as the agent coded it, started from the world the
   // person is playing, and keeping nothing: it is there to be tried, and the real save is not to be touched.
   const preview = new URLSearchParams(location.search).has('preview');
@@ -37,7 +33,7 @@ export async function boot(loadPage: (game: string) => Promise<PageModule>) {
   // The game's own commands, on the world in this page.
   addLocal(...game.commands(() => page.world));
 
-  const app = createApp(layer, info, game, page, [chatPanel(), conceptsPanel(), contentPanel(), artPanel()]);
+  const app = createApp(layer, info, game, page, [chatPanel(), conceptsPanel(), artPanel()]);
 
   // Everything up to now is history; what comes after is live.
   const since = Math.max(0, info.last - 400);

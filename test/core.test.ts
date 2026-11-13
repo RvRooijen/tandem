@@ -24,74 +24,62 @@ test('every command says what it is for, and the list is what the agent is told'
   }
   const by = Object.fromEntries(list.map((c: any) => [c.name, c.agent]));
   assert.equal(by['proposals.decide'], 'no');
-  assert.equal(by['records.set'], 'as a proposal');
+  assert.equal(by['concepts.update'], 'as a proposal');
+  assert.ok(!list.some((c: any) => c.name.startsWith('records.')), 'the game\'s numbers are code, not a layer of records beside it');
   assert.equal(by['game.state'], 'yes');
   assert.equal(by['world.push'], 'no');
 });
 
 test('input is checked before anything runs', async () => {
   await refused(me('nothing.here'), 'unknown');
-  await refused(me('records.get', {}), 'input');
-  await refused(me('records.get', { path: 5 }), 'input');
-  await refused(me('records.get', { path: 'flowers/tulip', nonsense: 1 }), 'input');
-  await refused(me('records.get', { path: 'flowers/orchid' }), 'missing');
+  await refused(me('concepts.get', {}), 'input');
+  await refused(me('concepts.get', { id: 5 }), 'input');
+  await refused(me('concepts.get', { id: 'slow-burn', nonsense: 1 }), 'input');
+  await refused(me('concepts.get', { id: 'orchids' }), 'missing');
 });
 
-test('the content starts as what is in the code, as one file per thing', async () => {
-  const paths = await me('records.list');
-  assert.ok(paths.includes('flowers/tulip') && paths.includes('settings/day') && paths.includes('upgrades/compost'));
-  assert.ok(existsSync(join(dir, 'game/content/flowers/tulip.json')));
-  const tulip = await me('records.get', { path: 'flowers/tulip' });
-  assert.equal(tulip.value, 6);
-  const flowers = await me('records.get', { path: 'flowers/*' });
-  assert.equal(Object.keys(flowers).length, 9);
-});
-
-test('the person changes a record at once; the agent proposes, and the person decides', async () => {
+test('the person changes a concept at once; the agent proposes, and the person decides', async () => {
+  await me('concepts.create', { name: 'Tulips', text: 'A splash of colour for the beds.' });
   const before = host.events.last();
-  assert.deepEqual(await me('records.set', { path: 'flowers/tulip', value: { value: 7 } }), { changed: true });
-  assert.equal((await me('records.get', { path: 'flowers/tulip' })).value, 7);
-  assert.equal(host.game.exportRecords()['flowers/tulip'].value, 7, 'and the game itself follows');
-  assert.equal(JSON.parse(readFileSync(join(dir, 'game/content/flowers/tulip.json'), 'utf8')).value, 7);
-  assert.equal(host.events.since(before)[0].type, 'record.changed');
+  assert.deepEqual(await me('concepts.update', { id: 'tulips', text: 'A splash of colour.' }), { changed: true });
+  assert.equal((await me('concepts.get', { id: 'tulips' })).text, 'A splash of colour.');
+  assert.equal(host.events.since(before)[0].type, 'concept.changed');
+  assert.equal((await me('concepts.update', { id: 'tulips', text: 'A splash of colour.' })).changed, false);
 
-  await refused(me('records.set', { path: 'flowers/tulip', value: { petals: 5 } }), 'input');
-  assert.equal((await me('records.set', { path: 'flowers/tulip', value: { value: 7 } })).changed, false);
-
-  const p = await agent('records.set', { path: 'flowers/tulip', value: { value: 12, grow: 4 }, note: 'tulips should matter longer' });
+  const p = await agent('concepts.update', { id: 'tulips', text: 'They matter longer.', stage: 'design', note: 'tulips should matter longer' });
   assert.ok(p.proposed);
-  assert.equal((await me('records.get', { path: 'flowers/tulip' })).value, 7, 'nothing changed yet');
-  assert.equal((await me('records.get', { path: 'flowers/tulip', proposed: true })).value, 12, 'but it can be read as proposed');
-  assert.equal((await me('records.all', { proposed: true, round: 'r1' }))['flowers/tulip'].grow, 4);
+  assert.equal((await me('concepts.get', { id: 'tulips' })).text, 'A splash of colour.', 'nothing changed yet');
   const ev = host.events.since(0).at(-1)!;
   assert.equal(ev.type, 'proposal');
-  assert.deepEqual(ev.before, { value: 7, grow: 4.5 });
-  assert.deepEqual(ev.after, { value: 12, grow: 4 });
+  assert.deepEqual(ev.before, { text: 'A splash of colour.', stage: 'idea' });
+  assert.deepEqual(ev.after, { text: 'They matter longer.', stage: 'design' });
 
-  // A second change to the same record in the same round is the same proposal, moved on.
-  await agent('records.set', { path: 'flowers/tulip', value: { value: 10 } });
-  await agent('records.set', { path: 'flowers/rose', value: { value: 250 } });
+  // A second change to the same thing in the same round is the same proposal, moved on.
+  await agent('concepts.update', { id: 'tulips', text: 'They matter much longer.' });
+  await agent('concepts.create', { name: 'Roses' });
   const pending = await me('proposals.list', { status: 'pending' });
   assert.equal(pending.length, 2);
-  assert.deepEqual(pending.find((x: any) => x.path === 'flowers/tulip').after, { value: 10, grow: 4 });
+  assert.deepEqual(pending.find((x: any) => x.path === 'tulips').after, { text: 'They matter much longer.', stage: 'design' });
 
   await refused(agent('proposals.decide', { round: 'r1', accept: true }), 'permission');
   assert.deepEqual(await me('proposals.decide', { round: 'r1', accept: true }), { decided: 2 });
-  assert.equal((await me('records.get', { path: 'flowers/tulip' })).value, 10);
-  assert.equal(host.game.exportRecords()['flowers/rose'].value, 250);
+  assert.equal((await me('concepts.get', { id: 'tulips' })).text, 'They matter much longer.');
+  assert.equal((await me('concepts.get', { id: 'roses' })).stage, 'idea');
   await refused(me('proposals.decide', { round: 'r1', accept: true }), 'missing');
 
-  await agent('records.set', { path: 'flowers/rose', value: { value: 999 } }, 'r2');
+  await agent('concepts.update', { id: 'roses', text: 'Thorns.' }, 'r2');
   await me('proposals.decide', { round: 'r2', accept: false });
-  assert.equal((await me('records.get', { path: 'flowers/rose' })).value, 250, 'a rejected round changes nothing');
+  assert.equal((await me('concepts.get', { id: 'roses' })).text, '', 'a rejected round changes nothing');
   assert.equal((await me('proposals.list', { status: 'pending' })).length, 0);
+  await me('concepts.remove', { id: 'tulips' });
+  await me('concepts.remove', { id: 'roses' });
 });
 
 test('concepts: the person writes them, the agent proposes, and nothing in one is a timing', async () => {
   const made = await me('concepts.create', { name: 'The Slow Burn', text: 'It starts as a seed packet and takes hours to turn.' });
   assert.equal(made.id, 'the-slow-burn');
   await refused(me('concepts.create', { name: 'The slow burn' }), 'exists');
-  await me('concepts.update', { id: made.id, stage: 'playtest', realised: ['beats/*', 'settings/day'], links: [{ to: 'ornaments', kind: 'part-of' }] });
+  await me('concepts.update', { id: made.id, stage: 'playtest', realised: ['the diary lines', 'a test'], links: [{ to: 'ornaments', kind: 'part-of' }] });
   await refused(me('concepts.update', { id: made.id, checks: [{ milestone: 'awake', min: 60 }] }), 'input');
   await refused(me('concepts.update', { id: made.id, stage: 'finished' }), 'input');
   await refused(me('concepts.update', { id: made.id, firmness: 'fixed' }), 'input');
@@ -102,11 +90,6 @@ test('concepts: the person writes them, the agent proposes, and nothing in one i
   assert.ok(!('checks' in c), 'a concept holds words, not windows of minutes');
   assert.match(readFileSync(join(dir, 'game/concepts/the-slow-burn.md'), 'utf8'), /It starts as a seed packet/);
   assert.equal((await me('concepts.list'))[0].summary, 'It starts as a seed packet and takes hours to turn.');
-
-  // A record that a concept says is its own carries the concept's name on the proposal.
-  await agent('records.set', { path: 'settings/day', value: { dayLen: 40 } }, 'r3');
-  assert.deepEqual(host.events.since(0).at(-1)!.touches, [{ id: 'the-slow-burn', name: 'The Slow Burn', stage: 'playtest' }]);
-  await me('proposals.decide', { round: 'r3', accept: false });
 
   const p = await agent('concepts.create', { name: 'Blue rose', text: 'A rose that only opens at night.' }, 'r4');
   assert.ok(p.proposed);
@@ -123,37 +106,34 @@ test('concepts: the person writes them, the agent proposes, and nothing in one i
 });
 
 test('a lock keeps the agent off a thing, even when it is asked to change it', async () => {
-  await refused(agent('locks.set', { ref: 'record:flowers/rose', locked: true }), 'permission');
-  await refused(me('locks.set', { ref: 'flowers/rose', locked: true }), 'input');
+  await refused(agent('locks.set', { ref: 'drawing:gnome', locked: true }), 'permission');
+  await refused(me('locks.set', { ref: 'gnome', locked: true }), 'input');
+  await refused(me('locks.set', { ref: 'record:flowers/rose', locked: true }), 'input');
   const before = host.events.last();
-  await me('locks.set', { ref: 'record:flowers/rose', locked: true });
   await me('locks.set', { ref: 'concept:the-slow-burn', locked: true });
   await me('locks.set', { ref: 'drawing:gnome', locked: true });
   await me('locks.set', { ref: 'drawing:gnome', locked: true });
-  assert.deepEqual(host.events.since(before).map((e) => `${e.type} ${e.ref}`), ['lock.changed record:flowers/rose', 'lock.changed concept:the-slow-burn', 'lock.changed drawing:gnome']);
-  assert.deepEqual(await agent('locks.list'), ['concept:the-slow-burn', 'drawing:gnome', 'record:flowers/rose']);
-  assert.deepEqual(JSON.parse(readFileSync(join(dir, 'game/locks.json'), 'utf8')), ['concept:the-slow-burn', 'drawing:gnome', 'record:flowers/rose']);
+  assert.deepEqual(host.events.since(before).map((e) => `${e.type} ${e.ref}`), ['lock.changed concept:the-slow-burn', 'lock.changed drawing:gnome']);
+  assert.deepEqual(await agent('locks.list'), ['concept:the-slow-burn', 'drawing:gnome']);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, 'game/locks.json'), 'utf8')), ['concept:the-slow-burn', 'drawing:gnome']);
 
   // The agent cannot change it and cannot propose a change to it.
   const pending = (await me('proposals.list', { status: 'pending' })).length;
-  await refused(agent('records.set', { path: 'flowers/rose', value: { value: 1 } }, 'r7'), 'locked');
   await refused(agent('concepts.update', { id: 'the-slow-burn', text: 'Faster.' }, 'r7'), 'locked');
   await refused(agent('art.ask', { name: 'gnome', message: 'a taller hat' }, 'r7'), 'locked');
   assert.equal((await me('proposals.list', { status: 'pending' })).length, pending, 'nothing was proposed');
-  assert.match(await agent('records.set', { path: 'flowers/rose', value: { value: 1 } }).catch((e: Error) => e.message), /even if they ask you to/);
+  assert.match(await agent('concepts.update', { id: 'the-slow-burn', text: 'Faster.' }).catch((e: Error) => e.message), /even if they ask you to/);
   assert.equal((await agent('concepts.list')).find((c: any) => c.id === 'the-slow-burn').locked, true);
   assert.equal((await agent('art.list')).find((d: any) => d.name === 'gnome').locked, true);
 
   // What is next to it is not locked, and the person is never locked out.
-  assert.ok((await agent('records.set', { path: 'flowers/tulip', value: { grow: 5 } }, 'r7')).proposed);
+  assert.ok((await agent('concepts.create', { name: 'Faster seasons' }, 'r7')).proposed);
   await me('proposals.decide', { round: 'r7', accept: false });
-  assert.deepEqual(await me('records.set', { path: 'flowers/rose', value: { value: 260 } }), { changed: true });
   await me('concepts.update', { id: 'the-slow-burn', stage: 'design' });
 
-  await me('locks.set', { ref: 'record:flowers/rose', locked: false });
-  assert.ok((await agent('records.set', { path: 'flowers/rose', value: { value: 270 } }, 'r8')).proposed);
-  await me('proposals.decide', { round: 'r8', accept: false });
   await me('locks.set', { ref: 'concept:the-slow-burn', locked: false });
+  assert.ok((await agent('concepts.update', { id: 'the-slow-burn', text: 'Faster.' }, 'r8')).proposed);
+  await me('proposals.decide', { round: 'r8', accept: false });
   await me('locks.set', { ref: 'drawing:gnome', locked: false });
   assert.deepEqual(await me('locks.list'), []);
 });
@@ -282,7 +262,7 @@ test('art: a drawing is a thing of the engine: listed, read, looked at, changed 
 
 test('the conversation and the stage are events like everything else', async () => {
   const before = host.events.last();
-  await me('chat.send', { text: 'what about the tulips?', refs: ['record:flowers/tulip'] });
+  await me('chat.send', { text: 'what about the tulips?', refs: ['drawing:garden-flowers'] });
   await agent('chat.send', { text: 'They pay 10 now.' });
   await agent('stage.point', { x: 30, y: 150, text: 'here' });
   await agent('stage.open', { tab: 'concepts', id: 'the-slow-burn' });
@@ -290,7 +270,7 @@ test('the conversation and the stage are events like everything else', async () 
   assert.deepEqual(host.events.since(before).map((e) => `${e.type}:${e.by}`), ['message:me', 'message:agent:main', 'stage.point:agent:main', 'stage.open:agent:main']);
   const history = await me('chat.history', { limit: 2 });
   assert.deepEqual(history.map((m: any) => m.text), ['what about the tulips?', 'They pay 10 now.']);
-  assert.deepEqual(history[0].refs, ['record:flowers/tulip']);
+  assert.deepEqual(history[0].refs, ['drawing:garden-flowers']);
 
   // A new conversation: what was said before is not part of it. Only the person starts one.
   await refused(agent('chat.new'), 'permission');

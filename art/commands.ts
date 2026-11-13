@@ -1,7 +1,7 @@
 // Art as commands: the game's drawings listed, read and looked at; a drawing
 // changed (by the person at once, by the agent as a proposal); and drawing
 // work handed to a worker, which proposes what it drew. A drawing is a thing
-// like a record: it can be proposed on, played, accepted, and locked.
+// like a concept: it can be proposed on, accepted, and locked.
 import { execFile } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

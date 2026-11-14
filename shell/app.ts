@@ -80,7 +80,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       h<'button'>('button.icon', { 'aria-label': 'Close', onclick: () => app.close() }, '✕')),
     body, foot);
   const ring = h('div#t-ring', { hidden: true }, h('i'), h('span'));
-  const banner = h('div#t-copy', { hidden: true }, h('span', {}, 'The working copy: what the agent made, not yet the project'), h<'button'>('button', { onclick: () => app.playProject() }, 'Back to the project'));
+  const banner = h('div#t-copy', { hidden: true }, h('span', { title: 'What the agent made, not yet the project' }, 'The working copy'), h<'button'>('button', { onclick: () => app.playProject() }, 'Back to the project'));
   const toastEl = h('div#t-toast', { hidden: true });
   const zoomEl = h('div#t-zoom', { hidden: true, onclick: () => { zoomEl.hidden = true; } }, h<'img'>('img'));
   const bubbleEl = h('div#t-bubbles', { hidden: true });

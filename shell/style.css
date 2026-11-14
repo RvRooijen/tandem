@@ -354,6 +354,11 @@ pre.diff span[data-how=at] { color: var(--t-soft); opacity: 0.6; }
   #t-fab.busy .mark, #t-ring.go i { animation: none; }
 }
 
+/* ---- the working copy is played: a line around the page, and a small tab hanging from it that says so */
+body.t-copy #root::after { content: ''; position: absolute; inset: 0; border: 2px solid #f2b84b; pointer-events: none; }
+#t-copy { position: fixed; z-index: 21; top: 0; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 3px 6px 4px 10px; background: var(--t-accent); color: var(--t-accent-ink); border-radius: 0 0 9px 9px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+#tandem #t-copy button { border: 0; border-radius: 6px; padding: 2px 7px; background: rgba(32, 23, 10, 0.16); color: inherit; font-size: 12px; cursor: pointer; }
+
 /* ---- a wide screen (body.t-wide, set in app.ts): the tools are a panel on the right, and while it is open
    (body.t-open) the project's page has the rest of the screen. The page keeps its left edge, so a place on it is
    the same place on the screen either way. */
@@ -367,4 +372,5 @@ body.t-wide #t-fab.open { display: grid; }
 body.t-wide.t-open #t-fab { right: calc(var(--t-panel) + 16px); }
 body.t-wide #t-bubbles { right: 16px; top: 70px; }
 body.t-wide.t-open #t-toast { left: calc((100vw - var(--t-panel)) / 2); }
+body.t-wide.t-open #t-copy { left: calc((100vw - var(--t-panel)) / 2); }
 body.t-wide #tandem button:hover:not(:disabled) { filter: brightness(1.15); }

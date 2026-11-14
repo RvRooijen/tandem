@@ -93,7 +93,7 @@
   }
   // ---- a picture of what is pointed at, for the agent to look at
 
-  const PICTURE = 1024;
+  const PICTURE = 1024, SMALL = 768;
   /** What colour is behind something: the first thing under it that has one. */
   function behind(el) {
     for (let at = el; at && at.nodeType === 1; at = at.parentElement) {
@@ -103,9 +103,10 @@
     return '#ffffff';
   }
   /** A part of something that can be drawn (a canvas, a picture, a video), as a picture no larger than it has to be. */
-  function copyOf(from, sx, sy, sw, sh, back) {
+  function copyOf(from, sx, sy, sw, sh, back, least = 0) {
     if (!(sw >= 1 && sh >= 1)) return null;
-    const scale = Math.min(1, PICTURE / Math.max(sw, sh));
+    // Something small is drawn larger (`least`: how long its long side is at least), at most four times.
+    const scale = Math.min(Math.max(1, Math.min(4, least / Math.max(sw, sh))), PICTURE / Math.max(sw, sh));
     const out = document.createElement('canvas');
     out.width = Math.max(1, Math.round(sw * scale));
     out.height = Math.max(1, Math.round(sh * scale));
@@ -121,11 +122,12 @@
   function ofCanvas(canvas, place) {
     const r = canvas.getBoundingClientRect();
     if (!(r.width > 0 && r.height > 0)) return null;
-    const room = Math.max(24, Math.min(place.w, place.h) * 0.25);
+    // As much room as the thing is large: what it stands on and the shadow it casts are in the picture too.
+    const room = Math.max(48, Math.max(place.w, place.h));
     const x0 = Math.max(r.left, place.x - room), y0 = Math.max(r.top, place.y - room);
     const x1 = Math.min(r.left + r.width, place.x + place.w + room), y1 = Math.min(r.top + r.height, place.y + place.h + room);
     const kx = canvas.width / r.width, ky = canvas.height / r.height;
-    try { return copyOf(canvas, (x0 - r.left) * kx, (y0 - r.top) * ky, (x1 - x0) * kx, (y1 - y0) * ky, behind(canvas)); } catch { return null; }
+    try { return copyOf(canvas, (x0 - r.left) * kx, (y0 - r.top) * ky, (x1 - x0) * kx, (y1 - y0) * ky, behind(canvas), SMALL); } catch { return null; }
   }
   /**
    * Anything else on the page, drawn again from what it is made of: a copy of it with every style written out,

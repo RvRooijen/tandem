@@ -40,7 +40,7 @@ test('asked to code, the agent works in its copy, and what the copy changed is a
   await idle();
   const said = String(answers()[0].text);
   assert.match(said, /Seasons added\. In the copy: true\. May edit: true;/, 'it stood in its working copy and could change the project\'s files');
-  assert.match(said, /may run: Bash\(node --test:\*\) Bash\(node check\.mjs:\*\) Bash\(node build-art\.mjs:\*\)\./, 'it may run what the project says: its tests, its check, its build');
+  assert.match(said, /may run: Bash\(ls:\*\) Bash\(grep:\*\) Bash\(cat:\*\) Bash\(head:\*\) Bash\(tail:\*\) Bash\(wc:\*\) Bash\(node --test:\*\) Bash\(node check\.mjs:\*\) Bash\(node build-art\.mjs:\*\)\./, 'it may look around, and run what the project says: its tests, its check, its build');
   assert.match(said, /Kept off: Edit\(\.tandem\/\*\*\) Edit\(art\/\*\*\) Edit\(depth\/\*\*\)\. Note: none\./, 'but not tandem\'s own folder or the drawings');
   assert.ok(existsSync(join(copy, 'src/seasons.js')));
   assert.ok(!existsSync(join(dir, 'src/seasons.js')), 'the project does not have it');

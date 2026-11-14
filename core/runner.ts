@@ -27,14 +27,22 @@ export function runnable(project: Host['project']): string[] {
   return [...new Set([...told, ...own])];
 }
 
+/** Looking around from the command line: none of these writes anything. */
+const LOOKING = ['ls', 'grep', 'cat', 'head', 'tail', 'wc'];
+
+/** Whether what the project depends on is installed with npm: then the agent may install it in its working copy. */
+const installs = (project: Host['project']) => existsSync(join(project.root, 'package.json'));
+
 function tools(host: Host): { allow: string[]; deny: string[] } {
   const { project } = host;
   // The pictures it takes are outside its working copy; a path from the root is written with two slashes.
-  const allow = ['Bash(tandem run:*)', 'Bash(tandem list:*)', 'Read', 'Glob', 'Grep', `Read(/${project.dirs.looks}/**)`, `Read(/${host.dirs.files}/**)`];
+  const allow = ['Bash(tandem run:*)', 'Bash(tandem list:*)', ...LOOKING.map((c) => `Bash(${c}:*)`), 'Read', 'Glob', 'Grep', `Read(/${project.dirs.looks}/**)`, `Read(/${host.dirs.files}/**)`];
   const deny: string[] = [];
   if (host.code) {
     allow.push(...project.editable.flatMap((p) => [`Edit(${p})`, `Write(${p})`]));
     for (const cmd of runnable(project)) allow.push(`Bash(${cmd}:*)`);
+    // Exactly this, with nothing after it: a dependency is added in package.json, which is in the change set.
+    if (installs(project)) allow.push('Bash(npm install)', 'Bash(npm ci)');
     allow.push('Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)');
     deny.push(...['.tandem/**', 'art/**', 'depth/**'].flatMap((p) => [`Edit(${p})`, `Write(${p})`]));
   }
@@ -112,12 +120,14 @@ export function createRunner(host: Host) {
       project.config.art?.build && `The build of its drawings: \`${project.config.art.build}\`.`,
       ...(project.config.run ?? []).map((c) => `Also: \`${c}\`.`),
       ...runnable(project).filter((c) => ![project.config.test, project.config.check, project.config.art?.build, ...(project.config.run ?? [])].includes(c)).map((c) => `Its tests also as \`${c}\`.`),
+      host.code && installs(project) && 'What it depends on: `npm install`, just so (a new dependency is written in package.json first); your copy then has a node_modules of its own.',
     ].filter(Boolean).join(' ');
     const about = [
       `${project.name}, in ${project.root}.`,
       host.game ? 'It offers a way to see inside it: the game.*, world.*, ecs.* and playtest.* commands.' : 'It does not offer a way to see inside it while it runs: there are no game.*, ecs.* or playtest.* commands here. You read its code, run its tests, and the person plays it.',
       project.pageCommand(0) ? 'It has a page the person plays in tandem; they can switch it to your working copy.' : 'It has no page set up in tandem (project.configure: page).',
       host.code ? `In your working copy you may run: ${can || 'nothing but the tandem commands; tandem was not told how its tests are run (project.configure: test, check, run)'}` : '',
+      `From the command line you can look around with ${LOOKING.join(', ')}, also strung together; anything else there is refused, so do not try it.`,
     ].filter(Boolean).join(' ');
     return `${readFileSync(join(ROOT, 'core/agent-intro.md'), 'utf8')}${host.code ? `\n${readFileSync(join(ROOT, 'core/agent-code.md'), 'utf8')}` : ''}\n## The project\n\n${about}\n\n## The commands\n\nRun one with \`tandem run <command> '<json input>'\`.\n\n${list}\n`;
   }

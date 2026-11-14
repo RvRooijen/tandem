@@ -188,7 +188,7 @@ export function chatPanel(): Panel {
   input.addEventListener('input', () => { grow(); void offer(); });
   // A photo pasted or dropped into the message is shared like one picked with the paperclip.
   input.addEventListener('paste', (ev) => { const files = [...(ev.clipboardData?.files ?? [])]; if (files.length) { ev.preventDefault(); void share(files); } });
-  input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) void send(); });
+  input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); void send(); } });
 
   function paintRefs() {
     clear(refsEl, app.refs.map((r) => refChip(app, r, () => { app.refs.splice(app.refs.indexOf(r), 1); app.pictures.delete(r); paintRefs(); })));

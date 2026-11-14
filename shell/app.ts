@@ -7,6 +7,7 @@ import type { AgentStatus } from '../core/runner.ts';
 import { info as getInfo, run, type Info } from './api.ts';
 import { createBubbles } from './bubbles.ts';
 import { clear, h } from './dom.ts';
+import { icon } from './icons.ts';
 import type { Picked, Stage } from './stage.ts';
 
 /** A file the core keeps with the conversation (chat.attach). */
@@ -76,8 +77,8 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
   const sheet = h<'section'>('section#t-sheet.shut', {},
     h('header', {},
       tabs,
-      h<'button'>('button.icon.projects', { 'aria-label': 'Open another project', title: 'Open another project', onclick: () => app.open('projects') }, '📁'),
-      h<'button'>('button.icon', { 'aria-label': 'Close', onclick: () => app.close() }, '✕')),
+      h<'button'>('button.icon.projects', { 'aria-label': 'Open another project', title: 'Open another project', onclick: () => app.open('projects') }, icon('folder')),
+      h<'button'>('button.icon', { 'aria-label': 'Close', onclick: () => app.close() }, icon('close'))),
     body, foot);
   const ring = h('div#t-ring', { hidden: true }, h('i'), h('span'));
   const banner = h('div#t-copy', { hidden: true }, h('span', { title: 'What the agent made, not yet the project' }, 'The working copy'), h<'button'>('button', { onclick: () => app.playProject() }, 'Back to the project'));
@@ -380,7 +381,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
         changed?.(locked);
       } });
       const paint = () => {
-        b.textContent = locked ? '🔒' : '🔓';
+        b.replaceChildren(icon(locked ? 'lock' : 'unlock'));
         b.classList.toggle('on', locked);
         b.setAttribute('aria-label', locked ? 'Locked against the agent. Unlock' : 'Not locked. Lock against the agent');
         b.setAttribute('aria-pressed', String(locked));

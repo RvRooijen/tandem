@@ -6,6 +6,7 @@ import type { Concept, Stage } from '../../core/concepts.ts';
 import type { Event } from '../../core/events.ts';
 import type { App, Panel } from '../app.ts';
 import { clear, h } from '../dom.ts';
+import { icon } from '../icons.ts';
 
 const FIRM: { id: Stage; says: string }[] = [
   { id: 'idea', says: 'A thought: the agent explores and offers directions.' },
@@ -43,7 +44,7 @@ export function conceptsPanel(): Panel {
       h('div.adder', {}, name, h<'button'>('button.primary', { onclick: create }, 'Add')),
       all.length
         ? all.map((c) => h('div.item', { onclick: () => void detail(c.id) },
-          h('div.line', {}, h('b', {}, c.locked && '🔒 ', c.name), h('span.t-chip.stage', { data: { stage: c.stage } }, c.stage)),
+          h('div.line', {}, h('b', {}, c.locked && [icon('lock'), ' '], c.name), h('span.t-chip.stage', { data: { stage: c.stage } }, c.stage)),
           h('p', {}, c.summary || 'No words yet.')))
         : h('div.empty', {}, h('b', {}, 'No concepts yet.'),
           h('p', {}, 'A concept is a name and a few words of your own: an idea before it is anything concrete. Add one and talk it through with the agent.'),
@@ -97,7 +98,7 @@ export function conceptsPanel(): Panel {
     const paintLinks = () => clear(linksEl, draft.links.map((l, i) => h('div.check', {},
       h('span.k', {}, l.kind.replace('-', ' ')),
       h('span.t-chip.tap', { onclick: () => void leave(() => detail(l.to)) }, others.find((o) => o.id === l.to)?.name ?? l.to),
-      h<'button'>('button.icon', { 'aria-label': 'Remove', onclick: () => { draft.links.splice(i, 1); touch(); paintLinks(); } }, '✕'))));
+      h<'button'>('button.icon', { 'aria-label': 'Remove', onclick: () => { draft.links.splice(i, 1); touch(); paintLinks(); } }, icon('close')))));
     const kind = h<'select'>('select', { 'aria-label': 'Kind of link' }, LINKS.map((k) => h<'option'>('option', { value: k }, k.replace('-', ' '))));
     const to = h<'select'>('select', { 'aria-label': 'Linked concept' }, h<'option'>('option', { value: '' }, 'another concept…'), others.map((o) => h<'option'>('option', { value: o.id }, o.name)));
     to.addEventListener('change', () => {
@@ -111,7 +112,7 @@ export function conceptsPanel(): Panel {
       oninput: () => { draft.realised = realised.value.split('\n').map((s) => s.trim()).filter(Boolean); touch(); } });
 
     clear(body,
-      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void leave(list) }, '‹ Concepts'), h('span.grow'), app.lockButton(`concept:${id}`, c.locked)),
+      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void leave(list) }, icon('back'), 'Concepts'), h('span.grow'), app.lockButton(`concept:${id}`, c.locked)),
       name, firm, firmSays, text,
       h('h3', {}, 'Links'), linksEl, h('div.adder', {}, kind, to),
       h('h3', {}, 'What makes it real'), realised,

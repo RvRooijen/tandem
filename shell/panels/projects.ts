@@ -4,6 +4,7 @@
 import { coreUp } from '../api.ts';
 import type { App, Panel } from '../app.ts';
 import { clear, h } from '../dom.ts';
+import { icon } from '../icons.ts';
 
 interface Found { dir: string; name: string; git: boolean; known: boolean; page: boolean; adapter: boolean; open: boolean }
 interface Listing { open: string | null; roots: string[]; projects: Found[] }
@@ -44,16 +45,16 @@ export function projectsPanel(): Panel {
     if (!body || !got) return;
     const into = (d: string) => () => void browse(why, d);
     clear(body,
-      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void paint() }, '‹ Projects'), h('b', {}, why === 'new' ? 'Where does it go?' : 'Where are they?')),
+      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void paint() }, icon('back'), 'Projects'), h('b', {}, why === 'new' ? 'Where does it go?' : 'Where are they?')),
       h('p.k.here', {}, got.dir),
       why === 'new'
         ? h('div.t-row', {}, h<'button'>('button.primary', { onclick: () => { draft.in = got.dir; void paint(); } }, 'Here'))
         : h('div.t-row', {},
           h<'button'>('button.primary', { onclick: async () => { if (await app.act('projects.look', { dir: got.dir })) void paint(); } }, 'My projects are in here'),
           got.git && h<'button'>('button', { onclick: () => void openDir(got.dir, got.dir.split('/').pop() || got.dir) }, 'Open this one')),
-      got.dir !== got.home && h('div.item.folder', { onclick: into(got.home) }, h('b', {}, '⌂ home'), h('small', {}, got.home)),
+      got.dir !== got.home && h('div.item.folder', { onclick: into(got.home) }, h('b', {}, icon('home'), ' home'), h('small', {}, got.home)),
       got.parent && h('div.item.folder', { onclick: into(got.parent) }, h('b', {}, '↑ up'), h('small', {}, got.parent)),
-      got.folders.map((n) => h('div.item.folder', { onclick: into(`${got.dir === '/' ? '' : got.dir}/${n}`) }, h('b', {}, `📁 ${n}`))),
+      got.folders.map((n) => h('div.item.folder', { onclick: into(`${got.dir === '/' ? '' : got.dir}/${n}`) }, h('b', {}, icon('folder'), ` ${n}`))),
       !got.folders.length && h('p.t-hint', {}, 'No folders in here.'));
     body.scrollTop = 0;
   }

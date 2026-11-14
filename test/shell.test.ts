@@ -383,7 +383,7 @@ test('concepts: add one, work on it, and hand it to the agent', async () => {
 
   tab('Concepts');
   await until(() => $('textarea.words') && ($('textarea.words') as HTMLTextAreaElement).value.endsWith('if you look.'), 'the open concept to follow');
-  click(button('‹ Concepts'));
+  click($('#t-body .bar button.link'));
   await until(() => $('#t-body .item'), 'the list');
   assert.match($('#t-body .item').textContent!, /Night roses.*design/);
 
@@ -396,9 +396,10 @@ test('concepts: add one, work on it, and hand it to the agent', async () => {
   assert.equal($('button.lock').getAttribute('aria-pressed'), 'true');
   assert.match($('#t-toast').textContent!, /even if you ask it to/);
   await assert.rejects(host.run('concepts.update', { id: 'night-roses', text: 'x' }, AGENT, 'r901'), /locked/);
-  click(button('‹ Concepts'));
+  click($('#t-body .bar button.link'));
   await until(() => $('#t-body .item'), 'the list');
-  assert.match($('#t-body .item b').textContent!, /^🔒 Night roses/);
+  assert.match($('#t-body .item b').textContent!, /^ Night roses/);
+  assert.ok($('#t-body .item b svg.t-ic.i-lock'), 'with a lock before its name');
   click($('#t-body .item'));
   await until(() => $('button.lock'), 'the concept again');
   click($('button.lock'));
@@ -423,7 +424,7 @@ test('art: the drawings are listed, one is looked at and locked, and a worker\'s
   // picture before and after, to decide right there.
   assert.ok(!all('#t-body button').some((b) => /worker/i.test(b.textContent!)) && !$('#t-body textarea'), 'no form to ask for art');
   await host.run('art.ask', { name: 'gnome', message: 'a taller hat' }, AGENT);
-  click(button('‹ Art'));
+  click($('#t-body .bar button.link'));
   await until(() => $('.workers .item'), 'the worker, in the list');
   assert.match($('.workers .item').textContent!, /gnome/);
   click($('.workers .item'));
@@ -454,14 +455,14 @@ test('art: the drawings are listed, one is looked at and locked, and a worker\'s
   tab('Chat');
   assert.ok(!all('.card.prop').some((c) => /drawing gnome/.test(c.textContent!)));
   assert.equal(all('figure.card.look').length, 0, 'and looking at a drawing put nothing in the chat');
-  const lines = all('.chat .sys').map((x) => x.textContent!).filter((t) => t.startsWith('🖌'));
+  const lines = all('.chat .sys').filter((x) => x.querySelector('.t-ic.i-art')).map((x) => x.textContent!);
   assert.equal(lines.length, 3);
   assert.match(lines[0], /the agent asked a worker to change gnome: a taller hat/);
   assert.match(lines[1], /gnome: a drawing to accept\. Look in Art/);
-  click(all('.chat .sys').find((x) => x.textContent!.startsWith('🖌'))!);
+  click(all('.chat .sys').find((x) => x.querySelector('.t-ic.i-art'))!);
   await until(() => $('canvas.live'), 'the line to lead to the worker');
   assert.match($('.worker-rest').textContent!, /Rejected/);
-  click(button('‹ Art'));
+  click($('#t-body .bar button.link'));
   await until(() => all('#t-body .item.drawing').length === 7, 'the drawings again');
   await until(() => /No worker is drawing/.test($('.workers').textContent!), 'the workers, none');
   click(all('#t-body .item.drawing').at(-1)!);
@@ -621,17 +622,63 @@ test('the agent shows things on the person\'s screen', async () => {
   const did = host.events.since(0).filter((e) => e.type === 'page.did').at(-1)!;
   assert.deepEqual([did.what, did.at, did.did, did.by], ['tap', 'Make a group', 'tapped button "Make a group"', AGENT]);
   tab('Chat');
-  await until(() => all('.chat .sys').some((x) => /the agent tapped button "Make a group"/.test(x.textContent!)), 'what it did, in the conversation');
+  // (A thing the agent did is a row: what it did, and to what.)
+  const said = (row: Element) => `${$('.verb', row).textContent} ${$('.what', row).textContent}`;
+  await until(() => all('.chat .act').some((x) => said(x) === 'tapped button "Make a group"' && x.dataset.kind === 'page'), 'what it did, in the conversation');
   // What it does one thing after another is one group, which opens to show them all; something said ends the group.
   const before = all('.chat .acts').length;
   for (const did of ['read src/main.js', 'searched for "shadow"', 'ran `npm test`']) host.events.add({ type: 'agent.did', by: 'agent', round: 'r9', did });
-  await until(() => /the agent did 4 things · ran `npm test`/.test(all('.chat .acts').at(-1)?.textContent ?? ''), 'the group, with the tap before it');
+  await until(() => $('summary b', all('.chat .acts').at(-1)!)?.textContent === '4 things done', 'the group, with the tap before it');
+  assert.deepEqual([$('summary .kinds', all('.chat .acts').at(-1)!).textContent, $('summary .last', all('.chat .acts').at(-1)!).textContent], ['1 tapped · 1 read · 1 searched for · 1 ran', 'ran `npm test`']);
   assert.equal(all('.chat .acts').length, before, 'they joined what it did just before');
-  assert.deepEqual(all('.sys', all('.chat .acts').at(-1)!).map((x) => x.textContent), ['tapped button "Make a group"', 'read src/main.js', 'searched for "shadow"', 'ran `npm test`']);
+  assert.deepEqual(all('.act', all('.chat .acts').at(-1)!).map((x) => [said(x), x.dataset.kind]), [['tapped button "Make a group"', 'page'], ['read src/main.js', 'read'], ['searched for "shadow"', 'read'], ['ran npm test', 'run']]);
+  assert.equal($('.act .what.path i', all('.chat .acts').at(-1)!).textContent, 'src/', 'the folders before a file\'s name stand back');
   host.events.add({ type: 'message', by: 'agent', text: 'The tests pass.', round: 'r9' });
   host.events.add({ type: 'agent.did', by: 'agent', round: 'r9', did: 'changed src/main.js' });
   await until(() => all('.chat .acts').length === before + 1, 'a new one after it spoke');
-  assert.equal(all('.chat .acts').at(-1)!.textContent, '◎ the agent changed src/main.js');
+  assert.deepEqual(all('.act', all('.chat .acts').at(-1)!).map(said), ['changed src/main.js']);
+  assert.ok(all('.chat .acts').at(-1)!.classList.contains('latest') && !all('.chat .acts').at(-2)!.classList.contains('latest'));
+  // The last group stands open, with what its last thing answered under it; the one before it is folded.
+  const groups = () => all('.chat .acts').slice(-2);
+  assert.equal(groups()[0].querySelector('details')!.open, false);
+  host.events.add({ type: 'agent.did', by: 'agent', round: 'r9', did: 'ran `npm test`', id: 'call-1' });
+  await until(() => groups()[1].querySelector('details')?.open, 'the last group, open');
+  assert.equal(all('pre.out', groups()[1]).length, 0, 'nothing answered yet');
+  host.events.add({ type: 'agent.out', by: 'agent', round: 'r9', id: 'call-1', out: '# pass 3\n# fail 0' });
+  await until(() => all('pre.out', groups()[1]).length === 1, 'what the command printed');
+  assert.equal($('pre.out', groups()[1]).textContent, '# pass 3\n# fail 0');
+  // One more thing: its answer is the one shown; the earlier one shows its own when tapped. A picture is shown as one.
+  host.events.add({ type: 'agent.did', by: 'agent', round: 'r9', did: 'looked at a picture', id: 'call-2', picture: '/api/file/looks/page-1.jpg' });
+  host.events.add({ type: 'agent.out', by: 'agent', round: 'r9', id: 'call-2', out: '(a picture)' });
+  await until(() => groups()[1].querySelector('img.seen'), 'the picture it looked at');
+  assert.equal(all('pre.out', groups()[1]).length, 0);
+  click(all('.act', groups()[1])[1]);
+  assert.ok(all('.act', groups()[1])[1].classList.contains('open'));
+  assert.equal($('pre.out', groups()[1]).textContent, '# pass 3\n# fail 0');
+  // A change to a file shows the lines that went and came.
+  host.events.add({ type: 'agent.did', by: 'agent', round: 'r9', did: 'changed src/main.js', id: 'call-2a', added: 1, removed: 1 });
+  await until(() => all('.act', groups()[1]).at(-1)?.querySelector('.count'), 'how much it changed, beside the line');
+  assert.deepEqual([said(all('.act', groups()[1]).at(-1)!), $('.count', all('.act', groups()[1]).at(-1)!).textContent], ['changed src/main.js', '+1−1']);
+  host.events.add({ type: 'agent.out', by: 'agent', round: 'r9', id: 'call-2a', out: '-bias = 2\n+bias = 1', change: true });
+  await until(() => $('.answer pre.diff', groups()[1]), 'the change, as lines');
+  assert.deepEqual(all('.answer pre.diff span', groups()[1]).map((x) => [x.dataset.how, x.textContent]), [['out', '- bias = 2'], ['in', '+ bias = 1']]);
+  assert.equal($('.answer .of', groups()[1]).textContent, 'changed src/main.js', 'and which thing that is the answer of');
+  assert.ok(all('.act', groups()[1]).at(-1)!.classList.contains('inbox'));
+  // The same file changed again right after is the same row, counted; a thing it is still at says for how long.
+  const rowsBefore = all('.act', groups()[1]).length;
+  host.events.add({ type: 'agent.did', by: 'agent', round: 'r9', did: 'changed src/main.js', id: 'call-2a2', added: 2, removed: 0 });
+  await until(() => $('.times', all('.act', groups()[1]).at(-1)!)?.textContent === '×2', 'the two as one row');
+  assert.deepEqual([all('.act', groups()[1]).length, $('.count', all('.act', groups()[1]).at(-1)!).textContent], [rowsBefore, '+3−1']);
+  assert.ok($('.answer', groups()[1]).classList.contains('stale'), 'until it answers, the place shows the one before, as that');
+  host.events.add({ type: 'agent.out', by: 'agent', round: 'r9', id: 'call-2a2', out: '+one\n+two', change: true });
+  await until(() => !$('.answer', groups()[1]).classList.contains('stale'), 'its own answer');
+  // A picture from anywhere else is known once the tool has answered with it.
+  host.events.add({ type: 'agent.did', by: 'agent', round: 'r9', did: 'looked at /tmp/crop.png', id: 'call-2b' });
+  host.events.add({ type: 'agent.out', by: 'agent', round: 'r9', id: 'call-2b', out: '(a picture)', picture: '/api/file/looks/seen-1.png' });
+  await until(() => $('.answer img.seen', groups()[1])?.getAttribute('src') === '/api/file/looks/seen-1.png', 'the picture it was given');
+  host.events.add({ type: 'agent.did', by: 'agent', round: 'r9', did: 'ran `npm run build`', id: 'call-3' });
+  host.events.add({ type: 'agent.out', by: 'agent', round: 'r9', id: 'call-3', out: 'it broke', error: true });
+  await until(() => $('pre.out.fail', groups()[1]), 'what went wrong, said as that');
   app.close();
 
   // The agent asks for the page, to try what it made itself: the person is asked over the page, and says yes.
@@ -1122,6 +1169,23 @@ test('an event stream that goes silent is opened again from where it was: a core
     await until(() => opened.length === 2, 'the stream to be opened again', 5000);
     assert.deepEqual([opened[0].closed, opened[1].url, up.at(-1)], [true, '/api/events?since=6', false]);
   } finally { stop(); (globalThis as unknown as { EventSource: unknown }).EventSource = Real; }
+});
+
+test('what is said in the chat is markdown, and nothing in it is taken for HTML', async () => {
+  const { prose } = await import('../shell/dom.ts');
+  const html = (text: string) => prose(text).innerHTML;
+  assert.equal(html('One line\nand the next.\n\nA new paragraph.'), '<p>One line<br>and the next.</p><p>A new paragraph.</p>');
+  assert.equal(html('**bold**, *slanted*, _also_, ~~gone~~ and `a * b` in code'), '<p><b>bold</b>, <i>slanted</i>, <i>also</i>, <s>gone</s> and <code>a * b</code> in code</p>');
+  assert.equal(html('2 * 3 * 4 and snake_case_name stay as they are'), '<p>2 * 3 * 4 and snake_case_name stay as they are</p>');
+  assert.equal(html('## What changed\nThe shadows.'), '<h4 class="h2">What changed</h4><p>The shadows.</p>');
+  assert.equal(html('See [the docs](https://example.com/a_b) or https://example.com/x.'),
+    '<p>See <a href="https://example.com/a_b" target="_blank" rel="noopener noreferrer">the docs</a> or <a href="https://example.com/x" target="_blank" rel="noopener noreferrer">https://example.com/x</a>.</p>');
+  assert.equal(html('[not this](javascript:alert(1)) <img src=x onerror=alert(1)>'), '<p>[not this](javascript:alert(1)) &lt;img src=x onerror=alert(1)&gt;</p>');
+  assert.equal(html('Steps:\n- first\n- second\n  - inside it\n- third'), '<p>Steps:</p><ul><li>first</li><li>second<ul><li>inside it</li></ul></li><li>third</li></ul>');
+  assert.equal(html('1. one\n2. two'), '<ol><li>one</li><li>two</li></ol>');
+  assert.equal(html('| dice | ms |\n|---|---|\n| 5 d6 | **2** |\n| 20 d20 |'), '<div class="table"><table><thead><tr><th>dice</th><th>ms</th></tr></thead><tbody><tr><td>5 d6</td><td><b>2</b></td></tr><tr><td>20 d20</td><td></td></tr></tbody></table></div>');
+  assert.equal(html('> quoted\n> twice\n\n---\nafter'), '<blockquote><p>quoted<br>twice</p></blockquote><hr><p>after</p>');
+  assert.equal(html('```js\nconst a = `**not bold**` < 2\n```\nthen'), '<pre>const a = `**not bold**` &lt; 2</pre><p>then</p>');
 });
 
 test('parity: everything the shell does is a command the agent could name', async () => {

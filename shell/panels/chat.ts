@@ -5,6 +5,7 @@ import type { Event } from '../../core/events.ts';
 import { run } from '../api.ts';
 import type { App, Panel, Show } from '../app.ts';
 import { ago, clear, h, mins, prose, short } from '../dom.ts';
+import { icon } from '../icons.ts';
 
 interface Change {
   id: string; kind: string; path: string; before?: Record<string, unknown>; after?: Record<string, unknown>; note: string;
@@ -45,7 +46,7 @@ export function refChip(app: App, ref: string, onRemove?: () => void): HTMLEleme
   return h('span.t-chip.ref', { data: { kind } },
     picture && h<'img'>('img', { src: picture.url, alt: 'A picture of it', onclick: () => app.zoom(picture.url) }),
     h('span', { onclick: open }, label),
-    onRemove && h<'button'>('button', { 'aria-label': 'Take off', onclick: onRemove }, '✕'));
+    onRemove && h<'button'>('button', { 'aria-label': 'Take off', onclick: onRemove }, icon('close')));
 }
 
 export function chatPanel(): Panel {
@@ -63,7 +64,7 @@ export function chatPanel(): Panel {
   const sendBtn = h<'button'>('button.primary', { onclick: () => void send() }, 'Send');
   const newBtn = h<'button'>('button.icon.new-chat', { 'aria-label': 'New conversation', title: 'New conversation', onclick: () => {
     if (confirm('Start a new conversation? The chat is cleared and the agent forgets what was said. Pending proposals stay.')) void app.act('chat.new');
-  } }, '↺');
+  } }, icon('again'));
   const EMPTY = () => h('div.empty', {}, h('b', {}, 'Nothing said yet.'), h('p', {}, 'Talk about the project while you use it. Type @ to point at a concept or a drawing, and use the paperclip to share a photo or a file.'));
 
   // ---------------------------------------------------------------- what goes along with a message
@@ -73,10 +74,10 @@ export function chatPanel(): Panel {
   let shared: Shared[] = [];
   const sharedEl = h('div.shared', { hidden: true });
   const picker = h<'input'>('input', { type: 'file', multiple: true, hidden: true, 'aria-label': 'Photos or files to share' });
-  const clip = h<'button'>('button.icon.clip', { 'aria-label': 'Share a photo or a file', title: 'Share a photo or a file', onclick: () => picker.click() }, '📎');
+  const clip = h<'button'>('button.icon.clip', { 'aria-label': 'Share a photo or a file', title: 'Share a photo or a file', onclick: () => picker.click() }, icon('clip'));
   const fileChip = (f: Shared, onRemove?: () => void) => h(`span.file${f.image ? '.image' : ''}`, {},
-    f.image ? h<'img'>('img', { src: f.url, alt: f.label, loading: 'lazy', onclick: () => app.zoom(f.url) }) : h<'a'>('a', { href: f.url, target: '_blank', rel: 'noopener' }, `📄 ${f.label}`),
-    onRemove && h<'button'>('button', { 'aria-label': `Take ${f.label} off`, onclick: onRemove }, '✕'));
+    f.image ? h<'img'>('img', { src: f.url, alt: f.label, loading: 'lazy', onclick: () => app.zoom(f.url) }) : h<'a'>('a', { href: f.url, target: '_blank', rel: 'noopener' }, icon('file'), ` ${f.label}`),
+    onRemove && h<'button'>('button', { 'aria-label': `Take ${f.label} off`, onclick: onRemove }, icon('close')));
   function paintShared() {
     clear(sharedEl, shared.map((f) => fileChip(f, () => { shared = shared.filter((x) => x !== f); paintShared(); })));
     sharedEl.hidden = !shared.length;
@@ -215,6 +216,11 @@ export function chatPanel(): Panel {
       h('div.doing', {}, h('b', {}, a.doing || 'working'), a.waiting ? ` · ${a.waiting} waiting` : '', a.text && h('p', {}, a.text.slice(-220))),
       h<'button'>('button', { onclick: () => void app.act('agent.stop') }, 'Stop'));
     if (nearBottom()) toBottom();
+  }
+  /** The agent's state changed, or it said it is still at it: how long the last thing has been running is said anew. */
+  function paintAgent() {
+    paintStatus();
+    if (acts && list.lastElementChild === acts.el) paintActs(acts);
   }
 
   // ---------------------------------------------------------------- cards
@@ -367,8 +373,8 @@ export function chatPanel(): Panel {
             : h('div.path', { onclick: () => c.kind === 'drawing' && app.open('art', c.path) }, h('i', {}, c.kind), ' ', c.path),
           total > 1 && c.status && h('span.state', {}, c.status),
           each && !c.status && h('span.each', {},
-            h<'button'>('button.yes', { 'aria-label': `Accept ${c.path}`, onclick: () => decide(true, c) }, '✓'),
-            h<'button'>('button.no', { 'aria-label': `Reject ${c.path}`, onclick: () => decide(false, c) }, '✕'))),
+            h<'button'>('button.yes', { 'aria-label': `Accept ${c.path}`, onclick: () => decide(true, c) }, icon('yes')),
+            h<'button'>('button.no', { 'aria-label': `Reject ${c.path}`, onclick: () => decide(false, c) }, icon('close')))),
         c.kind === 'drawing' ? pictures(c) : c.kind === 'code' ? codeFiles(c, r) : c.kind === 'setup' ? setupLines(c) : c.kind === 'concept' ? conceptLines(c) : fieldLines(c),
         c.note && c.note !== 'a new concept' && h('div.note', {}, c.note),
         // What the agent needs to hear about this piece is asked with it, while it is still to be decided or was taken.
@@ -420,8 +426,8 @@ export function chatPanel(): Panel {
         // What the engine tells the agent (art was accepted: bring it into the game) is shown, small: it is why the agent starts working.
         // Once the agent has been asked to read the project, the offer to do so is no longer one.
         if (ev.by === 'engine' && ev.kind === 'init') { asked = true; for (const w of welcomes) w.querySelector('.t-row')?.remove(); }
-        if (ev.by === 'engine' && ev.kind === 'resume') return h('div.sys.engine', {}, '⚙ Tandem was started again while the agent was at work: it carries on where it was.');
-        if (ev.by === 'engine') return h('div.sys.engine', {}, ev.kind === 'init' ? '⚙ The agent was asked to read this project and set tandem up for it: its concepts, and how it is run.' : `⚙ to the agent: ${String(ev.text ?? '')}`);
+        if (ev.by === 'engine' && ev.kind === 'resume') return h('div.sys.engine', {}, icon('engine'), ' Tandem was started again while the agent was at work: it carries on where it was.');
+        if (ev.by === 'engine') return h('div.sys.engine', {}, icon('engine'), ev.kind === 'init' ? ' The agent was asked to read this project and set tandem up for it: its concepts, and how it is run.' : ` to the agent: ${String(ev.text ?? '')}`);
         return h(`div.msg.${ev.by === 'me' ? 'me' : 'agent'}${ev.error ? '.error' : ''}`, {},
           Array.isArray(ev.refs) && h('div.refs', {}, (ev.refs as string[]).map((r) => refChip(app, r))),
           Array.isArray(ev.files) && h('div.shared', {}, (ev.files as Shared[]).map((f) => fileChip(f))),
@@ -435,31 +441,31 @@ export function chatPanel(): Panel {
         return playtestCard(ev);
       case 'stage.point':
         return h('div.sys.tap', { onclick: () => { app.reveal(); app.point(Number(ev.x), Number(ev.y), String(ev.text ?? ''), typeof ev.at === 'string' ? ev.at : undefined); } },
-          typeof ev.at === 'string' ? `◎ pointed at "${ev.at}" on the page` : '◎ pointed at the game', ev.text ? `: ${ev.text}` : '');
+          icon('page'), typeof ev.at === 'string' ? ` pointed at "${ev.at}" on the page` : ' pointed at the game', ev.text ? `: ${ev.text}` : '');
       case 'stage.open':
-        return h('div.sys.tap', { onclick: () => app.open(String(ev.tab), ev.id ? String(ev.id) : undefined) }, `↗ opened ${ev.tab}${ev.id ? ` · ${ev.id}` : ''}`);
+        return h('div.sys.tap', { onclick: () => app.open(String(ev.tab), ev.id ? String(ev.id) : undefined) }, icon('open'), ` opened ${ev.tab}${ev.id ? ` · ${ev.id}` : ''}`);
       // Drawing work lives in the Art tab; here it is one line that leads there.
       case 'art.asked':
-        return h('div.sys.tap', { onclick: () => app.open('art', `worker:${ev.worker}`) }, `🖌 ${ev.by === 'me' ? 'you' : 'the agent'} asked a worker ${ev.isNew ? 'for a new drawing,' : 'to change'} ${ev.name}: ${String(ev.message).slice(0, 140)}`);
+        return h('div.sys.tap', { onclick: () => app.open('art', `worker:${ev.worker}`) }, icon('art'), ` ${ev.by === 'me' ? 'you' : 'the agent'} asked a worker ${ev.isNew ? 'for a new drawing,' : 'to change'} ${ev.name}: ${String(ev.message).slice(0, 140)}`);
       case 'art.round':
         return h(`div.sys.tap${ev.state === 'failed' ? '.fail' : ''}`, { onclick: () => app.open('art', `worker:${ev.worker}`) },
-          ev.state === 'failed' ? `🖌 the worker on ${ev.name} failed` : ev.state === 'stopped' ? `🖌 the worker on ${ev.name} was stopped` : `🖌 ${ev.name}: ${ev.phase === 'silhouette' ? 'a silhouette to approve' : 'a drawing to accept'}. Look in Art`);
+          icon('art'), ev.state === 'failed' ? ` the worker on ${ev.name} failed` : ev.state === 'stopped' ? ` the worker on ${ev.name} was stopped` : ` ${ev.name}: ${ev.phase === 'silhouette' ? 'a silhouette to approve' : 'a drawing to accept'}. Look in Art`);
       case 'page.take':
-        return h('div.sys', {}, `◎ the agent asked to use the page: ${String(ev.why ?? '')}`);
+        return h('div.sys', {}, icon('page'), ` the agent asked to use the page: ${String(ev.why ?? '')}`);
       case 'page.taken':
-        return h('div.sys', {}, ev.allow ? '◎ you let the agent use the page' : ev.by === 'me' ? '◎ you said not now' : '◎ the agent\'s asking for the page went unanswered');
+        return h('div.sys', {}, icon('page'), ev.allow ? ' you let the agent use the page' : ev.by === 'me' ? ' you said not now' : ' the agent\'s asking for the page went unanswered');
       case 'page.released':
-        return h('div.sys', {}, ev.by === 'me' ? '◎ you took the page back' : `◎ the page is yours again${ev.why ? `: ${ev.why}` : ''}`);
+        return h('div.sys', {}, icon('page'), ev.by === 'me' ? ' you took the page back' : ` the page is yours again${ev.why ? `: ${ev.why}` : ''}`);
       case 'setup.changed':
-        return h('div.sys', {}, `✓ how tandem runs the project was changed (${(ev.fields as string[]).join(', ')})${ev.restarting ? '. Its page starts again with it' : ''}`);
+        return h('div.sys', {}, icon('yes'), ` how tandem runs the project was changed (${(ev.fields as string[]).join(', ')})${ev.restarting ? '. Its page starts again with it' : ''}`);
       case 'code.changed':
-        return h('div.sys', {}, `✓ the working copy is the project now: ${(ev.files as string[]).length} ${(ev.files as string[]).length === 1 ? 'file' : 'files'} changed${ev.installed === true ? ', and what it depends on was installed' : ''}. The core starts again with it${ev.restarting ? ', and the project\'s page too' : ''}${typeof ev.installed === 'string' ? `. What it depends on could not be installed (${ev.installed}): run npm install in the project` : ''}`);
+        return h('div.sys', {}, icon('yes'), ` the working copy is the project now: ${(ev.files as string[]).length} ${(ev.files as string[]).length === 1 ? 'file' : 'files'} changed${ev.installed === true ? ', and what it depends on was installed' : ''}. The core starts again with it${ev.restarting ? ', and the project\'s page too' : ''}${typeof ev.installed === 'string' ? `. What it depends on could not be installed (${ev.installed}): run npm install in the project` : ''}`);
       case 'art.changed':
-        return (ev.names as string[]).length ? h('div.sys.tap', { onclick: () => app.open('art', (ev.names as string[])[0]) }, `✓ ${(ev.names as string[]).join(', ')}: ${ev.built === false ? 'accepted into the art files; the agent brings it into the game' : 'in the game now'}`) : null;
+        return (ev.names as string[]).length ? h('div.sys.tap', { onclick: () => app.open('art', (ev.names as string[])[0]) }, icon('yes'), ` ${(ev.names as string[]).join(', ')}: ${ev.built === false ? 'accepted into the art files; the agent brings it into the game' : 'in the game now'}`) : null;
       case 'lock.changed':
-        return h('div.sys', {}, `${ev.locked ? '🔒 locked' : '🔓 unlocked'}: ${ev.ref}`);
+        return h('div.sys', {}, icon(ev.locked ? 'lock' : 'unlock'), ` ${ev.locked ? 'locked' : 'unlocked'}: ${ev.ref}`);
       case 'concept.changed':
-        return h('div.sys.tap', { onclick: () => ev.what !== 'removed' && app.open('concepts', String(ev.id)) }, `✎ concept ${ev.id} ${ev.what}`);
+        return h('div.sys.tap', { onclick: () => ev.what !== 'removed' && app.open('concepts', String(ev.id)) }, icon('edit'), ` concept ${ev.id} ${ev.what}`);
       default:
         return null;
     }
@@ -467,27 +473,111 @@ export function chatPanel(): Panel {
 
   /**
    * What the agent did, one thing after another (what it read, searched for, ran, tapped on the page): one line
-   * when it is one thing, and folded into one group when there are more, which opens to show them all.
+   * when it is one thing, a group when there are more. The last group stands open, with what the last thing in it
+   * answered under it (what a command printed), or how long it has been at it; an earlier line shows its answer
+   * when tapped. Groups before the last are folded to one line.
    */
-  let acts: { el: HTMLElement; did: string[]; open: boolean } | undefined;
-  function addAct(did: string) {
-    const stick = nearBottom();
-    if (!acts || list.lastElementChild !== acts.el) { acts = { el: h('div.acts'), did: [], open: false }; list.append(acts.el); }
-    const mine = acts;
-    mine.did.push(did);
-    if (mine.did.length === 1) clear(mine.el, h('div.sys', {}, `◎ the agent ${did}`));
-    else {
-      const fold = h<'details'>('details', { open: mine.open, ontoggle: () => { mine.open = fold.open; } },
-        h('summary', {}, `◎ the agent did ${mine.did.length} things`, h('span', {}, ` · ${did}`)),
-        ...mine.did.map((d) => h('div.sys', {}, d)));
-      clear(mine.el, fold);
+  interface Act { did: string; id?: string; ts: number; out?: string; error?: boolean; change?: boolean; picture?: string; shown?: boolean; added?: number; removed?: number }
+  interface Acts { el: HTMLElement; did: Act[]; open: boolean }
+  let acts: Acts | undefined;
+  const calls = new Map<string, { group: Acts; act: Act }>();
+  const took = (ms: number) => (ms < 90_000 ? `${Math.max(1, Math.round(ms / 1000))} s` : `${Math.round(ms / 60_000)} min`);
+  /** What kind of thing it was, by its first word: it is read at a glance by that word and its colour. */
+  const KIND: Record<string, string> = { read: 'read', looked: 'read', searched: 'read', changed: 'edit', wrote: 'edit', ran: 'run', used: 'run', tapped: 'page', filled: 'page', went: 'page', sent: 'page' };
+  function parts(did: string): { verb: string; rest: string; kind: string } {
+    const m = /^(\S+)(?:\s+(at|for|to|in)(?=\s))?\s*(.*)$/s.exec(did) ?? [did, did, undefined, ''];
+    return { verb: m[2] ? `${m[1]} ${m[2]}` : String(m[1]), rest: String(m[3] ?? ''), kind: KIND[String(m[1])] ?? 'other' };
+  }
+  /** What it was done to: a command as one, a file with its name standing out from the folders before it. */
+  function target(rest: string, kind: string): HTMLElement {
+    const cmd = /^`([\s\S]*)`$/.exec(rest);
+    if (cmd) return h('span.what.cmd', { title: cmd[1] }, cmd[1]);
+    if ((kind === 'read' || kind === 'edit') && /^[^\s"]+$/.test(rest) && /[/.]/.test(rest)) {
+      const at = rest.lastIndexOf('/');
+      return h('span.what.path', { title: rest }, at >= 0 && h('i', {}, rest.slice(0, at + 1)), rest.slice(at + 1));
     }
+    return h('span.what', { title: rest }, rest);
+  }
+  const answerOf = (a: Act) => (a.picture
+    ? h<'img'>('img.seen', { src: a.picture, alt: 'What the agent looked at', onclick: () => app.zoom(a.picture!) })
+    // A change to a file: the lines that went and the lines that came.
+    : a.change ? h('pre.out.diff', {}, (a.out ?? '').split('\n').map((l) => h('span', { data: { how: l.startsWith('+') ? 'in' : l.startsWith('-') ? 'out' : 'same' } }, l.startsWith('+') || l.startsWith('-') ? `${l[0]} ${l.slice(1)}` : l)))
+    : h(`pre.out${a.error ? '.fail' : ''}`, {}, a.out ?? ''));
+  const hasAnswer = (a: Act) => a.out !== undefined || !!a.picture;
+  /** The same thing done several times in a row (a file changed in nine places) is one line. */
+  function runs(did: Act[]): Act[][] {
+    const out: Act[][] = [];
+    for (const a of did) { if (out.length && out.at(-1)![0].did === a.did) out.at(-1)!.push(a); else out.push([a]); }
+    return out;
+  }
+  function actRow(g: Acts, run: Act[], last: boolean, inBox: Act | undefined): HTMLElement[] {
+    const a = run[0], end = run.at(-1)!;
+    const { verb, rest, kind } = parts(a.did);
+    // Still at it: asked of a tool, no answer yet, and the agent is at work.
+    const running = last && g === acts && end.id !== undefined && end.out === undefined && app.agent.busy;
+    const has = run.some(hasAnswer), failed = run.some((x) => x.error);
+    const added = run.reduce((n, x) => n + (x.added ?? 0), 0), removed = run.reduce((n, x) => n + (x.removed ?? 0), 0);
+    const row = h(`div.act${has ? '.tap' : ''}${failed ? '.fail' : ''}${running ? '.running' : ''}${a.shown ? '.open' : ''}${inBox && run.includes(inBox) ? '.inbox' : ''}`,
+      { data: { kind }, onclick: () => { if (!has) return; a.shown = !a.shown; paintActs(g); } },
+      h('span.verb', {}, verb), target(rest, kind),
+      h('span.meta', {},
+        run.length > 1 && h('i.times', {}, `×${run.length}`),
+        run.some((x) => x.added !== undefined) && h('span.count', {}, h('b.in', {}, `+${added}`), removed ? h('b.out', {}, `−${removed}`) : null),
+        running && h('i.for', {}, took(Date.now() - end.ts)),
+        failed && h('i.bad', {}, 'failed'),
+        has && h('i.more', {}, icon('more'))));
+    return a.shown && has ? [row, ...run.filter(hasAnswer).map(answerOf)] : [row];
+  }
+  function paintActs(g: Acts) {
+    const stick = nearBottom();
+    const list_ = runs(g.did);
+    // Under the last group, in a place of its own that keeps its size (so the conversation does not jump with every
+    // new thing): what the last thing answered, or, until it has, what the one before it did.
+    const latest = g === acts && g.did.some((a) => a.id !== undefined);
+    const inBox = latest ? [...g.did].reverse().find(hasAnswer) : undefined;
+    const rows = list_.flatMap((run, n) => actRow(g, run, n === list_.length - 1, inBox));
+    const box = latest ? h(`div.answer${inBox && inBox !== g.did.at(-1) ? '.stale' : ''}`, {}, inBox ? [h('div.of', {}, inBox.did), answerOf(inBox)] : h('div.of', {}, 'nothing back yet')) : null;
+    if (g.did.length === 1) clear(g.el, ...rows, box);
+    else {
+      // What it was, in a line: how many things, and of which kinds.
+      const kinds = new Map<string, number>();
+      for (const a of g.did) { const v = parts(a.did).verb; kinds.set(v, (kinds.get(v) ?? 0) + 1); }
+      const fold = h<'details'>('details', { open: g.open, ontoggle: () => { g.open = fold.open; } },
+        h('summary', {}, icon('more'), h('b', {}, `${g.did.length} things done`), h('span.kinds', {}, [...kinds].map(([v, n]) => `${n} ${v}`).join(' · ')), h('span.last', {}, g.did.at(-1)!.did)),
+        ...rows, box);
+      clear(g.el, fold);
+    }
+    g.el.classList.toggle('latest', g === acts);
+    // (What a command printed is read from its end.)
+    const pre = box?.querySelector('pre');
+    if (pre) pre.scrollTop = pre.scrollHeight;
     if (stick) toBottom();
+  }
+  function addAct(act: Act) {
+    if (!acts || list.lastElementChild !== acts.el) {
+      // A new group: the one before it is folded, and no longer shows what its last thing answered.
+      const before = acts;
+      acts = { el: h('div.acts'), did: [], open: true };
+      if (before) { before.open = false; paintActs(before); }
+      list.append(acts.el);
+    }
+    acts.did.push(act);
+    if (act.id) calls.set(act.id, { group: acts, act });
+    paintActs(acts);
   }
 
   function addEvent(ev: Event) {
-    if (ev.type === 'agent.did') return addAct(String(ev.did ?? ''));
-    if (ev.type === 'page.did') return addAct(`${ev.did || ev.what}${ev.showing === 'copy' ? ', in the working copy' : ''}`);
+    if (ev.type === 'agent.did') return addAct({ did: String(ev.did ?? ''), ts: ev.ts, ...(typeof ev.id === 'string' && { id: ev.id }), ...(typeof ev.picture === 'string' && { picture: ev.picture }), ...(typeof ev.added === 'number' && { added: ev.added, removed: Number(ev.removed) || 0 }) });
+    if (ev.type === 'page.did') return addAct({ did: `${ev.did || ev.what}${ev.showing === 'copy' ? ', in the working copy' : ''}`, ts: ev.ts });
+    if (ev.type === 'agent.out') {
+      const call = calls.get(String(ev.id));
+      if (!call) return;
+      call.act.out = String(ev.out ?? '');
+      call.act.error = !!ev.error;
+      call.act.change = !!ev.change;
+      if (typeof ev.picture === 'string') call.act.picture ??= ev.picture;
+      return paintActs(call.group);
+    }
     // What a drawing worker proposes is looked at and decided in the Art tab, where it can be watched.
     if (ev.type === 'art.status' || ev.type === 'art.draft' || (ev.type === 'proposal' && ev.worker)) return;
     if (ev.type === 'proposal') {
@@ -560,7 +650,7 @@ export function chatPanel(): Panel {
     refs() { if (body) paintRefs(); },
     event(ev) {
       if (ev.type === 'chat.new') {
-        asked = false; welcomes.length = 0;
+        asked = false; welcomes.length = 0; acts = undefined; calls.clear();
         // A new conversation: everything said goes, what is still to be decided stays.
         for (const [key, r] of rounds) if (r.status !== 'pending') rounds.delete(key);
         list.replaceChildren(...[...rounds.values()].map((r) => r.el!).filter(Boolean));
@@ -570,7 +660,7 @@ export function chatPanel(): Panel {
       list.querySelector('.empty')?.remove();
       addEvent(ev);
     },
-    agent: paintStatus,
+    agent: paintAgent,
     init(a) { app = a; },
   };
 }

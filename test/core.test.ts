@@ -11,7 +11,7 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { CommandError } from '../core/commands.ts';
 import { loadProject } from '../core/project.ts';
-import { didWith, runnable } from '../core/runner.ts';
+import { changeOf, countOf, didWith, outOf, runnable } from '../core/runner.ts';
 import { AGENT, fixture } from './helpers.ts';
 
 // Without a working copy: drawings taken into the project are built straight in.
@@ -403,6 +403,20 @@ test('what the agent does with its tools is said in a few words, for the convers
   assert.equal(did('Bash', { command: 'tandem run concepts.list' }), 'ran concepts.list');
   assert.equal(did('Bash', { command: 'tandem run concepts.create \'{"name":"x"}\'' }), undefined);
   assert.equal(did('WebFetch', {}), 'used WebFetch');
+  // What a tool answered: the end of what a command printed, the start of anything else.
+  const many = Array.from({ length: 30 }, (_, n) => `line ${n + 1}`).join('\n');
+  assert.equal(outOf('Bash', '# pass 3\n# fail 0\n\n'), '# pass 3\n# fail 0');
+  assert.deepEqual(outOf('Bash', many).split('\n').slice(0, 2), ['… (6 lines before this)', 'line 7']);
+  assert.deepEqual(outOf('Read', many).split('\n').slice(-2), ['line 24', '… (6 more lines)']);
+  assert.equal(outOf('Read', [{ type: 'image' }, { type: 'text', text: 'and words' }]), '(a picture)\nand words');
+  // A change to a file is said by its lines, not by the tool saying it went well.
+  assert.equal(changeOf('Edit', { old_string: 'bias = -0.002', new_string: 'bias = -0.0002\nradius = 2' }), '-bias = -0.002\n+bias = -0.0002\n+radius = 2');
+  assert.equal(changeOf('Write', { content: 'export const A = 1;' }), '+export const A = 1;');
+  assert.equal(changeOf('Edit', { old_string: 'gone', new_string: '' }), '-gone');
+  assert.equal(changeOf('Read', { file_path: 'x' }), undefined);
+  assert.deepEqual(countOf('Edit', { old_string: 'bias = -0.002', new_string: 'bias = -0.0002\nradius = 2\n' }), { added: 2, removed: 1 });
+  assert.deepEqual(countOf('Write', { content: 'a\nb\nc' }), { added: 3, removed: 0 });
+  assert.equal(countOf('Read', { file_path: 'x' }), undefined);
 });
 
 test('in its working copy the agent may run the project\'s tests without tandem being told how', () => {

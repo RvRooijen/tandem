@@ -18,6 +18,7 @@ body { overflow: hidden; -webkit-tap-highlight-color: transparent; }
 #tandem {
   --t-bg: #17161c;
   --t-raise: #26263c;
+  --t-plane: #1e1d27;
   --t-line: #34323f;
   --t-ink: #ecebf2;
   --t-soft: #9c9aae;
@@ -32,6 +33,17 @@ body { overflow: hidden; -webkit-tap-highlight-color: transparent; }
   color: var(--t-ink);
 }
 #tandem * { box-sizing: border-box; }
+/* An icon is drawn in the colour of the words it stands with, and sits on their line. */
+.t-ic { flex: none; vertical-align: -0.14em; stroke-width: 2; }
+#tandem button > .t-ic:only-child { display: block; margin: auto; font-size: 1.15em; }
+/* What scrolls in the tools has no bar of its own, only a thin soft handle that shows a little more under the pointer. */
+#tandem ::-webkit-scrollbar { width: 6px; height: 6px; background: transparent; }
+#tandem ::-webkit-scrollbar-track, #tandem ::-webkit-scrollbar-corner { background: transparent; }
+#tandem ::-webkit-scrollbar-button { display: none; }
+#tandem ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
+#tandem :hover::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); }
+/* (Firefox has no such handle to style: there the bar is made thin and given the same colours.) */
+@supports (-moz-appearance: none) { #tandem * { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.14) transparent; } }
 #tandem [hidden] { display: none !important; }
 
 /* ---- the round button */
@@ -92,7 +104,9 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
   transition: transform 0.22s ease-out;
 }
 #t-sheet.shut { transform: translateY(105%); }
-#t-sheet > header { display: flex; align-items: center; gap: 2px; padding: 6px 6px 0 8px; border-bottom: 1px solid var(--t-line); flex: none; }
+/* Three planes, told apart: the bar with the tabs and the foot one shade up from the body between them, each with a
+   line and a little shadow onto the body. */
+#t-sheet > header { display: flex; align-items: center; gap: 2px; padding: 6px 6px 0 8px; border-bottom: 1px solid var(--t-line); flex: none; background: var(--t-plane); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28); position: relative; z-index: 2; }
 #t-tabs { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 #t-tabs::-webkit-scrollbar { display: none; }
 .t-tab {
@@ -103,7 +117,7 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 .t-tab .dot { position: absolute; top: 9px; right: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--t-bad); display: none; }
 .t-tab.news .dot { display: block; }
 #t-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 12px 18px; overscroll-behavior: contain; user-select: text; -webkit-user-select: text; }
-#t-foot { flex: none; padding: 0 10px calc(8px + env(safe-area-inset-bottom)); }
+#t-foot { flex: none; padding: 0 10px calc(10px + env(safe-area-inset-bottom)); background: var(--t-plane); border-top: 1px solid #45435a; box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.35); position: relative; z-index: 2; }
 #t-foot:empty { display: none; }
 /* A concept with something changed in it: keep it or throw it away. */
 #t-foot .unsaved { justify-content: flex-end; align-items: center; padding-top: 8px; border-top: 1px solid var(--t-line); margin: 0; }
@@ -186,6 +200,19 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 .msg.error { color: var(--t-bad); }
 .msg time { display: block; font-size: 11px; color: var(--t-soft); margin-top: 3px; }
 .msg .refs, #t-foot .refs { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+/* What is said is markdown. (Nothing in the tools has a margin it was not given, so every block gets its own here.) */
+.prose > * + *, .prose blockquote > * + *, .prose li > * + * { margin-top: 6px; }
+.prose h4 { font-size: 14px; font-weight: 700; }
+.prose h4.h1, .prose h4.h2 { font-size: 15.5px; }
+.prose ul, .prose ol { padding-left: 20px; }
+.prose li + li { margin-top: 2px; }
+.prose a { color: var(--t-accent); text-decoration: underline; word-break: break-all; }
+.prose blockquote { border-left: 3px solid var(--t-line); padding-left: 9px; color: var(--t-soft); }
+.prose hr { border: 0; border-top: 1px solid var(--t-line); }
+.prose .table { overflow-x: auto; }
+.prose table { border-collapse: collapse; font-size: 13px; }
+.prose th, .prose td { border: 1px solid var(--t-line); padding: 3px 7px; text-align: left; vertical-align: top; }
+.prose th { background: rgba(255, 255, 255, 0.05); }
 .prose pre { font-family: var(--t-mono); font-size: 12px; background: #101014; padding: 8px; border-radius: 8px; overflow-x: auto; white-space: pre; margin: 6px 0; }
 .prose code { font-family: var(--t-mono); font-size: 13px; background: #101014; padding: 1px 5px; border-radius: 5px; }
 .card { background: var(--t-raise); border: 1px solid var(--t-line); border-radius: 14px; padding: 11px 12px; }
@@ -255,20 +282,69 @@ figure.card.look img { display: block; width: 100%; image-rendering: pixelated; 
 figure.card.look figcaption { padding: 6px 10px; font-size: 12px; color: var(--t-soft); }
 .sys { font-size: 12px; color: var(--t-soft); text-align: center; padding: 2px 8px; word-break: break-word; }
 .sys.tap { cursor: pointer; }
-/* What the agent did, several things in a row: one line that opens to show them all. */
-.acts summary { font-size: 12px; color: var(--t-soft); text-align: center; padding: 2px 8px; cursor: pointer; list-style: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ---- what the agent did: a quiet block beside a line, apart from what is said. Each thing is a row read from left
+   to right: what it did (a word, coloured by its kind), to what (a file's name stands out from its folders), and how
+   much. The last group is open, with what the last thing answered in a dark place under it that keeps its size. */
+.acts { align-self: stretch; margin: -2px 0; padding: 2px 0 2px 10px; border-left: 2px solid var(--t-line); font-size: 12.5px; }
+.acts.latest { border-left-color: #4a4860; }
+.acts summary { display: flex; align-items: baseline; gap: 8px; padding: 3px 4px; cursor: pointer; list-style: none; color: var(--t-soft); border-radius: 6px; }
 .acts summary::-webkit-details-marker { display: none; }
-.acts summary::before { content: '▸ '; }
-.acts details[open] summary::before { content: '▾ '; }
-.acts details[open] summary span { display: none; }
-.acts details .sys { text-align: left; padding: 1px 8px 1px 22px; font-family: var(--t-mono); font-size: 11.5px; }
-.agent-status { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-top: 1px solid var(--t-line); font-size: 13px; }
+.acts summary > .t-ic { flex: none; align-self: center; font-size: 12px; transition: transform 0.12s; }
+.acts details[open] > summary > .t-ic { transform: rotate(90deg); }
+.acts summary b { color: var(--t-ink); font-weight: 600; flex: none; }
+.acts summary .kinds { flex: none; font-size: 11.5px; }
+.acts summary .last { flex: 1; min-width: 0; text-align: right; font-family: var(--t-mono); font-size: 11px; opacity: 0.75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acts details[open] > summary .last { display: none; }
+.acts details[open] > summary { margin-bottom: 2px; }
+.act { display: flex; align-items: baseline; gap: 8px; padding: 2.5px 6px 2.5px 4px; border-radius: 6px; min-width: 0; }
+.act.tap { cursor: pointer; }
+.act .verb { flex: none; width: 5.6em; font-size: 11.5px; font-weight: 600; color: var(--t-soft); }
+.act[data-kind=edit] .verb { color: var(--t-accent); }
+.act[data-kind=run] .verb { color: #8ab4ff; }
+.act[data-kind=page] .verb { color: #b79cff; }
+.act .what { flex: 1; min-width: 0; color: #c9c7d6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act .what.path, .act .what.cmd { font-family: var(--t-mono); font-size: 12px; }
+.act .what.path { color: var(--t-ink); }
+.act .what.path i { font-style: normal; color: var(--t-soft); }
+.act[data-kind=read] .what.path { color: #c9c7d6; }
+.act .meta { flex: none; display: flex; align-items: baseline; gap: 7px; font-family: var(--t-mono); font-size: 11px; color: var(--t-soft); }
+.act .meta i { font-style: normal; }
+.act .meta .for { color: var(--t-accent); }
+.act .meta .bad { color: var(--t-bad); }
+.act .meta .more { display: flex; align-self: center; font-size: 12px; opacity: 0.5; transition: transform 0.12s; }
+.act.open .meta .more { transform: rotate(90deg); opacity: 1; }
+.act .count b { font-weight: 600; }
+.act .count b.in { color: var(--t-good); }
+.act .count b.out { color: var(--t-bad); margin-left: 5px; }
+/* The row whose answer is in the place under the group, and the one the agent is at now. */
+.act.inbox, .act.open { background: rgba(255, 255, 255, 0.045); }
+.act.running { background: rgba(242, 184, 75, 0.08); }
+.act.running .verb::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: var(--t-accent); vertical-align: 1px; animation: t-pulse 1.1s ease-in-out infinite; }
+.act.running .verb { width: auto; min-width: 5.6em; }
+.act.fail .what { color: var(--t-bad); }
+@keyframes t-pulse { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .act.running .verb::before { animation: none; } }
+/* What a thing answered: what a command printed, the lines of a change, or the picture the agent looked at. */
+.acts pre.out { margin: 3px 0 6px 4px; padding: 7px 9px; background: #101014; border-radius: 8px; color: #b9b7c8; font: 11px/1.4 var(--t-mono); white-space: pre-wrap; word-break: break-word; max-height: 15em; overflow: auto; text-align: left; }
+.acts pre.out.fail { color: var(--t-bad); }
+.acts pre.out.diff { padding: 6px 0; border: 0; font-size: 11px; line-height: 1.4; max-height: 15em; }
+.acts pre.out.diff span { padding: 0 9px 0 21px; }
+.acts img.seen { display: block; margin: 3px 0 6px 4px; height: 150px; max-width: calc(100% - 8px); object-fit: contain; object-position: left; border-radius: 8px; cursor: zoom-in; }
+.acts .answer { display: flex; flex-direction: column; height: 168px; margin: 5px 0 3px 4px; background: #101014; border: 1px solid var(--t-line); border-radius: 9px; overflow: hidden; }
+.acts .answer .of { flex: none; padding: 4px 9px; border-bottom: 1px solid var(--t-line); font-family: var(--t-mono); font-size: 10.5px; color: var(--t-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acts .answer.stale > :not(.of) { opacity: 0.4; }
+.acts .answer.stale .of::after { content: ' · the one before'; font-family: inherit; }
+.acts .answer pre.out { flex: 1; min-height: 0; margin: 0; max-height: none; background: none; border-radius: 0; }
+.acts .answer img.seen { flex: 1; min-height: 0; margin: 6px 9px; height: auto; max-width: calc(100% - 18px); }
+/* In the foot, from the top: what the agent is doing, how full its context is, and the place to write; a line
+   between the first two and the last. */
+.agent-status { display: flex; align-items: center; gap: 10px; padding: 9px 4px 8px; border-bottom: 1px solid var(--t-line); font-size: 13px; }
 .agent-status .doing { flex: 1; min-width: 0; }
 .agent-status .doing p { color: var(--t-soft); font-size: 12px; max-height: 3.9em; overflow: hidden; }
 .agent-status button { min-height: 36px !important; }
 .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--t-line); border-top-color: var(--t-accent); animation: t-spin 0.8s linear infinite; flex: none; }
 @keyframes t-spin { to { transform: rotate(360deg); } }
-.usage { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--t-soft); padding: 5px 4px 0; font-variant-numeric: tabular-nums; }
+.usage { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--t-soft); padding: 7px 4px 0; font-variant-numeric: tabular-nums; }
 .usage:empty { display: none; }
 .usage .bar { flex: 1; height: 4px; border-radius: 3px; background: var(--t-line); overflow: hidden; }
 .usage .bar i { display: block; height: 100%; background: var(--t-accent); }
@@ -285,7 +361,10 @@ figure.card.look figcaption { padding: 6px 10px; font-size: 12px; color: var(--t
 .offer .none { color: var(--t-soft); font-size: 13px; padding: 6px 2px; }
 #tandem .composer .clip { width: 40px; height: 44px; font-size: 18px; }
 #tandem .composer .clip.busy { opacity: 0.4; }
-.composer { display: flex; gap: 8px; align-items: flex-end; padding-top: 8px; }
+.composer { display: flex; gap: 8px; align-items: flex-end; padding-top: 10px; }
+/* (The field is a hollow in the foot, darker than what it lies in.) */
+#tandem .composer textarea { background: var(--t-bg); border-color: #45435a; }
+#tandem .composer textarea:focus { border-color: var(--t-accent); outline: none; }
 .composer textarea { flex: 1; max-height: 140px; }
 #tandem .composer .new-chat { width: 44px; height: 44px; font-size: 20px; }
 

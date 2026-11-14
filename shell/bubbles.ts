@@ -6,6 +6,7 @@
 // everything in them is in the chat.
 import type { Event } from '../core/events.ts';
 import { clear, h } from './dom.ts';
+import { icon } from './icons.ts';
 
 /** Something that is waiting for an answer. */
 interface Waiting {
@@ -69,13 +70,13 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
       // One thing waiting is said in full, with its two answers. Several are one bubble, a line each: what it is,
       // and its own two answers beside it.
       list.length === 1 && list.map(([key, w]) => h('div.bubble.waits', { data: { key } },
-        h<'button'>('button.hide', { 'aria-label': 'Hide', title: 'Hide: it stays in the chat', onclick: () => hide([key]) }, '✕'),
+        h<'button'>('button.hide', { 'aria-label': 'Hide', title: 'Hide: it stays in the chat', onclick: () => hide([key]) }, icon('close')),
         h('div.say', { onclick: () => app.open(...w.open) }, h('b', {}, w.title), w.text && h('p', {}, w.text)),
         h('div.answers', {},
           h<'button'>('button.primary', { onclick: () => w.yes.run() }, w.yes.label),
           h<'button'>('button', { onclick: () => w.no.run() }, w.no.label)))),
       list.length > 1 && h('div.bubble.waits.many', {},
-        h<'button'>('button.hide', { 'aria-label': 'Hide', title: 'Hide: they stay in the chat', onclick: () => hide(list.map(([key]) => key)) }, '✕'),
+        h<'button'>('button.hide', { 'aria-label': 'Hide', title: 'Hide: they stay in the chat', onclick: () => hide(list.map(([key]) => key)) }, icon('close')),
         h('div.count', { onclick: () => app.open('chat') }, `${list.length} things wait for you`),
         list.map(([key, w]) => h('div.wait', { data: { key } },
           h('div.say', { onclick: () => app.open(...w.open) }, h('b', {}, w.title)),

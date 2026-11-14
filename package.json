@@ -11,7 +11,8 @@
     "test": "node --no-warnings --test \"art/test/*.test.js\" && node --no-warnings --test --test-force-exit --test-concurrency=2 \"test/**/*.test.ts\""
   },
   "dependencies": {
-    "archetype-ecs": "file:../archetype-ecs"
+    "archetype-ecs": "file:../archetype-ecs",
+    "lucide": "^1.73.0"
   },
   "devDependencies": {
     "@types/jsdom": "^21.1.7",

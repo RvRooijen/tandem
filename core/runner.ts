@@ -77,6 +77,33 @@ export function didWith(host: Host, name: string, input: Record<string, unknown>
   return `used ${name}`;
 }
 
+/** What a tool answered, cut to what fits in the conversation: the end of what a command printed, the start of anything else. */
+export function outOf(name: string, content: unknown): string {
+  const text = (Array.isArray(content) ? content.map((c) => (c?.type === 'text' ? String(c.text ?? '') : c?.type === 'image' ? '(a picture)' : '')).join('\n') : String(content ?? '')).replace(/\r/g, '').replace(/\s+$/, '');
+  const lines = text.split('\n');
+  const MOST = 24;
+  const kept = lines.length <= MOST ? lines : name === 'Bash' ? [`… (${lines.length - MOST} lines before this)`, ...lines.slice(-MOST)] : [...lines.slice(0, MOST), `… (${lines.length - MOST} more lines)`];
+  return kept.map((l) => (l.length > 240 ? `${l.slice(0, 239)}…` : l)).join('\n');
+}
+
+/**
+ * What a change to a file was, as the lines that went and the lines that came: what the tool itself answers ("the
+ * file has been updated") says nothing. Cut to what fits in the conversation.
+ */
+export function changeOf(name: string, input: Record<string, unknown>): string | undefined {
+  const MOST = 40;
+  const mark = (text: unknown, sign: string) => (text === undefined || text === '' ? [] : String(text).replace(/\r/g, '').split('\n').map((l) => `${sign}${l.length > 240 ? `${l.slice(0, 239)}…` : l}`));
+  const lines = name === 'Edit' ? [...mark(input.old_string, '-'), ...mark(input.new_string, '+')] : name === 'Write' ? mark(input.content, '+') : [];
+  if (!lines.length) return undefined;
+  return (lines.length <= MOST ? lines : [...lines.slice(0, MOST), `… (${lines.length - MOST} more lines)`]).join('\n');
+}
+
+/** How many lines a change to a file took out and put in. */
+export function countOf(name: string, input: Record<string, unknown>): { added: number; removed: number } | undefined {
+  const count = (text: unknown) => (text === undefined || text === '' ? 0 : String(text).replace(/\n$/, '').split('\n').length);
+  return name === 'Edit' ? { added: count(input.new_string), removed: count(input.old_string) } : name === 'Write' ? { added: count(input.content), removed: 0 } : undefined;
+}
+
 export interface AgentStatus {
   busy: boolean; doing: string; text: string; waiting: number; session: boolean; off: boolean;
   /** How big the conversation is, in tokens, and where it starts over by itself. */
@@ -242,6 +269,9 @@ export function createRunner(host: Host) {
     });
     child = proc;
     let buf = '', err = '', said = 0, failed = '', lastSaid = '';
+    /** What it is doing with a tool right now, by the id of the call: what the tool answers is said with it. */
+    const calls = new Map<string, { tool: string; change?: string }>();
+    let seen = 0;
     const timer = setTimeout(() => { failed = 'it took more than fifteen minutes and was stopped'; proc.kill(); }, 15 * 60_000);
     const say = (t: string, extra: Record<string, unknown> = {}) => host.events.add({ type: 'message', by: 'agent', text: t, round, ...extra });
 
@@ -279,8 +309,34 @@ export function createRunner(host: Host) {
               cast(true);
               // Everything it does is in the conversation, one line each; the page folds a run of them into one.
               const did = didWith(host, String(block.name), block.input ?? {});
-              if (did) host.events.add({ type: 'agent.did', by: 'agent', round, did });
+              if (did) {
+                // A picture it looks at (of the page, or one the person shared) is shown with it.
+                const file = block.name === 'Read' ? String(block.input?.file_path ?? '') : '';
+                const picture = [['looks', host.dirs.looks], ['files', host.dirs.files]].map(([kind, dir]) => (file.startsWith(`${dir}/`) && /\.(png|jpe?g|gif|webp)$/i.test(file) ? `/api/file/${kind}/${encodeURIComponent(file.slice(dir.length + 1))}` : '')).find(Boolean);
+                if (block.id) calls.set(String(block.id), { tool: String(block.name), change: changeOf(String(block.name), block.input ?? {}) });
+                host.events.add({ type: 'agent.did', by: 'agent', round, did, ...(block.id && { id: String(block.id) }), ...(picture && { picture }), ...countOf(String(block.name), block.input ?? {}) });
+              }
             }
+          }
+        } else if (msg.type === 'user') {
+          // What a tool answered: kept with what the agent did, so the conversation shows how it went.
+          for (const block of Array.isArray(msg.message?.content) ? msg.message.content : []) {
+            const call = block?.type === 'tool_result' ? calls.get(String(block.tool_use_id)) : undefined;
+            if (!call) continue;
+            // A change that went in is said by its lines; one that did not, by what the tool said about it.
+            const change = block.is_error ? undefined : call.change;
+            calls.delete(String(block.tool_use_id));
+            // A picture it was given (it read one, from anywhere) is kept, so the person sees what it saw.
+            const image = Array.isArray(block.content) ? block.content.find((c: any) => c?.type === 'image' && c.source?.type === 'base64' && typeof c.source.data === 'string') : undefined;
+            let picture: string | undefined;
+            if (image) {
+              try {
+                const name = `seen-${Date.now().toString(36)}-${++seen}.${/jpe?g/.test(String(image.source.media_type)) ? 'jpg' : /gif|webp/.exec(String(image.source.media_type))?.[0] ?? 'png'}`;
+                writeFileSync(join(host.dirs.looks, name), Buffer.from(image.source.data, 'base64'));
+                picture = `/api/file/looks/${name}`;
+              } catch { /* shown without it */ }
+            }
+            host.events.add({ type: 'agent.out', by: 'agent', round, id: String(block.tool_use_id), out: change ?? outOf(call.tool, block.content), ...(change && { change: true }), ...(block.is_error && { error: true }), ...(picture && { picture }) });
           }
         } else if (msg.type === 'result') {
           if (msg.is_error) failed = String(msg.result ?? msg.subtype ?? 'it failed');

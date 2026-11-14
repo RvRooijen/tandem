@@ -91,7 +91,8 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
       if (req.method === 'GET' && url.pathname.startsWith('/api/file/looks/')) {
         const file = normalize(join(host.dirs.looks, url.pathname.slice('/api/file/looks/'.length)));
         if (!file.startsWith(host.dirs.looks) || !existsSync(file)) return send(res, 404, { ok: false, error: 'no such picture' });
-        res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'max-age=31536000' });
+        const kind = ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' } as Record<string, string>)[file.split('.').pop()!.toLowerCase()] ?? 'image/png';
+        res.writeHead(200, { 'content-type': kind, 'cache-control': 'max-age=31536000' });
         return void createReadStream(file).pipe(res);
       }
 

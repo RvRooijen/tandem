@@ -7,6 +7,7 @@ import type { Event } from '../../core/events.ts';
 import type { App, Panel } from '../app.ts';
 import { drawArt } from '../artview.ts';
 import { clear, h, prose } from '../dom.ts';
+import { icon } from '../icons.ts';
 
 interface Drawing { name: string; w: number; h: number; looks: string[]; anims: Record<string, number>; depth: boolean; locked: boolean }
 interface Open { worker: string; drawing: string; state: string; phase: string; doing: string; minutes: number }
@@ -73,7 +74,7 @@ export function artPanel(): Panel {
       workersEl,
       h('h3', {}, 'Drawings'),
       all.map((d) => h('div.item.drawing', { onclick: () => void detail(d) },
-        h('div.line', {}, h('b', {}, d.locked && '🔒 ', d.name), h('span.count', {}, `${d.w}×${d.h}`)),
+        h('div.line', {}, h('b', {}, d.locked && [icon('lock'), ' '], d.name), h('span.count', {}, `${d.w}×${d.h}`)),
         h('p', {}, `${Object.keys(d.anims).length} ${Object.keys(d.anims).length === 1 ? 'animation' : 'animations'}${d.looks.length > 1 ? ` · ${d.looks.length} looks` : ''}${d.depth ? ' · depth map' : ''}`))),
       !all.length && h('div.empty', {}, h('b', {}, 'This project has no drawings yet.')),
       h('p.t-hint', {}, 'New drawings and changes are asked for in the chat: say what you want, and point at a drawing with @.'));
@@ -91,7 +92,7 @@ export function artPanel(): Panel {
       clear(pic, h<'img'>('img', { src: got.url, alt: `${d.name}${input.anim ? `, ${input.anim}` : ''}`, onclick: () => app.zoom(got.url) }));
     };
     clear(body,
-      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void list() }, '‹ Art'), h('b', {}, `${d.name} · ${d.w}×${d.h}`), h('span.grow'), app.lockButton(`drawing:${d.name}`, d.locked, (on) => { d.locked = on; })),
+      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void list() }, icon('back'), 'Art'), h('b', {}, `${d.name} · ${d.w}×${d.h}`), h('span.grow'), app.lockButton(`drawing:${d.name}`, d.locked, (on) => { d.locked = on; })),
       pic,
       h('div.chips', {},
         h('span.t-chip.tap', { onclick: () => void show() }, 'all'),
@@ -149,7 +150,7 @@ export function artPanel(): Panel {
     const looks = h('p.t-hint.looks');
     live = { id, canvas, rest, looks };
     clear(body,
-      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void list() }, '‹ Art'), h('b', {}, w.name || 'a worker'), h('span.grow'), h('span.t-chip', {}, w.decided ?? stateWords(w))),
+      h('div.bar', {}, h<'button'>('button.link', { onclick: () => void list() }, icon('back'), 'Art'), h('b', {}, w.name || 'a worker'), h('span.grow'), h('span.t-chip', {}, w.decided ?? stateWords(w))),
       h('div.stage-live', {}, canvas),
       looks,
       rest);

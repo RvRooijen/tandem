@@ -99,6 +99,9 @@ page back; it also gets it back to you when it is done or its turn is over.
 
 - **Everything is a command.** `core/commands.ts` is the only door. A button in the page, the agent's command line and the tests call the same named commands; the only difference is who is asking.
 - **Concepts** (`.tandem/concepts/*.md`) are a name and a description in your own words, with links, what makes them real, and a stage (idea, design, build, playtest) that tells the agent what kind of help fits. They hold words, not numbers to be met.
+- **Together the concepts are a living design document.** The Concepts tab reads as one: a concept that is part of nothing is a chapter, what is `part-of` it stands under it, and each says what it is in one sentence until it is opened. It describes the project; it is not a plan, and nothing is held against it. The agent keeps it true: when a change it makes changes how something works that a concept describes, it proposes the new words for that concept with it.
+- **Loose thoughts** (`.tandem/thoughts.json`) are what you type as it comes, above the document, without a name or a place. They are yours and not part of the document; one goes into it when you want it to: name it and it is a piece, or talk about it and the agent proposes where it belongs (`thought` on concepts.create and concepts.update). Then it is no longer loose.
+- **A change to the project says which concepts it is for**, when it is for any: the agent names them with its description (code.describe), the card shows them, and the commit gets a line `Concept: <id>` under its message, one for each. A concept then shows what was changed for it, and what waits to be decided. It is the history that is read (concepts.history), so a commit of your own counts when it has the line, and a change that is for no concept (a fix) simply has none.
 - **Locks.** A concept or a drawing can be locked: the engine refuses the agent any change or proposal to it, even when you ask the agent for one.
 - **Working files and project files.** The project is what you use. The agent codes in a working copy (a git worktree in a hidden folder right beside the project, so `../something` still resolves). What the copy differs from the project is one change set: a card with the files, the copy played in the frame, accept (one commit) or reject. Your own uncommitted work is never committed, reset or overwritten for you; if it is in the way of an accept, tandem says which files.
 - **The person's change is made; the agent's is proposed**, for concepts and drawings too. Everything proposed while answering one message is one round.
@@ -119,7 +122,7 @@ page back; it also gets it back to you when it is done or its turn is over.
     shell/       tandem's page: the project in a frame, a sheet with Chat, Concepts and Art over it
     test/        on a small fixture project (test/fixture) and, for what needs an adapter, on Gnome Garden
 
-In a project: `.tandem/tandem.json` (and `.tandem/page.sh` when starting the page takes a script), `.tandem/concepts`, `.tandem/locks.json`, and `.tandem/data` (not in git: the event log, proposals, pictures, the agent's session).
+In a project: `.tandem/tandem.json` (and `.tandem/page.sh` when starting the page takes a script), `.tandem/concepts`, `.tandem/thoughts.json`, `.tandem/locks.json`, and `.tandem/data` (not in git: the event log, proposals, pictures, the agent's session).
 
 ## Where it stands
 

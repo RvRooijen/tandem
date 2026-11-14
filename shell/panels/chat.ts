@@ -20,6 +20,8 @@ interface Change {
   questions?: string[];
   /** Code: where the change can be seen, when the agent said so. */
   show?: Show;
+  /** A concept: the loose thought of the person it takes in, in their words. */
+  thought?: string;
 }
 /** A round is 'decided' when its pieces went different ways: some taken, some refused. */
 interface Round {
@@ -35,6 +37,7 @@ export function refChip(app: App, ref: string, onRemove?: () => void): HTMLEleme
   if (kind === 'page') { try { onPage = JSON.parse(rest); } catch { /* shown as it is */ } }
   const open = () => {
     if (kind === 'concept') app.open('concepts', rest);
+    else if (kind === 'thought') app.open('concepts');
     else if (kind === 'drawing') app.open('art', rest);
     else if (kind === 'point') { const [x, y] = rest.split(',').map(Number); app.point(x, y); }
     else if (kind === 'page' && (onPage.three?.uuid || onPage.selector)) { app.reveal(); app.point(0, 0, '', onPage.three?.uuid ? `three:${onPage.three.uuid}` : onPage.selector); }
@@ -42,7 +45,7 @@ export function refChip(app: App, ref: string, onRemove?: () => void): HTMLEleme
   const short = (text: string) => (text.length > 40 ? `${text.slice(0, 39)}…` : text);
   // (The picture that goes with it, while it is not sent yet.)
   const picture = onRemove ? app.pictures.get(ref) : undefined;
-  const label = kind === 'page' && onPage.three ? `in the scene: ${short(onPage.words ?? 'something')}` : kind === 'page' ? `on the page: ${onPage.words ? `"${short(onPage.words)}"` : `${onPage.tag ?? 'something'}${onPage.near ? ` by "${short(onPage.near)}"` : ''}`}` : `${kind} ${rest}`;
+  const label = kind === 'page' && onPage.three ? `in the scene: ${short(onPage.words ?? 'something')}` : kind === 'page' ? `on the page: ${onPage.words ? `"${short(onPage.words)}"` : `${onPage.tag ?? 'something'}${onPage.near ? ` by "${short(onPage.near)}"` : ''}`}` : kind === 'thought' ? 'a loose thought' : `${kind} ${rest}`;
   return h('span.t-chip.ref', { data: { kind } },
     picture && h<'img'>('img', { src: picture.url, alt: 'A picture of it', onclick: () => app.zoom(picture.url) }),
     h('span', { onclick: open }, label),
@@ -395,6 +398,7 @@ export function chatPanel(): Panel {
             h<'button'>('button.yes', { 'aria-label': `Accept ${c.path}`, onclick: () => decide(true, c) }, icon('yes')),
             h<'button'>('button.no', { 'aria-label': `Reject ${c.path}`, onclick: () => decide(false, c) }, icon('close')))),
         c.kind === 'drawing' ? pictures(c) : c.kind === 'code' ? codeFiles(c, r) : c.kind === 'setup' ? setupLines(c) : c.kind === 'concept' ? conceptLines(c) : fieldLines(c),
+        c.thought && h('div.note.from', {}, 'From your thought: ', h('i', {}, c.thought.length > 160 ? `${c.thought.slice(0, 159)}…` : c.thought)),
         c.note && c.note !== 'a new concept' && h('div.note', {}, c.note),
         // What the agent needs to hear about this piece is asked with it, while it is still to be decided or was taken.
         c.questions?.length && c.status !== 'rejected' ? questionFields(c.id, c.questions) : null)),

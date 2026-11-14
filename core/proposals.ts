@@ -23,6 +23,8 @@ export interface Proposal {
   note: string;
   /** What only the person can say about it: questions the agent has, each answered in a field on the card. */
   questions?: string[];
+  /** A concept: the loose thought it works into the document, which is no longer loose once this is accepted. */
+  thought?: string;
   status: 'pending' | 'accepted' | 'rejected';
   ts: number;
 }
@@ -48,6 +50,7 @@ export function createProposals(dir: string): Proposals {
         earlier.after = { ...earlier.after, ...p.after };
         earlier.note = p.note;
         if (p.questions) earlier.questions = p.questions;
+        if (p.thought) earlier.thought = p.thought;
         write(earlier);
         return earlier;
       }

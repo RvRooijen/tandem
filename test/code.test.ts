@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createCode } from '../core/code.ts';
+import { createCode, forConcepts } from '../core/code.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'tandem-code-'));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -131,6 +131,25 @@ test('files of the engine that are being worked on in the project do not stop a 
   assert.equal(read('games/g/src/seasons.ts'), 'export const names = ["spring", "summer"];\n');
   assert.equal(read('core/engine.ts'), 'export const engine = "being changed by hand";\n');
   assert.equal(git('status', '--porcelain').trim(), 'M core/engine.ts');
+});
+
+test('a commit says which concepts it is for, and the history is where that is read', () => {
+  assert.equal(forConcepts('Summer is longer', []), 'Summer is longer', 'for none, nothing is added');
+  const before = code.history().length;
+  code.sync();
+  put('games/g/src/seasons.ts', 'export const names = ["spring", "summer", "autumn"];\n', code.work);
+  code.accept(forConcepts('Autumn', ['the-year', 'slow-burn']));
+  assert.equal(git('log', '-1', '--format=%B'), 'Autumn\n\nConcept: the-year\nConcept: slow-burn');
+  // A commit made by hand says it the same way; one that only talks about a concept in its message does not count.
+  put('games/g/src/rules.ts', read('games/g/src/rules.ts') + '// frost\n');
+  git('commit', '-q', '-m', 'Frost\n\nIt was cold.\n\nConcept: the-year', '--', 'games/g/src/rules.ts');
+  put('games/g/src/rules.ts', read('games/g/src/rules.ts') + '// thaw\n');
+  git('commit', '-q', '-m', 'Thaw: the Concept: of a year', '--', 'games/g/src/rules.ts');
+  const made = code.history();
+  assert.deepEqual(made.slice(0, made.length - before).map((m) => [m.subject, m.concepts]), [['Frost', ['the-year']], ['Autumn', ['the-year', 'slow-burn']]], 'the newest first');
+  assert.match(made[0].hash, /^[0-9a-f]{40}$/);
+  assert.ok(Math.abs(made[0].ts - Date.now()) < 5 * 60_000, 'with when it was made');
+  code.sync();
 });
 
 test('a project that ignores tandem\'s folder keeps tandem out of its history', () => {

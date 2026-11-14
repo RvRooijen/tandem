@@ -10,6 +10,17 @@ import { basename, isAbsolute, join } from 'node:path';
 
 export interface FileChange { path: string; added: number; removed: number; status: 'new' | 'changed' | 'gone' }
 
+/** A commit that says which concepts it is for. */
+export interface ConceptCommit { hash: string; ts: number; subject: string; concepts: string[] }
+
+/**
+ * A commit says which concepts it is for in its own message: a line `Concept: <id>` under it, one for each. So it
+ * is the history that knows, whoever made the commit (the person can write the line too) and whatever was done to
+ * the history since; nothing about it is kept beside the repository.
+ */
+export const forConcepts = (message: string, concepts: string[]) =>
+  concepts.length ? `${message.trimEnd()}\n\n${concepts.map((id) => `Concept: ${id}`).join('\n')}` : message;
+
 export interface CodeOptions {
   /** The repository: the project files. */
   root: string;
@@ -127,6 +138,15 @@ export function createCode(o: CodeOptions) {
     return what;
   }
 
+  /** The commits of the project that name a concept, the newest first. */
+  function history(limit = 300): ConceptCommit[] {
+    const out = tryGit(o.root, 'log', `-${limit}`, '--grep=^Concept: ', '--format=%H%x1f%ct%x1f%s%x1f%b%x1e') ?? '';
+    return out.split('\x1e').map((c) => c.replace(/^\n/, '').split('\x1f')).filter((c) => c.length === 4).map(([hash, at, subject, body]) => ({
+      hash, ts: Number(at) * 1000, subject,
+      concepts: [...new Set([...body.matchAll(/^Concept: *(\S+) *$/gm)].map((m) => m[1]))],
+    })).filter((c) => c.concepts.length);
+  }
+
   /** Throw the working copy's changes away: it is the project again. */
   function reject() {
     if (!existsSync(join(work, '.git'))) return;
@@ -135,7 +155,7 @@ export function createCode(o: CodeOptions) {
     deps();
   }
 
-  return { work, usable, sync, changes, diff, accept, reject, commitProject };
+  return { work, usable, sync, changes, diff, accept, reject, commitProject, history };
 }
 
 export type Code = ReturnType<typeof createCode>;

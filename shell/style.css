@@ -389,6 +389,44 @@ figure.card.look figcaption { padding: 6px 10px; font-size: 12px; color: var(--t
 .rows { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--t-soft); }
 .check .k { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--t-ink) !important; }
+/* What was changed for a concept: said in full, with when; the one that waits goes to the chat. */
+.rows.made .check { align-items: baseline; gap: 10px; }
+.rows.made .check .k { font-family: inherit; overflow: visible; word-break: break-word; }
+.rows.made .check time { font-size: 12px; white-space: nowrap; }
+.rows.made .check.waits { cursor: pointer; }
+#tandem .piece small.made { display: block; margin-top: 5px; color: var(--t-soft); font-size: 12px; }
+
+/* The document: chapters, and under each what is part of it. A piece says what it is in a sentence until it is opened. */
+#tandem .doc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+#tandem .doc-head button.link { font-size: 13px; }
+#tandem .piece.chapter { padding: 12px 0; border-top: 1px solid var(--t-line); }
+#tandem .piece.chapter:first-child { border-top: 0; padding-top: 2px; }
+#tandem .piece .head { cursor: pointer; }
+#tandem .piece .line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#tandem .piece.chapter > .head b { font-size: 16.5px; }
+#tandem .piece b { word-break: break-word; }
+#tandem .piece p.core { color: var(--t-soft); font-size: 13.5px; margin-top: 3px; word-break: break-word; }
+#tandem .piece .read { margin-top: 8px; }
+#tandem .piece .read .prose { font-size: 14px; }
+#tandem .piece .read .t-row { margin-top: 10px; }
+#tandem .piece .fold { display: flex; gap: 8px; align-items: baseline; margin-top: 8px; font-size: 12.5px; color: var(--t-soft); cursor: pointer; min-height: 30px; }
+#tandem .piece .fold b { color: var(--t-accent); font-weight: 600; white-space: nowrap; }
+#tandem .piece .fold span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+#tandem .piece .parts { margin: 4px 0 0 4px; padding-left: 12px; border-left: 2px solid var(--t-line); }
+#tandem .piece.part { padding: 9px 0; }
+#tandem .piece.part + .piece.part { border-top: 1px solid var(--t-line); }
+
+/* Loose thoughts: typed as they come, kept apart from the document until they are given a place. */
+#tandem .adder.mind { align-items: flex-end; }
+#tandem .adder.mind textarea { flex: 1; max-height: 140px; }
+#tandem .thoughts { margin-bottom: 6px; }
+#tandem .thought { padding: 9px 12px; border-radius: 12px; background: var(--t-raise); margin-bottom: 8px; }
+#tandem .thought p { white-space: pre-wrap; word-break: break-word; font-size: 14px; }
+#tandem .thought .line { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+#tandem .thought .line time { color: var(--t-soft); font-size: 12px; }
+#tandem .thought .line button.link { font-size: 12.5px; }
+#tandem .thought .adder { margin: 8px 0 0; }
+.note.from i { color: var(--t-ink); }
 #tandem input.n { width: 68px; flex: none; padding: 8px; text-align: right; }
 /* ---- shared by a few panels */
 .working { display: flex; align-items: center; gap: 10px; padding: 22px 6px; color: var(--t-soft); }

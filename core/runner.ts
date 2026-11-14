@@ -202,6 +202,9 @@ export function createRunner(host: Host) {
           out.push(e ? `Entity ${rest} in the world being played: ${JSON.stringify(e.components)}` : `Entity ${rest} (no longer there)`);
         } else if (kind === 'drawing') {
           out.push(`Drawing ${rest}${host.locks.has(`drawing:${rest}`) ? ' (LOCKED)' : ''}: one of the game's drawings, made in pixeldraw. See it with art.look.`);
+        } else if (kind === 'thought') {
+          const t = host.thoughts.get(rest);
+          out.push(t ? `A loose thought of theirs (${t.id}), which is not part of any concept yet:\n${t.text}` : `A loose thought (${rest}) that is no longer there.`);
         } else if (kind === 'page') {
           const p = JSON.parse(rest) as { words?: string; near?: string; tag?: string; selector?: string; path?: string; three?: Record<string, any> };
           // A thing in a scene three.js draws: it has no words, so it is told by what it is and where.

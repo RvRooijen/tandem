@@ -188,6 +188,42 @@ test('concepts: the person writes them, the agent proposes, and nothing in one i
   assert.equal((await me('concepts.list')).length, 1);
 });
 
+test('a loose thought is the person\'s, kept apart from the concepts until it is given a place among them', async () => {
+  assert.deepEqual(await me('thoughts.list'), []);
+  await refused(me('thoughts.add', { text: '  ' }), 'input');
+  await refused(agent('thoughts.add', { text: 'A thought of the agent.' }), 'permission');
+  const moss = await me('thoughts.add', { text: 'Moss on the north side of everything.\nMaybe it spreads.' });
+  const owl = await me('thoughts.add', { text: 'An owl at night?' });
+  const bell = await me('thoughts.add', { text: 'A bell by the gate.' });
+  assert.deepEqual((await agent('thoughts.list')).map((t: any) => t.text), ['Moss on the north side of everything.\nMaybe it spreads.', 'An owl at night?', 'A bell by the gate.'], 'the agent reads them');
+  assert.ok(existsSync(join(dir, '.tandem/thoughts.json')), 'kept with the project, beside its concepts');
+  await refused(agent('thoughts.remove', { id: owl.id }), 'permission');
+
+  // The person makes a piece of the document from one: the thought is then no longer loose.
+  await refused(me('concepts.create', { name: 'Moss', thought: 'no-such-thought' }), 'missing');
+  await me('concepts.create', { name: 'Moss', text: moss.text, thought: moss.id });
+  assert.equal(host.concepts.get('moss')!.text, moss.text);
+  assert.deepEqual((await me('thoughts.list')).map((t: any) => t.id), [owl.id, bell.id]);
+  assert.deepEqual(host.events.since(0).filter((e) => e.type === 'thought.changed').map((e) => e.what), ['added', 'added', 'added', 'placed']);
+
+  // The agent proposes where one belongs; it stays loose until the person accepts, and stays when they do not.
+  await agent('concepts.update', { id: 'moss', text: `${moss.text}\n\nAn owl hunts over it at night.`, thought: owl.id }, 'r70');
+  const card = host.events.since(0).filter((e) => e.type === 'proposal').at(-1)!;
+  assert.equal(card.thought, 'An owl at night?', 'the card says which thought it takes in');
+  assert.equal((await me('thoughts.list')).length, 2);
+  await me('proposals.decide', { round: 'r70', accept: false });
+  assert.equal((await me('thoughts.list')).length, 2, 'declined: still loose');
+  await agent('concepts.create', { name: 'The gate bell', text: 'A bell by the gate.', links: [{ to: 'moss', kind: 'part-of' }], thought: bell.id }, 'r71');
+  await me('proposals.decide', { round: 'r71', accept: true });
+  assert.ok(host.concepts.get('the-gate-bell'));
+  assert.deepEqual((await me('thoughts.list')).map((t: any) => t.id), [owl.id], 'accepted: it is in the document now');
+
+  await me('thoughts.remove', { id: owl.id });
+  await refused(me('thoughts.remove', { id: owl.id }), 'missing');
+  assert.deepEqual(await me('thoughts.list'), []);
+  for (const id of ['moss', 'the-gate-bell']) await me('concepts.remove', { id });
+});
+
 test('a lock keeps the agent off a thing, even when it is asked to change it', async () => {
   await refused(agent('locks.set', { ref: 'drawing:gnome', locked: true }), 'permission');
   await refused(me('locks.set', { ref: 'gnome', locked: true }), 'input');

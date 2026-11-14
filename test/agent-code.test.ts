@@ -143,3 +143,47 @@ test('an accepted change to what the project depends on is installed in the proj
     assert.match(readFileSync(join(dir, 'package.json'), 'utf8'), /nope/, 'accepted all the same');
   } finally { delete process.env.TANDEM_NPM; }
 });
+
+test('a change set says which concepts it is for: on the card, in the commit, and with the concept from then on', async () => {
+  await me('concepts.create', { name: 'The year turns', text: 'Seasons follow each other.' });
+  await me('concepts.create', { name: 'Frost' });
+  const of = async (id: string) => (await me('concepts.list')).find((c: any) => c.id === id);
+  writeFileSync(join(copy, 'src/winter.js'), 'export const WINTER = true;\n');
+  // Only a concept that is there, by its id: the agent does not make one up for a change.
+  await refused(host.run('code.describe', { text: 'Winter comes.', concepts: ['no-such-thing'] }, 'agent:main'), 'missing');
+  await refused(host.run('code.describe', { text: 'Winter comes.', concepts: 'the-year-turns' }, 'agent:main'), 'input');
+  const said = await host.run('code.describe', { text: 'Winter comes.', concepts: ['the-year-turns'] }, 'agent:main') as any;
+  assert.deepEqual(said.concepts, ['the-year-turns']);
+  host.proposeCode('agent:main', '');
+  assert.deepEqual(host.events.since(0).filter((e) => e.type === 'proposal').at(-1)!.touches, [{ id: 'the-year-turns', name: 'The year turns', stage: 'idea' }], 'the card names it');
+  // While it waits, the concept says so; another concept does not.
+  assert.deepEqual([(await of('the-year-turns')).waiting, (await of('frost')).waiting], [true, undefined]);
+  assert.deepEqual(await me('concepts.history', { id: 'the-year-turns' }), { waiting: { says: 'Winter comes.', files: 1 }, changes: [] });
+  // Described again without saying which, it is still for the same ones.
+  assert.deepEqual((await host.run('code.describe', { text: 'Winter comes, and stays.' }, 'agent:main') as any).concepts, ['the-year-turns']);
+
+  await me('proposals.decide', { round: 'code', accept: true });
+  assert.equal(git('log', '-1', '--format=%B'), 'Winter comes, and stays.\n\nConcept: the-year-turns', 'the commit says which concept it is for');
+  assert.ok(!existsSync(join(host.dirs.data, 'code-for.json')), 'and that goes with the change set');
+  const made = await me('concepts.history', { id: 'the-year-turns' });
+  assert.equal(made.waiting, undefined);
+  assert.deepEqual(made.changes.map((m: any) => [m.says, m.hash.length]), [['Winter comes, and stays.', 10]]);
+  assert.deepEqual([(await of('the-year-turns')).changes, (await of('frost')).changes], [1, undefined]);
+
+  // The person's own commit can say it too, in the same words; it is the history that is read.
+  writeFileSync(join(dir, 'src/frost.js'), 'export const FROST = 1;\n');
+  git('add', 'src/frost.js');
+  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'Frost bites\n\nConcept: frost\nConcept: the-year-turns', '--', 'src/frost.js');
+  assert.deepEqual((await me('concepts.history', { id: 'frost' })).changes.map((m: any) => m.says), ['Frost bites']);
+  assert.deepEqual((await me('concepts.history', { id: 'the-year-turns' })).changes.map((m: any) => m.says), ['Frost bites', 'Winter comes, and stays.'], 'the newest first');
+
+  // The next change set is for no concept until it is said to be; and one said to be for none has no line.
+  host.code!.sync();
+  writeFileSync(join(copy, 'src/tidy.js'), 'export const TIDY = 1;\n');
+  await host.run('code.describe', { text: 'Tidied up.', concepts: [] }, 'agent:main');
+  host.proposeCode('agent:main', '');
+  assert.equal(host.events.since(0).filter((e) => e.type === 'proposal').at(-1)!.touches, undefined);
+  await me('proposals.decide', { round: 'code', accept: true });
+  assert.equal(git('log', '-1', '--format=%B'), 'Tidied up.');
+  await refused(me('concepts.history', { id: 'no-such-thing' }), 'missing');
+});

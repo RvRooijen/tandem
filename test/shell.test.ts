@@ -115,6 +115,14 @@ const button = (text: string | RegExp, root: ParentNode = $('#t-sheet')) => {
   return b;
 };
 const tab = (name: string) => click(all('.t-tab').find((t) => t.textContent === name)!);
+/** In the document a piece is read first; from there it is opened up to work on. */
+async function edit(id: string) {
+  const piece = () => $(`#t-body .piece[data-id="${id}"]`);
+  await until(piece, `the piece ${id}`);
+  if (piece().dataset.open !== 'true') click($('.head', piece()));
+  await until(() => piece()?.dataset.open === 'true', `${id} to open`);
+  click(button('Edit', piece()));
+}
 const type = (el: HTMLElement, value: string) => { (el as HTMLInputElement).value = value; el.dispatchEvent(new w.Event('input', { bubbles: true })); };
 
 // Patient: a phone under memory pressure can stall for seconds when a process starts.
@@ -384,11 +392,11 @@ test('concepts: add one, work on it, and hand it to the agent', async () => {
   tab('Concepts');
   await until(() => $('textarea.words') && ($('textarea.words') as HTMLTextAreaElement).value.endsWith('if you look.'), 'the open concept to follow');
   click($('#t-body .bar button.link'));
-  await until(() => $('#t-body .item'), 'the list');
-  assert.match($('#t-body .item').textContent!, /Night roses.*design/);
+  await until(() => $('#t-body .piece'), 'the document');
+  assert.match($('#t-body .piece').textContent!, /Night roses.*design/);
 
   // A lock: from then on the agent is refused, whatever it is asked.
-  click($('#t-body .item'));
+  await edit('night-roses');
   await until(() => $('button.lock'), 'the concept, with its lock');
   assert.equal($('button.lock').getAttribute('aria-pressed'), 'false');
   click($('button.lock'));
@@ -397,13 +405,123 @@ test('concepts: add one, work on it, and hand it to the agent', async () => {
   assert.match($('#t-toast').textContent!, /even if you ask it to/);
   await assert.rejects(host.run('concepts.update', { id: 'night-roses', text: 'x' }, AGENT, 'r901'), /locked/);
   click($('#t-body .bar button.link'));
-  await until(() => $('#t-body .item'), 'the list');
-  assert.match($('#t-body .item b').textContent!, /^ Night roses/);
-  assert.ok($('#t-body .item b svg.t-ic.i-lock'), 'with a lock before its name');
-  click($('#t-body .item'));
+  await until(() => $('#t-body .piece'), 'the document');
+  assert.match($('#t-body .piece b').textContent!, /^ Night roses/);
+  assert.ok($('#t-body .piece b svg.t-ic.i-lock'), 'with a lock before its name');
+  await edit('night-roses');
   await until(() => $('button.lock'), 'the concept again');
   click($('button.lock'));
   await until(() => !host.locks.has('concept:night-roses'), 'the lock to come off');
+});
+
+test('a concept shows what was changed in the project for it, and what waits for it', async () => {
+  // (This fixture has no working copy, so no history of its own: what the core would say is answered here.)
+  const list = await host.run('concepts.list', {}, 'me') as { id: string }[];
+  canned.set('concepts.list', list.map((c) => (c.id === 'night-roses' ? { ...c, changes: 2, waiting: true } : c)));
+  canned.set('concepts.history', { waiting: { says: 'Roses close at dawn.', files: 2 }, changes: [
+    { hash: 'abc1234567', ts: Date.now() - 3 * 3600_000, says: 'Roses open after dark' },
+    { hash: 'def1234567', ts: Date.now() - 2 * 86400_000, says: 'A rose bed by the gate' },
+  ] });
+  try {
+    click($('#t-body .bar button.link'));
+    await until(() => $('#t-body .piece small.made'), 'the document, with what was made');
+    assert.equal($('#t-body .piece small.made').textContent, 'a change waits · 2 changes made');
+    await edit('night-roses');
+    await until(() => $('.rows.made'), 'the concept, with its changes');
+    assert.deepEqual(all('.rows.made .check').map((r) => r.textContent), ['Roses close at dawn.waiting', 'Roses open after dark3h', 'A rose bed by the gate2d'], 'what waits first, then the newest');
+    // What waits is decided in the conversation: tapped, that is where it goes.
+    click($('.rows.made .check.waits'));
+    await until(() => $('.t-tab.on').textContent === 'Chat', 'the chat');
+  } finally { canned.delete('concepts.list'); canned.delete('concepts.history'); }
+  // A concept nothing was made for says nothing about it.
+  tab('Concepts');
+  await until(() => $('input.title'), 'the concept again');
+  assert.equal($('.rows.made'), null);
+});
+
+test('the concepts read as one document, and above it a thought is typed as it comes', async () => {
+  // A chapter is a concept that is part of nothing; what is part of it stands under it, folded away.
+  await host.run('concepts.create', { name: 'The garden at night', text: 'After dark the garden is another place.\n\nThings open that were shut.' }, 'me');
+  await host.run('concepts.update', { id: 'night-roses', links: [{ to: 'the-garden-at-night', kind: 'part-of' }] }, 'me');
+  click($('#t-body .bar button.link'));
+  await until(() => all('#t-body .piece.chapter').length === 1, 'the document');
+  const chapter = () => $('#t-body .piece.chapter');
+  assert.equal($('.doc-head h3').textContent, 'The document');
+  assert.equal($('.head b', chapter()).textContent, 'The garden at night');
+  assert.equal($('.head p.core', chapter()).textContent, 'After dark the garden is another place.', 'what it is, in a sentence');
+  assert.equal($('.fold', chapter()).textContent, '1 partNight roses');
+  assert.equal(all('.piece.part').length, 0);
+  click($('.fold', chapter()));
+  assert.deepEqual(all('.piece.part .head b').map((b) => b.textContent), ['Night roses']);
+  // Tapped, a piece is read where it stands: all of its words, and from there it is worked on or talked about.
+  click($('.head', chapter()));
+  await until(() => chapter().dataset.open === 'true', 'the chapter to open');
+  assert.match($('.read .prose', chapter()).textContent!, /another place\.Things open that were shut\.$/);
+  assert.deepEqual(all('.read button', chapter()).slice(0, 2).map((b) => b.textContent), ['Edit', 'Talk about this']);
+  click($('.head', chapter()));
+  assert.equal(chapter().dataset.open, 'false');
+
+  // A loose thought: no name, no place. It is kept as it was typed, above the document.
+  const mind = () => $('.adder.mind textarea') as HTMLTextAreaElement;
+  type(mind(), 'Moths around the lamp?');
+  click(button('Keep'));
+  await until(() => all('#t-body .thought').length === 1, 'the thought');
+  assert.equal($('.thought p').textContent, 'Moths around the lamp?');
+  assert.equal(mind().value, '', 'and the field is empty again');
+  const [moths] = host.thoughts.list();
+  assert.equal(moths.text, 'Moths around the lamp?');
+  assert.equal(all('#t-body .piece').length, 2, 'it is not in the document');
+  // What is being typed is not lost when the list is drawn again for something that happened.
+  type(mind(), 'half a th');
+  await host.run('concepts.update', { id: 'the-garden-at-night', stage: 'design' }, AGENT, 'r930');
+  await host.run('proposals.decide', { round: 'r930', accept: true }, 'me');
+  await until(() => /design/.test(chapter().textContent!), 'the document to follow');
+  assert.equal(mind().value, 'half a th');
+  type(mind(), '');
+
+  // It can be talked about with the agent, which is told what it says.
+  click(button('Talk about this', $('.thought')));
+  assert.equal($('.t-tab.on').textContent, 'Chat');
+  assert.deepEqual(app.refs, [`thought:${moths.id}`]);
+  assert.equal($('#t-foot .t-chip.ref span').textContent, 'a loose thought');
+  click($('#t-foot .t-chip.ref button'));
+  // The agent says where it belongs: the card names the thought, and accepted, the thought is no longer loose.
+  await host.run('concepts.update', { id: 'night-roses', text: 'A rose that only opens after dark, and closes if you look. Moths come to it.', thought: moths.id }, AGENT, 'r931');
+  const card = () => all('.card.prop').find((c) => c.dataset.status === 'pending' && /From your thought/.test(c.textContent!));
+  await until(card, 'the proposal that takes the thought in');
+  assert.match($('.note.from', card()!).textContent!, /^From your thought: Moths around the lamp\?$/);
+  click(button('Accept', card()!));
+  await until(() => !host.thoughts.list().length, 'the thought to be placed');
+  tab('Concepts');
+  await until(() => $('#t-body .doc') && !$('#t-body .thought'), 'the document without the thought');
+
+  // Or the person gives it a name themselves: then it is a piece of the document, with the thought as its words.
+  type(mind(), 'A pond that freezes over.');
+  click(button('Keep'));
+  await until(() => $('#t-body .thought'), 'another thought');
+  click(button('Make it a piece', $('.thought')));
+  type($('.thought.naming input'), 'The pond');
+  click(button('Add to the document'));
+  await until(() => host.concepts.get('the-pond'), 'the piece');
+  assert.equal(host.concepts.get('the-pond')!.text, 'A pond that freezes over.');
+  assert.deepEqual(host.thoughts.list(), []);
+  await until(() => $('#t-body .piece[data-id=the-pond]')?.dataset.open === 'true' && !$('#t-body .thought'), 'the new piece, open to read');
+  // And one that leads nowhere is thrown away.
+  type(mind(), 'Never mind.');
+  click(button('Keep'));
+  await until(() => $('#t-body .thought'), 'a third thought');
+  click($('.thought button[aria-label="Throw this thought away"]'));
+  await until(() => !$('#t-body .thought') && !host.thoughts.list().length, 'the thought to go');
+
+  // A piece with a name is added from the head of the document.
+  assert.equal($('.adder input[aria-label="Name of a new concept"]'), null);
+  click(button('Add a piece'));
+  assert.ok($('.adder input[aria-label="Name of a new concept"]'));
+  click(button('Not now'));
+  for (const id of ['the-pond', 'the-garden-at-night']) await host.run('concepts.remove', { id }, 'me');
+  await host.run('concepts.update', { id: 'night-roses', links: [] }, 'me');
+  await edit('night-roses');
+  await until(() => $('input.title'), 'the concept, as the tests after this one expect it');
 });
 
 test('art: the drawings are listed, one is looked at and locked, and a worker\'s drawing comes back as a card with pictures', async () => {

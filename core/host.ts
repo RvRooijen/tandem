@@ -1,6 +1,7 @@
 // The host: one project, its stores, its worlds and every command, in one
 // place. The server puts HTTP around it; the tests use it as it is. Nothing
 // here knows about pages or agents beyond who is asking (`by`).
+import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -258,6 +259,19 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       status: res.status, type, as: who, ...(res.headers.get('location') && { location: res.headers.get('location') }),
       body: text.length > 8000 ? `${text.slice(0, 8000)}\n… (${text.length - 8000} more characters)` : text,
     };
+  }
+
+  /**
+   * An accepted change set that changed what the project depends on (its package.json): the agent's copy had that
+   * installed, the project has not, so it is installed there too. How that went is said; it does not undo the accept.
+   */
+  function install(taken: FileChange[]): Promise<true | string | undefined> {
+    if (!taken.some((f) => f.path === 'package.json') || !existsSync(join(project.root, 'package.json'))) return Promise.resolve(undefined);
+    return new Promise((resolve) => {
+      execFile(process.env.TANDEM_NPM ?? 'npm', ['install'], { cwd: project.root, timeout: 5 * 60_000 }, (err, _out, said) => {
+        resolve(err ? (String(said).trim().split('\n').filter((l) => /\berr\b/i.test(l)).slice(0, 2).join(' ') || err.message.split('\n')[0]).slice(0, 300) : true);
+      });
+    });
   }
 
   /** How the project is run, as tandem keeps it: in its own folder in the project, not among the project's files. */
@@ -564,10 +578,12 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         if (!left) art.decided(i.round);
         const setup = i.accept && set.some((p) => p.kind === 'setup');
         if (setup) events.add({ type: 'setup.changed', by: c.by, fields: set.filter((p) => p.kind === 'setup').flatMap((p) => Object.keys(p.after)), restarting: !!process.env.TANDEM_SUPERVISED });
-        if (taken.length) events.add({ type: 'code.changed', by: c.by, files: taken.map((f) => f.path) });
+        const installed = taken.length ? await install(taken) : undefined;
+        if (taken.length) events.add({ type: 'code.changed', by: c.by, files: taken.map((f) => f.path), ...(installed !== undefined && { installed }), ...(installed === true && process.env.TANDEM_SUPERVISED && { restarting: true }) });
         // The core has the project's code in it as it was when it started: it starts again with the new code. When
         // how the project is run was changed, the project's page is started again too.
-        if (setup) restart(SETUP); else if (taken.length) restart();
+        // (And after an install: a page that is running does not find what was not there when it started.)
+        if (setup || installed === true) restart(SETUP); else if (taken.length) restart();
         events.add({ type: 'proposal.decided', by: c.by, round: i.round, status: i.accept ? 'accepted' : 'rejected', count: set.length, ids: set.map((p) => p.id), left, paths: set.map((p) => `${p.kind}:${p.path}`) });
         return { decided: set.length, left };
       },

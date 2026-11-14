@@ -453,7 +453,7 @@ export function chatPanel(): Panel {
       case 'setup.changed':
         return h('div.sys', {}, `✓ how tandem runs the project was changed (${(ev.fields as string[]).join(', ')})${ev.restarting ? '. Its page starts again with it' : ''}`);
       case 'code.changed':
-        return h('div.sys', {}, `✓ the working copy is the project now: ${(ev.files as string[]).length} ${(ev.files as string[]).length === 1 ? 'file' : 'files'} changed. The core starts again with it`);
+        return h('div.sys', {}, `✓ the working copy is the project now: ${(ev.files as string[]).length} ${(ev.files as string[]).length === 1 ? 'file' : 'files'} changed${ev.installed === true ? ', and what it depends on was installed' : ''}. The core starts again with it${ev.restarting ? ', and the project\'s page too' : ''}${typeof ev.installed === 'string' ? `. What it depends on could not be installed (${ev.installed}): run npm install in the project` : ''}`);
       case 'art.changed':
         return (ev.names as string[]).length ? h('div.sys.tap', { onclick: () => app.open('art', (ev.names as string[])[0]) }, `✓ ${(ev.names as string[]).join(', ')}: ${ev.built === false ? 'accepted into the art files; the agent brings it into the game' : 'in the game now'}`) : null;
       case 'lock.changed':

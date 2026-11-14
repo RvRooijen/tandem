@@ -416,6 +416,8 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
         if (ev.type === 'proposal.decided' && ev.round === 'code') app.playProject();
         // How the project is run was changed: the core and the project's page start again, and this page with them.
         if (ev.type === 'setup.changed' && ev.restarting) void again();
+        // The same when what the project depends on was installed with an accepted change.
+        if (ev.type === 'code.changed' && ev.restarting) void again();
         if (ev.by !== 'me' && ['message', 'look', 'playtest', 'welcome'].includes(ev.type)) app.badge('chat', true);
         if (ev.type === 'proposal' && !ev.worker) app.badge('chat', true);
         // A worker's round is ready: that is news in the Art tab.

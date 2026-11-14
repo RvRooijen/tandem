@@ -5,7 +5,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startServer } from '../core/server.ts';
@@ -114,4 +114,32 @@ test('the engine tells the agent when art was accepted; the drawing reaches its 
   assert.equal(readFileSync(join(copy, 'art/garden-sign.txt'), 'utf8'), tiny, 'by then its copy has the drawing');
   assert.match(git('log', '--oneline', '-1'), /What was changed and accepted in tandem/, 'because the engine committed what it had written in the project');
   await me('proposals.decide', { round: 'code', accept: false }).catch(() => {});
+});
+
+test('an accepted change to what the project depends on is installed in the project too', async () => {
+  // (npm itself is not run here: something that says where it was run, and with what.)
+  const ran = join(host.dirs.data, 'npm-ran.txt');
+  const npm = join(host.dirs.data, 'npm.sh');
+  writeFileSync(npm, `#!/bin/sh\necho "$PWD: $*" > "${ran}"\n`, { mode: 0o755 });
+  process.env.TANDEM_NPM = npm;
+  try {
+    writeFileSync(join(copy, 'package.json'), '{"name":"fixture","dependencies":{"left-pad":"1.3.0"}}\n');
+    host.proposeCode('agent:main', 'It depends on left-pad now.');
+    await me('proposals.decide', { round: 'code', accept: true });
+    assert.equal(readFileSync(ran, 'utf8').trim(), `${dir}: install`, 'in the project, not in the copy');
+    assert.equal(host.events.since(0).filter((e) => e.type === 'code.changed').at(-1)!.installed, true);
+    // A change set that leaves package.json alone installs nothing; and when it fails, the accept stands and it is said.
+    rmSync(ran);
+    writeFileSync(npm, '#!/bin/sh\necho "npm ERR! no such package" >&2\nexit 1\n', { mode: 0o755 });
+    writeFileSync(join(copy, 'src/more.js'), 'export const MORE = 1;\n');
+    host.proposeCode('agent:main', 'More.');
+    await me('proposals.decide', { round: 'code', accept: true });
+    assert.ok(!existsSync(ran));
+    assert.equal(host.events.since(0).filter((e) => e.type === 'code.changed').at(-1)!.installed, undefined);
+    writeFileSync(join(copy, 'package.json'), '{"name":"fixture","dependencies":{"nope":"9.9.9"}}\n');
+    host.proposeCode('agent:main', 'It depends on nope now.');
+    await me('proposals.decide', { round: 'code', accept: true });
+    assert.equal(host.events.since(0).filter((e) => e.type === 'code.changed').at(-1)!.installed, 'npm ERR! no such package');
+    assert.match(readFileSync(join(dir, 'package.json'), 'utf8'), /nope/, 'accepted all the same');
+  } finally { delete process.env.TANDEM_NPM; }
 });

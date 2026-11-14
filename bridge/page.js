@@ -7,7 +7,9 @@
 // the thing in the scene, not the canvas it is drawn on (bridge/scene.js, which
 // goes before this). And the agent can use the page as a person would, in the person's
 // own browser where they see it happen: read what is on it, tap something,
-// fill a field in, go somewhere. A page opened on its own is not touched.
+// fill a field in, go somewhere; and, while the person lets it have the page,
+// get a picture of the page and tap a place in that picture. A page opened on
+// its own is not touched.
 (() => {
   if (window.parent === window || window.__tandemPage) return;
   window.__tandemPage = true;
@@ -134,12 +136,13 @@
    * put in a picture the browser draws. What it cannot draw that way (a font or a picture from elsewhere) is left
    * out or looks plainer; a browser that will not hand such a picture back gives none.
    */
-  function ofElement(el) {
+  function ofElement(el, page) {
     return new Promise((resolve) => {
       const r = el.getBoundingClientRect();
-      const w = Math.ceil(r.width), h = Math.ceil(r.height);
+      // (For the whole page: what the window shows of it, with the canvases as they were just copied.)
+      const w = page ? window.innerWidth : Math.ceil(r.width), h = page ? window.innerHeight : Math.ceil(r.height);
       if (w < 1 || h < 1) return resolve(null);
-      let left = 200;
+      let left = page ? 2000 : 200;
       const copy = (from) => {
         if (from.nodeType === 3) return document.createTextNode(from.nodeValue);
         if (from.nodeType !== 1 || /^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|IFRAME|LINK|META)$/.test(from.tagName) || --left < 0) return null;
@@ -151,7 +154,7 @@
           const pw = from.tagName === 'IMG' ? from.naturalWidth : from.tagName === 'VIDEO' ? from.videoWidth : from.width;
           const ph = from.tagName === 'IMG' ? from.naturalHeight : from.tagName === 'VIDEO' ? from.videoHeight : from.height;
           let data = null;
-          try { data = copyOf(from, 0, 0, pw, ph, behind(from)); } catch { /* not to be read */ }
+          try { data = page?.drawn.get(from) ?? copyOf(from, 0, 0, pw, ph, behind(from)); } catch { /* not to be read */ }
           if (data) to.setAttribute('src', data);
           to.setAttribute('width', String(Math.round(fr.width)));
           to.setAttribute('height', String(Math.round(fr.height)));
@@ -171,7 +174,7 @@
         const root = copy(el);
         if (!root) return resolve(null);
         // Where it stood among other things does not matter here: it is alone in its picture.
-        root.style.margin = '0';
+        root.style.margin = page ? `${r.top}px 0 0 ${r.left}px` : '0';
         root.style.position = 'static';
         root.style.transform = 'none';
         const holder = document.createElement('div');
@@ -186,6 +189,22 @@
       img.onerror = () => { clearTimeout(give); resolve(null); };
       img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
     });
+  }
+  /** How much smaller than the window a picture of the whole page is: a place in the picture is a place on the page by this. */
+  const pageScale = () => Math.min(1, PICTURE / Math.max(window.innerWidth, window.innerHeight, 1));
+  /**
+   * A picture of the page as the window shows it now, for the agent while it uses the page. Every canvas is copied
+   * first, at a moment it holds something: what three draws right after it is drawn, any other at the next frame.
+   */
+  function ofPage() {
+    const scene = window.__tandemScene;
+    const drawn = new Map();
+    const soon = window.requestAnimationFrame ? (fn) => window.requestAnimationFrame(fn) : (fn) => setTimeout(fn, 16);
+    const each = [...document.querySelectorAll('canvas')].filter(seen).map((c) => new Promise((done) => {
+      const take = () => { try { drawn.set(c, copyOf(c, 0, 0, c.width, c.height, behind(c))); } catch { /* not to be read */ } done(); };
+      if (!scene?.whenDrawn(c, take)) soon(take);
+    }));
+    return Promise.all(each).then(() => ofElement(document.body, { drawn }));
   }
   /** A picture of something on the page, as it is now; `place` is where it is when it is a thing in a scene. */
   function pictureOf(el, place) {
@@ -289,6 +308,22 @@
       setTimeout(() => location.assign(to), 60);
       return { ok: true, did: `went to ${to}` };
     }
+    // A place instead of words: where in the picture of the page (page.look, while the agent has the page) to tap.
+    // That is how something drawn on a canvas is tapped: it has no words.
+    if (m.do === 'tap' && typeof m.x === 'number' && typeof m.y === 'number') {
+      const x = m.x / pageScale(), y = m.y / pageScale();
+      const el = document.elementFromPoint(x, y);
+      if (!el) return { ok: false, error: `there is nothing at ${m.x}, ${m.y}: the picture is ${Math.round(window.innerWidth * pageScale())} by ${Math.round(window.innerHeight * pageScale())}` };
+      const on = { bubbles: true, cancelable: true, composed: true, view: window, clientX: x, clientY: y, button: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+      setTimeout(() => {
+        for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+          const Kind = type.startsWith('pointer') && window.PointerEvent ? window.PointerEvent : window.MouseEvent;
+          el.dispatchEvent(new Kind(type, { ...on, buttons: type.endsWith('down') ? 1 : 0 }));
+        }
+      }, 350);
+      const says = cut(words(el), 60);
+      return { ok: true, did: `tapped at ${m.x}, ${m.y}, on a ${el.tagName.toLowerCase()}${says ? ` "${says}"` : ''}`, x: x - 16, y: y - 16, w: 32, h: 32 };
+    }
     if (m.do === 'tap') {
       const found = byWords(m.at) ?? bySelector(m.at);
       if (!found) return { ok: false, error: `there is nothing on the page that says or is "${m.at}"` };
@@ -328,6 +363,10 @@
   window.addEventListener('message', (ev) => {
     const m = ev.data;
     if (!m || m.tandem !== 1 || ev.source !== window.parent) return;
+    if (m.type === 'do' && m.do === 'picture') {
+      const none = () => say({ type: 'did', id: m.id, ok: false, error: 'this browser does not hand a picture of the page back' });
+      return void ofPage().then((image) => (image ? say({ type: 'did', id: m.id, ok: true, image, size: [Math.round(window.innerWidth * pageScale()), Math.round(window.innerHeight * pageScale())] }) : none()), none);
+    }
     if (m.type === 'do') {
       let out;
       try { out = act(m); } catch (e) { out = { ok: false, error: String(e?.message ?? e) }; }

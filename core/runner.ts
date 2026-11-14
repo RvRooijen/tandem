@@ -49,6 +49,34 @@ function tools(host: Host): { allow: string[]; deny: string[] } {
   return { allow, deny };
 }
 
+/**
+ * What the agent did with one of its tools, in a few words for the conversation: what it read, searched for,
+ * changed or ran. A tandem command that changes something is not said here: what it changed says so itself (a
+ * proposal, a tap on the page, a question).
+ */
+export function didWith(host: Host, name: string, input: Record<string, unknown>): string | undefined {
+  const roots = [host.code?.work, host.project.root].filter((r): r is string => !!r);
+  const short = (path: unknown) => {
+    const p = String(path ?? '');
+    if (p.startsWith(host.dirs.looks) || p.startsWith(host.dirs.files)) return 'a picture';
+    const root = roots.find((r) => p === r || p.startsWith(`${r}/`));
+    return root ? p.slice(root.length + 1) || 'the project' : p;
+  };
+  const cut = (text: unknown, max: number) => { const t = String(text ?? '').replace(/\s+/g, ' ').trim(); return t.length > max ? `${t.slice(0, max - 1)}…` : t; };
+  if (name === 'Read') return /\.(png|jpe?g|gif|webp)$/i.test(String(input.file_path)) ? `looked at ${short(input.file_path)}` : `read ${short(input.file_path)}`;
+  if (name === 'Grep') return `searched for "${cut(input.pattern, 60)}"${input.path && short(input.path) !== 'the project' ? ` in ${short(input.path)}` : ''}`;
+  if (name === 'Glob') return `looked for files like ${cut(input.pattern, 60)}`;
+  if (name === 'Edit') return `changed ${short(input.file_path)}`;
+  if (name === 'Write') return `wrote ${short(input.file_path)}`;
+  if (name === 'Bash') {
+    const cmd = String(input.command ?? '');
+    const m = cmd.match(/\btandem\s+run\s+([\w.]+)/);
+    if (m) return host.registry.get(m[1])?.kind === 'write' ? undefined : `ran ${m[1]}`;
+    return `ran \`${cut(cmd, 100)}\``;
+  }
+  return `used ${name}`;
+}
+
 export interface AgentStatus {
   busy: boolean; doing: string; text: string; waiting: number; session: boolean; off: boolean;
   /** How big the conversation is, in tokens, and where it starts over by itself. */
@@ -249,6 +277,9 @@ export function createRunner(host: Host) {
               const m = cmd.match(/\btandem\s+run\s+([\w.]+)/);
               doing = m ? m[1] : block.name === 'Read' ? 'looking at a file' : block.name === 'Bash' ? 'the command line' : String(block.name).toLowerCase();
               cast(true);
+              // Everything it does is in the conversation, one line each; the page folds a run of them into one.
+              const did = didWith(host, String(block.name), block.input ?? {});
+              if (did) host.events.add({ type: 'agent.did', by: 'agent', round, did });
             }
           }
         } else if (msg.type === 'result') {
@@ -277,6 +308,7 @@ export function createRunner(host: Host) {
         say(`(The conversation reached ${Math.round(context / 1000)}k tokens; the next message starts a new one.)`);
         forget();
       }
+      host.turnOver();
       // The turn is over, however it went: there is nothing to take up again.
       running = undefined;
       keep();

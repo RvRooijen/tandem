@@ -42,6 +42,8 @@ export interface Host {
   preview?: Preview;
   /** After the agent worked: what its copy differs from the project becomes (or stops being) a proposal. */
   proposeCode(by: By, note: string): void;
+  /** The agent's turn is over: if it had the project's page (page.take), the person has it again. */
+  turnOver(): void;
   /** Things to stop before the core does. */
   onStop: (() => void)[];
   dirs: { project: string; data: string; looks: string; files: string };
@@ -144,8 +146,55 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
    */
   const asked = new Map<string, (result: Record<string, unknown>) => void>();
   let asking = 0;
+  /**
+   * The agent may ask to have the page for a while (page.take), to try what it made itself; the person says yes or
+   * not now. While it has it, what it does there comes back with a picture of the page, and the person's screen
+   * says who is using it. It ends when the agent gives it back, its turn is over, the person takes it back, or
+   * nothing was done on it for five minutes.
+   */
+  let held: { by: By; timer: ReturnType<typeof setTimeout> } | undefined;
+  /** The person took the page back in the middle of this turn: the agent leaves it alone until it has asked again. */
+  let takenBack = false;
+  const taking = new Map<string, (allow: boolean) => void>();
+  function hold(by: By) {
+    clearTimeout(held?.timer);
+    const timer = setTimeout(() => release('engine', 'nothing was done on it for five minutes'), 5 * 60_000);
+    timer.unref?.();
+    held = { by, timer };
+  }
+  function release(by: By, why?: string) {
+    if (!held) return false;
+    clearTimeout(held.timer);
+    held = undefined;
+    events.add({ type: 'page.released', by, ...(why && { why }) });
+    return true;
+  }
+  // (What was open when tandem last stopped is over: nobody is waiting for the answer, nobody has the page.)
+  {
+    const open = new Set<string>();
+    let has = false;
+    for (const e of events.since(0)) {
+      if (e.type === 'page.take') open.add(String(e.id));
+      else if (e.type === 'page.taken') { open.delete(String(e.id)); if (e.allow) has = true; }
+      else if (e.type === 'page.released') has = false;
+    }
+    for (const id of open) events.add({ type: 'page.taken', by: 'engine', id, allow: false });
+    if (has) events.add({ type: 'page.released', by: 'engine', why: 'tandem was started again' });
+  }
+  let pictureN = 0;
+  /** A picture the person's screen made of the page (a data URL), kept where the agent can read it. */
+  function keepPicture(data: unknown): string | undefined {
+    const m = typeof data === 'string' ? /^data:image\/(png|jpeg);base64,(.+)$/.exec(data) : null;
+    if (!m) return undefined;
+    const file = join(looksDir, `page-${Date.now().toString(36)}-${++pictureN}.${m[1] === 'png' ? 'png' : 'jpg'}`);
+    writeFileSync(file, Buffer.from(m[2], 'base64'));
+    return file;
+  }
   async function onPage(by: By, what: Record<string, unknown>) {
     if (!project.pageCommand(0)) throw new CommandError('unsupported', 'this project has no page set up in tandem (project.configure: page)');
+    if (takenBack && isAgent(by)) throw new CommandError('permission', 'the person took the page back, so leave it alone. If you still need it, ask again with page.take; otherwise say what you could not see');
+    const mine = !!held && held.by === by;
+    if (mine) { hold(by); what = { ...what, picture: true }; }
     const id = `a${Date.now().toString(36)}${++asking}`;
     const result = await new Promise<Record<string, unknown> | undefined>((resolve) => {
       asked.set(id, resolve);
@@ -155,9 +204,13 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     });
     if (!result) throw new CommandError('unavailable', 'the person\'s screen did not answer: tandem has to be open on their device for this. Ask them to open it, or go by the code');
     if (result.ok === false) throw new CommandError('failed', String(result.error ?? 'it did not work'));
-    if (what.do !== 'look') events.add({ type: 'page.did', by, what: what.do, ...(what.at !== undefined && { at: what.at }), ...(what.path !== undefined && { path: what.path }), did: result.did ?? '', showing: result.showing });
-    const { ok: _ok, lines, ...rest } = result;
-    return { ...rest, page: Array.isArray(lines) ? lines.join('\n') : '' };
+    if (what.do !== 'look') events.add({ type: 'page.did', by, what: what.do, ...(what.at !== undefined && { at: what.at }), ...(what.x !== undefined && { at: `${what.x}, ${what.y}` }), ...(what.path !== undefined && { path: what.path }), did: result.did ?? '', showing: result.showing });
+    const { ok: _ok, lines, image, size, ...rest } = result;
+    const picture = mine ? keepPicture(image) : undefined;
+    return {
+      ...rest, page: Array.isArray(lines) ? lines.join('\n') : '',
+      ...(picture ? { picture, ...(Array.isArray(size) && { size }) } : mine && { picture: 'none: this browser did not hand a picture of the page back, so go by the lines' }),
+    };
   }
 
   /**
@@ -801,9 +854,13 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'page.tap', kind: 'write', agent: 'free',
-      about: 'Tap something on the project\'s page on the person\'s screen: at is the words on it (a button, a link, a checkbox by its label) or a CSS selector. They see it happen. Answers with what is on the page afterwards. copy as in page.look.',
-      input: { at: 'string', copy: 'boolean?' },
-      run: (c, i) => onPage(c.by, { do: 'tap', at: i.at, ...(i.copy !== undefined && { copy: i.copy }) }),
+      about: 'Tap something on the project\'s page on the person\'s screen: at is the words on it (a button, a link, a checkbox by its label) or a CSS selector. Or x and y: a place in the picture of the page you got while you have the page (page.take), in pixels of that picture; that is how something drawn on a canvas is tapped. They see it happen. Answers with what is on the page afterwards. copy as in page.look.',
+      input: { at: 'string?', x: 'number?', y: 'number?', copy: 'boolean?' },
+      run(c, i) {
+        const place = typeof i.x === 'number' && typeof i.y === 'number';
+        if (!place && !i.at?.trim()) throw new CommandError('input', 'page.tap needs at (the words on it, or a selector), or x and y (a place in the picture of the page)');
+        return onPage(c.by, { do: 'tap', ...(place ? { x: i.x, y: i.y } : { at: i.at }), ...(i.copy !== undefined && { copy: i.copy }) });
+      },
     },
     {
       name: 'page.type', kind: 'write', agent: 'free',
@@ -822,6 +879,52 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       about: 'Call the project\'s own server the way another device would: nothing of what the person\'s browser keeps goes along, so it is someone new. path starts with / and is asked at the address the project\'s page is served from (its API, if the page reaches that through the same address). method is GET unless there is a body, then POST; body is text, or JSON to send as JSON; headers is an object. as names a visitor ("bob"): one name keeps its cookies from call to call. copy: true calls the working copy\'s server. Answers with the status and the body.',
       input: { path: 'string', method: 'string?', body: 'json?', headers: 'json?', as: 'string?', copy: 'boolean?' },
       run: (c, i) => request(c.by, i),
+    },
+    {
+      name: 'page.take', kind: 'write', agent: 'free',
+      about: 'Ask the person to let you have the project\'s page on their screen for a while, to try what you made yourself instead of leaving it to them: why is what you want to see, in a few words. Waits for their answer (yes, or not now). While you have it, page.look, page.tap, page.type and page.go also give a picture of the page as it is on their screen (picture: a file to Read; size: how large it is), so you see what a canvas draws, and page.tap takes a place in that picture (x, y). They watch, and can take it back. Give it back with page.release when you have seen what you needed; it also ends with your turn.',
+      input: { why: 'string' },
+      async run(c, i) {
+        if (!project.pageCommand(0)) throw new CommandError('unsupported', 'this project has no page set up in tandem (project.configure: page)');
+        if (!i.why.trim()) throw new CommandError('input', 'why says what you want to see, in a few words: the person reads it before they answer');
+        if (held && held.by === c.by) { hold(c.by); return { taken: true }; }
+        const id = `t${Date.now().toString(36)}${++asking}`;
+        events.add({ type: 'page.take', by: c.by, id, why: i.why.trim() });
+        const allow = await new Promise<boolean | undefined>((resolve) => {
+          taking.set(id, resolve);
+          setTimeout(() => { if (taking.delete(id)) resolve(undefined); }, 100_000).unref?.();
+        });
+        if (allow === undefined) {
+          events.add({ type: 'page.taken', by: 'engine', id, allow: false });
+          throw new CommandError('unavailable', 'the person did not answer: tandem may not be open on their device, or they are away. Go on without the page and say what you have not seen');
+        }
+        if (!allow) throw new CommandError('refused', 'the person said not now. Go on without the page and say what you have not seen; do not ask again this turn unless they tell you to');
+        takenBack = false;
+        hold(c.by);
+        return { taken: true };
+      },
+    },
+    {
+      name: 'page.let', kind: 'write',
+      about: 'The person\'s answer to the agent asking for the page (page.take): id is which asking, allow is yes or not now.',
+      input: { id: 'string', allow: 'boolean' },
+      run(c, i) {
+        const waiting = taking.get(i.id);
+        if (!waiting) throw new CommandError('missing', 'that was asked too long ago: the agent is no longer waiting for the answer');
+        taking.delete(i.id);
+        events.add({ type: 'page.taken', by: c.by, id: i.id, allow: i.allow });
+        waiting(i.allow);
+        return { allow: i.allow };
+      },
+    },
+    {
+      name: 'page.release', kind: 'write', agent: 'free',
+      about: 'Give the project\'s page back to the person after page.take. From the person: take it back from the agent.',
+      run(c) {
+        const released = release(c.by);
+        if (released && !isAgent(c.by)) takenBack = true;
+        return { released };
+      },
     },
     {
       name: 'page.answer', kind: 'write',
@@ -882,6 +985,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
 
   return {
     project, game: hasGame ? game : undefined, registry, events, proposals, concepts, locks, art, code, preview, proposeCode, onStop,
+    turnOver() { release('engine', 'the agent\'s turn is over'); takenBack = false; },
     dirs: { project: project.root, data: dataDir, looks: looksDir, files: filesDir },
     run: (name, input, by, round) => registry.run(name, input, { by, round }),
     world,

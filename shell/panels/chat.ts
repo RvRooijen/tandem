@@ -444,8 +444,12 @@ export function chatPanel(): Panel {
       case 'art.round':
         return h(`div.sys.tap${ev.state === 'failed' ? '.fail' : ''}`, { onclick: () => app.open('art', `worker:${ev.worker}`) },
           ev.state === 'failed' ? `🖌 the worker on ${ev.name} failed` : ev.state === 'stopped' ? `🖌 the worker on ${ev.name} was stopped` : `🖌 ${ev.name}: ${ev.phase === 'silhouette' ? 'a silhouette to approve' : 'a drawing to accept'}. Look in Art`);
-      case 'page.did':
-        return h('div.sys', {}, `◎ the agent ${ev.did || ev.what}${ev.showing === 'copy' ? ', in the working copy' : ''}`);
+      case 'page.take':
+        return h('div.sys', {}, `◎ the agent asked to use the page: ${String(ev.why ?? '')}`);
+      case 'page.taken':
+        return h('div.sys', {}, ev.allow ? '◎ you let the agent use the page' : ev.by === 'me' ? '◎ you said not now' : '◎ the agent\'s asking for the page went unanswered');
+      case 'page.released':
+        return h('div.sys', {}, ev.by === 'me' ? '◎ you took the page back' : `◎ the page is yours again${ev.why ? `: ${ev.why}` : ''}`);
       case 'setup.changed':
         return h('div.sys', {}, `✓ how tandem runs the project was changed (${(ev.fields as string[]).join(', ')})${ev.restarting ? '. Its page starts again with it' : ''}`);
       case 'code.changed':
@@ -461,7 +465,29 @@ export function chatPanel(): Panel {
     }
   }
 
+  /**
+   * What the agent did, one thing after another (what it read, searched for, ran, tapped on the page): one line
+   * when it is one thing, and folded into one group when there are more, which opens to show them all.
+   */
+  let acts: { el: HTMLElement; did: string[]; open: boolean } | undefined;
+  function addAct(did: string) {
+    const stick = nearBottom();
+    if (!acts || list.lastElementChild !== acts.el) { acts = { el: h('div.acts'), did: [], open: false }; list.append(acts.el); }
+    const mine = acts;
+    mine.did.push(did);
+    if (mine.did.length === 1) clear(mine.el, h('div.sys', {}, `◎ the agent ${did}`));
+    else {
+      const fold = h<'details'>('details', { open: mine.open, ontoggle: () => { mine.open = fold.open; } },
+        h('summary', {}, `◎ the agent did ${mine.did.length} things`, h('span', {}, ` · ${did}`)),
+        ...mine.did.map((d) => h('div.sys', {}, d)));
+      clear(mine.el, fold);
+    }
+    if (stick) toBottom();
+  }
+
   function addEvent(ev: Event) {
+    if (ev.type === 'agent.did') return addAct(String(ev.did ?? ''));
+    if (ev.type === 'page.did') return addAct(`${ev.did || ev.what}${ev.showing === 'copy' ? ', in the working copy' : ''}`);
     // What a drawing worker proposes is looked at and decided in the Art tab, where it can be watched.
     if (ev.type === 'art.status' || ev.type === 'art.draft' || (ev.type === 'proposal' && ev.worker)) return;
     if (ev.type === 'proposal') {

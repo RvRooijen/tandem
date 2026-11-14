@@ -622,7 +622,67 @@ test('the agent shows things on the person\'s screen', async () => {
   assert.deepEqual([did.what, did.at, did.did, did.by], ['tap', 'Make a group', 'tapped button "Make a group"', AGENT]);
   tab('Chat');
   await until(() => all('.chat .sys').some((x) => /the agent tapped button "Make a group"/.test(x.textContent!)), 'what it did, in the conversation');
+  // What it does one thing after another is one group, which opens to show them all; something said ends the group.
+  const before = all('.chat .acts').length;
+  for (const did of ['read src/main.js', 'searched for "shadow"', 'ran `npm test`']) host.events.add({ type: 'agent.did', by: 'agent', round: 'r9', did });
+  await until(() => /the agent did 4 things · ran `npm test`/.test(all('.chat .acts').at(-1)?.textContent ?? ''), 'the group, with the tap before it');
+  assert.equal(all('.chat .acts').length, before, 'they joined what it did just before');
+  assert.deepEqual(all('.sys', all('.chat .acts').at(-1)!).map((x) => x.textContent), ['tapped button "Make a group"', 'read src/main.js', 'searched for "shadow"', 'ran `npm test`']);
+  host.events.add({ type: 'message', by: 'agent', text: 'The tests pass.', round: 'r9' });
+  host.events.add({ type: 'agent.did', by: 'agent', round: 'r9', did: 'changed src/main.js' });
+  await until(() => all('.chat .acts').length === before + 1, 'a new one after it spoke');
+  assert.equal(all('.chat .acts').at(-1)!.textContent, '◎ the agent changed src/main.js');
   app.close();
+
+  // The agent asks for the page, to try what it made itself: the person is asked over the page, and says yes.
+  const taking = host.run('page.take', { why: 'to see the dice roll' }, AGENT) as Promise<any>;
+  await until(() => !$('#t-take').hidden, 'the asking, over the page');
+  assert.match($('#t-take').textContent!, /to see the dice roll/);
+  assert.equal($('#t-held').hidden, true);
+  click(button('Let it', $('#t-take')));
+  assert.deepEqual(await taking, { taken: true });
+  await until(() => !$('#t-held').hidden && $('#t-take').hidden && document.body.classList.contains('t-held'), 'the mark that the agent has the page');
+  // From then on a picture of the page goes along with what it does there, kept where it can read it.
+  toFrame.length = 0;
+  const seeing = host.run('page.look', {}, AGENT) as Promise<any>;
+  await doing('look', onPage);
+  await doing('picture', { ok: true, image: 'data:image/jpeg;base64,/9j/AAAA', size: [360, 620] });
+  const saw = await seeing;
+  assert.match(saw.picture, /page-[\w-]+\.jpg$/);
+  assert.ok(existsSync(saw.picture) && saw.picture.startsWith(host.dirs.looks));
+  assert.deepEqual([saw.size, saw.page], [[360, 620], '# Lots to draw\n[button] Make a group']);
+  // A place in that picture is tapped; a browser that hands no picture back leaves it the lines.
+  const placing = host.run('page.tap', { x: 100, y: 200 }, AGENT) as Promise<any>;
+  const place = await doing('tap', { ok: true, did: 'tapped at 100, 200, on a canvas', x: 84, y: 184, w: 32, h: 32 });
+  assert.deepEqual([place.x, place.y, place.at], [100, 200, undefined]);
+  await doing('look', onPage);
+  await doing('picture', { ok: false, error: 'this browser does not hand a picture of the page back' });
+  assert.match((await placing).picture, /^none/);
+  assert.equal(host.events.since(0).filter((e) => e.type === 'page.did').at(-1)!.at, '100, 200');
+  await assert.rejects(host.run('page.tap', {}, AGENT) as Promise<any>, /needs at/);
+  // The person takes it back: the agent leaves the page alone for the rest of its turn.
+  click(button('Take it back', $('#t-held')));
+  await until(() => $('#t-held').hidden && !document.body.classList.contains('t-held'), 'the mark to go');
+  await assert.rejects(host.run('page.look', {}, AGENT) as Promise<any>, /took the page back/);
+  host.turnOver();
+  // Not now: the agent is told, and nothing is marked. And it is the person's to answer, not the agent's.
+  const refusing = host.run('page.take', { why: 'to try the shop' }, AGENT) as Promise<any>;
+  await until(() => !$('#t-take').hidden, 'the asking');
+  const takeId = String(host.events.since(0).filter((e) => e.type === 'page.take').at(-1)!.id);
+  await assert.rejects(host.run('page.let', { id: takeId, allow: true }, AGENT) as Promise<any>, /the person's to do/);
+  click(button('Not now', $('#t-take')));
+  await assert.rejects(refusing, /not now/);
+  await until(() => $('#t-take').hidden, 'the asking to go');
+  assert.equal($('#t-held').hidden, true);
+  // Given back by the agent, and at the end of its turn, the page is the person's again.
+  const again_ = host.run('page.take', { why: 'once more' }, AGENT) as Promise<any>;
+  await until(() => !$('#t-take').hidden, 'the asking');
+  click(button('Let it', $('#t-take')));
+  await again_;
+  assert.deepEqual(await host.run('page.release', {}, AGENT), { released: true });
+  await until(() => $('#t-held').hidden, 'the mark to go');
+  assert.deepEqual(host.events.since(0).filter((e) => e.type.startsWith('page.t') || e.type === 'page.released').slice(-3).map((e) => [e.type, e.by, e.allow]), [['page.take', AGENT, undefined], ['page.taken', 'me', true], ['page.released', AGENT, undefined]]);
+  toFrame.length = 0;
   // What the page refuses, the agent is told as it is.
   const typing = assert.rejects(host.run('page.type', { at: 'Surname', text: 'x' }, AGENT), /there is no field on the page called "Surname"/);
   await doing('type', { ok: false, error: 'there is no field on the page called "Surname"' });

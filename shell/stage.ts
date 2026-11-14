@@ -36,10 +36,10 @@ export interface Stage {
    */
   find(at: string): Promise<{ x: number; y: number; w: number; h: number } | 'missing' | null>;
   /**
-   * Something done on the page as a person would (look, tap, type, go): what the page answers, with a place on this
-   * screen when it is about one thing; null when the page does not answer.
+   * Something done on the page as a person would (look, tap, type, go; picture: a picture of it): what the page
+   * answers, with a place on this screen when it is about one thing; null when the page does not answer in time.
    */
-  act(what: Record<string, unknown>): Promise<Record<string, unknown> | null>;
+  act(what: Record<string, unknown>, wait?: number): Promise<Record<string, unknown> | null>;
   /** What is at a place of this screen, on the project's page; null when nothing is, or the page does not answer. With `image`, a picture of it comes along. */
   pick(x: number, y: number, image?: boolean): Promise<Picked | null>;
 }
@@ -111,13 +111,13 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
         setTimeout(() => { if (waiting.delete(id)) resolve(null); }, 800);
       });
     },
-    act(what) {
+    act(what, wait = 2500) {
       if (!stage.can.find) return Promise.resolve(null);
       const id = ++asked;
       return new Promise((resolve) => {
         acting.set(id, resolve);
         send({ ...what, type: 'do', id });
-        setTimeout(() => { if (acting.delete(id)) resolve(null); }, 2500);
+        setTimeout(() => { if (acting.delete(id)) resolve(null); }, wait);
       });
     },
     pick(x, y, image = false) {

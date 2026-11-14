@@ -81,10 +81,36 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     body, foot);
   const ring = h('div#t-ring', { hidden: true }, h('i'), h('span'));
   const banner = h('div#t-copy', { hidden: true }, h('span', { title: 'What the agent made, not yet the project' }, 'The working copy'), h<'button'>('button', { onclick: () => app.playProject() }, 'Back to the project'));
+  // The agent asks for the page, and has it: asked and said over the page, where the person is looking.
+  const takeWhy = h('p');
+  const takeEl = h('div#t-take', { hidden: true, role: 'dialog', 'aria-label': 'The agent asks to use the page' },
+    h('b', {}, 'The agent asks to use the page for a moment'), takeWhy,
+    h('div.answers', {},
+      h<'button'>('button.yes', { onclick: () => void answerTake(true) }, 'Let it'),
+      h<'button'>('button', { onclick: () => void answerTake(false) }, 'Not now')));
+  const heldEl = h('div#t-held', { hidden: true }, h('span', { title: 'It taps and looks itself, to try what it made; you can watch' }, 'The agent is using the page'), h<'button'>('button', { onclick: () => void app.act('page.release') }, 'Take it back'));
+  const marks = h('div#t-marks', {}, banner, heldEl);
+  const takes = new Map<string, string>();
+  let held = false;
+  const answerTake = async (allow: boolean) => {
+    const id = [...takes.keys()][0];
+    if (id === undefined) return;
+    // (Whatever the core says, this asking is answered here: one that came too late is gone too.)
+    await app.act('page.let', { id, allow });
+    takes.delete(id);
+    paintTake();
+  };
+  const paintTake = () => {
+    const why = [...takes.values()][0];
+    takeEl.hidden = why === undefined;
+    takeWhy.textContent = why ?? '';
+    heldEl.hidden = !held;
+    document.body.classList.toggle('t-held', held);
+  };
   const toastEl = h('div#t-toast', { hidden: true });
   const zoomEl = h('div#t-zoom', { hidden: true, onclick: () => { zoomEl.hidden = true; } }, h<'img'>('img'));
   const bubbleEl = h('div#t-bubbles', { hidden: true });
-  root.append(fab, bubbleEl, banner, ring, sheet, toastEl, zoomEl);
+  root.append(fab, bubbleEl, marks, takeEl, ring, sheet, toastEl, zoomEl);
 
   let shown: string | null = null, last = 'chat';
   // A wide screen has room for the tools beside the page. The stylesheet goes by these two classes on the body.
@@ -378,6 +404,10 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       // What is only told, not kept (what a worker is doing right now), goes to the panels and nowhere else.
       if (ev.n === 0) { bubbles.feed(ev, true); for (const p of panels) p.event?.(ev, true); return; }
       app.events.push(ev);
+      // The agent asking for the page, the answer, and the page given back: from the log, so a screen opened later knows.
+      if (ev.type === 'page.take') { takes.set(String(ev.id), String(ev.why ?? '')); paintTake(); }
+      if (ev.type === 'page.taken') { takes.delete(String(ev.id)); if (ev.allow) held = true; paintTake(); }
+      if (ev.type === 'page.released') { held = false; paintTake(); }
       bubbles.feed(ev, live);
       if (live) {
         // What the agent shows, it shows on the stage itself.
@@ -412,7 +442,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       const what = String(ev.do);
       let did: Record<string, unknown> | null = { ok: true };
       if (what !== 'look') {
-        did = await stage.act({ do: what, at: ev.at, text: ev.text, submit: ev.submit, path: ev.path });
+        did = await stage.act({ do: what, at: ev.at, x: ev.x, y: ev.y, text: ev.text, submit: ev.submit, path: ev.path });
         if (did && did.ok === false) return void answer({ ...did, showing: stage.showing });
         if (did && typeof did.x === 'number') showRing(Number(did.x) + Number(did.w) / 2, Number(did.y) + Number(did.h) / 2, Number(did.w), Number(did.h), what === 'tap' ? 'the agent taps this' : 'the agent fills this in', true, true);
         // What it did may have loaded the page anew: wait for it to be there again, and for the page to settle.
@@ -423,7 +453,9 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       let now: Record<string, unknown> | null = null;
       for (let i = 0; i < 4 && !now; i++) now = await stage.act({ do: 'look' });
       if (!now) return void answer({ ok: false, error: 'the page did not answer', showing: stage.showing });
-      void answer({ ok: true, did: did?.did ?? (did ? undefined : 'done, as far as can be told: the page loaded anew'), showing: stage.showing, path: now.path, title: now.title, lines: now.lines });
+      // While the agent has the page, a picture of it goes along: what a canvas draws is not in the lines.
+      const pic = ev.picture ? await stage.act({ do: 'picture' }, 8000) : null;
+      void answer({ ok: true, did: did?.did ?? (did ? undefined : 'done, as far as can be told: the page loaded anew'), showing: stage.showing, path: now.path, title: now.title, lines: now.lines, ...(pic?.ok ? { image: pic.image, size: pic.size } : {}) });
     } catch (e) {
       void answer({ ok: false, error: e instanceof Error ? e.message : String(e) });
     }

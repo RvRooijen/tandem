@@ -203,6 +203,17 @@ test('tandem\'s lines in a page find a thing by the words on it, or by a selecto
   assert.deepEqual([tap.ok, tap.did, tap.w, tapped], [true, 'tapped button "Make a group"', 120, 0]);
   await wait(() => tapped === 1);
   assert.equal((await act({ do: 'tap', at: 'Draw the names' })).ok, false);
+  // While the agent has the page it taps a place in its picture of the page: what is there gets what a finger gives.
+  const board = frame.document.querySelector('canvas.board')!;
+  under = board;
+  const got: string[] = [];
+  for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click']) board.addEventListener(type, (e) => got.push(`${type} ${(e as MouseEvent).clientX},${(e as MouseEvent).clientY}`));
+  const placed = await act({ do: 'tap', x: 100, y: 200 });
+  assert.deepEqual([placed.ok, placed.did, placed.x, placed.y, placed.w], [true, 'tapped at 100, 200, on a canvas', 84, 184, 32]);
+  await wait(() => got.length === 4);
+  assert.deepEqual(got, ['pointerdown 100,200', 'mousedown 100,200', 'mouseup 100,200', 'click 100,200']);
+  under = null;
+  assert.equal((await act({ do: 'tap', x: 5000, y: 5000 })).ok, false, 'nothing is there');
   assert.deepEqual(await act({ do: 'go', path: 'https://elsewhere.example/' }), { ok: false, error: 'a place in this app starts with / (or ? or #)' });
   dom.window.close();
 });

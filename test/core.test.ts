@@ -11,7 +11,7 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { CommandError } from '../core/commands.ts';
 import { loadProject } from '../core/project.ts';
-import { runnable } from '../core/runner.ts';
+import { didWith, runnable } from '../core/runner.ts';
 import { AGENT, fixture } from './helpers.ts';
 
 // Without a working copy: drawings taken into the project are built straight in.
@@ -387,6 +387,22 @@ test('the project\'s own server is called the way another device would: someone 
     if (was === undefined) delete process.env.TANDEM_PAGE_PORT; else process.env.TANDEM_PAGE_PORT = was;
     await me('project.configure', { page: '' });
   }
+});
+
+test('what the agent does with its tools is said in a few words, for the conversation', () => {
+  const did = (name: string, input: Record<string, unknown>) => didWith(host, name, input);
+  assert.equal(did('Read', { file_path: join(dir, 'src/main.js') }), 'read src/main.js');
+  assert.equal(did('Read', { file_path: join(host.dirs.looks, 'page-1.jpg') }), 'looked at a picture');
+  assert.equal(did('Grep', { pattern: 'shadow|Shadow', path: dir }), 'searched for "shadow|Shadow"');
+  assert.equal(did('Grep', { pattern: 'bias', path: join(dir, 'src') }), 'searched for "bias" in src');
+  assert.equal(did('Glob', { pattern: '**/*.glsl' }), 'looked for files like **/*.glsl');
+  assert.equal(did('Edit', { file_path: join(dir, 'src/main.js') }), 'changed src/main.js');
+  assert.equal(did('Write', { file_path: '/elsewhere/notes.txt' }), 'wrote /elsewhere/notes.txt');
+  assert.equal(did('Bash', { command: 'npm   test\n' }), 'ran `npm test`');
+  // A tandem command that only reads is said; one that changes something is said by what it changed.
+  assert.equal(did('Bash', { command: 'tandem run concepts.list' }), 'ran concepts.list');
+  assert.equal(did('Bash', { command: 'tandem run concepts.create \'{"name":"x"}\'' }), undefined);
+  assert.equal(did('WebFetch', {}), 'used WebFetch');
 });
 
 test('in its working copy the agent may run the project\'s tests without tandem being told how', () => {

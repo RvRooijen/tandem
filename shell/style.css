@@ -166,6 +166,10 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 #tandem .t-chip.mode[data-mode=kernel] { color: var(--t-good); }
 #tandem .t-chip.mode[data-mode=hybrid] { color: var(--t-accent); }
 #tandem .t-chip.mode[data-mode=js] { color: var(--t-bad); }
+/* A pill for what a message is about is never wider than the conversation: its words are cut short instead. */
+#tandem .t-chip.ref { max-width: 100%; min-width: 0; }
+#tandem .t-chip.ref > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#tandem .t-chip.ref > img, #tandem .t-chip.ref > button { flex: none; }
 #tandem .t-chip.ref img { width: 26px; height: 26px; object-fit: cover; border-radius: 6px; margin: 2px 6px 2px -4px; cursor: zoom-in; }
 #tandem .t-chip.ref button { border: 0; background: none; color: var(--t-soft); padding: 0 0 0 4px; font-size: 12px; min-width: 22px; min-height: 22px; }
 
@@ -358,7 +362,7 @@ figure.card.look figcaption { padding: 6px 10px; font-size: 12px; color: var(--t
 .usage .bar { flex: 1; height: 4px; border-radius: 3px; background: var(--t-line); overflow: hidden; }
 .usage .bar i { display: block; height: 100%; background: var(--t-accent); }
 .shared { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 2px; }
-.shared .file { position: relative; display: inline-flex; align-items: center; background: var(--t-raise); border: 1px solid var(--t-line); border-radius: 10px; overflow: hidden; font-size: 12.5px; }
+.shared .file { position: relative; display: inline-flex; max-width: 100%; align-items: center; background: var(--t-raise); border: 1px solid var(--t-line); border-radius: 10px; overflow: hidden; font-size: 12.5px; }
 .shared .file a { color: var(--t-ink); text-decoration: none; padding: 7px 10px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shared .file.image img { display: block; width: 64px; height: 64px; object-fit: cover; cursor: zoom-in; }
 .msg .shared .file.image img { width: 132px; height: 132px; }

@@ -25,6 +25,11 @@ export interface Proposal {
   questions?: string[];
   /** A concept: the loose thought it works into the document, which is no longer loose once this is accepted. */
   thought?: string;
+  /**
+   * A concept the person changed on its card before deciding: for each field they changed, what the agent had
+   * proposed for it (null when it had proposed nothing for that field). `after` is what the person made of it.
+   */
+  proposed?: RecordValue;
   status: 'pending' | 'accepted' | 'rejected';
   ts: number;
 }
@@ -32,6 +37,11 @@ export interface Proposal {
 export interface Proposals {
   add(p: Omit<Proposal, 'id' | 'status' | 'ts'>): Proposal;
   list(filter?: { status?: Proposal['status']; round?: string }): Proposal[];
+  /**
+   * The person changes a pending proposal before deciding it: the fields given are what it would be now. `was` is
+   * the thing as it is, for a change to something that exists: a field the proposal did not touch yet gets its before from it.
+   */
+  edit(id: string, fields: RecordValue, was?: RecordValue): Proposal | undefined;
   /** Mark the pending proposals of a round: all of them, or only the ones named. Returns the ones it decided. */
   decide(round: string, status: 'accepted' | 'rejected', only?: string[]): Proposal[];
 }
@@ -48,6 +58,9 @@ export function createProposals(dir: string): Proposals {
       const earlier = all.find((x) => x.status === 'pending' && x.round === p.round && x.kind === p.kind && x.path === p.path);
       if (earlier) {
         earlier.after = { ...earlier.after, ...p.after };
+        // What is proposed anew for a field is what stands there: it is no longer the person's version of it.
+        for (const k in p.after) delete earlier.proposed?.[k];
+        if (earlier.proposed && !Object.keys(earlier.proposed).length) delete earlier.proposed;
         earlier.note = p.note;
         if (p.questions) earlier.questions = p.questions;
         if (p.thought) earlier.thought = p.thought;
@@ -58,6 +71,23 @@ export function createProposals(dir: string): Proposals {
       all.push(full);
       write(full);
       return full;
+    },
+    edit(id, fields, was) {
+      const p = all.find((x) => x.id === id && x.status === 'pending');
+      if (!p) return undefined;
+      const same = (a: Json | undefined, b: Json | undefined) => JSON.stringify(a) === JSON.stringify(b);
+      for (const k in fields) {
+        if (same(fields[k], p.after[k])) continue;
+        const proposed = (p.proposed ??= {});
+        if (!(k in proposed)) proposed[k] = k in p.after ? p.after[k] : null;
+        if (p.before && was && !(k in p.before) && k in was) p.before[k] = was[k];
+        p.after[k] = fields[k];
+        // Put back to what was proposed, it is the agent's again.
+        if (same(proposed[k], p.after[k])) delete proposed[k];
+      }
+      if (p.proposed && !Object.keys(p.proposed).length) delete p.proposed;
+      write(p);
+      return p;
     },
     list: (filter = {}) => all.filter((p) => (!filter.status || p.status === filter.status) && (!filter.round || p.round === filter.round)),
     decide(round, status, only) {

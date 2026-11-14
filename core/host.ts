@@ -17,7 +17,7 @@ import { COPY_PORT, createPreview, type Preview } from './preview.ts';
 import { innerPort } from './through.ts';
 import { encodePng } from './png.ts';
 import { SETUP, loadProject, prepare, type Project } from './project.ts';
-import { createProposals, type Proposals, type RecordValue } from './proposals.ts';
+import { createProposals, type Json, type Proposal, type Proposals, type RecordValue } from './proposals.ts';
 import { createArt, type Art } from '../art/commands.ts';
 import { ecsCommands } from '../ecs/inspect.ts';
 import { compare, type Pacing } from '../playtest/pacing.ts';
@@ -406,6 +406,50 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     return { id: c.id, name: c.name, stage: c.stage, locked: locks.has(`concept:${c.id}`), summary: c.text.split('\n').find((l) => l.trim())?.slice(0, 140) ?? '', links: c.links, realised: c.realised };
   }
 
+  /** A proposed concept as its card shows it, said again when the person changed it or added it: every screen follows. */
+  function showConcept(p: Proposal) {
+    const now = p.before ? concepts.get(p.path) : undefined;
+    const of = p.thought ? thoughts.get(p.thought) : undefined;
+    events.add({
+      type: 'proposal', by: p.by, round: p.round, id: p.id, kind: 'concept', path: p.path, ...(p.before && { before: p.before }), after: p.after, note: p.note,
+      ...(p.questions?.length && { questions: p.questions }), ...(of && { thought: of.text }),
+      ...(now && { touches: [{ id: now.id, name: now.name, stage: now.stage }] }), ...(p.proposed && { edited: Object.keys(p.proposed) }),
+    });
+  }
+
+  /** The fields of a concept as the person typed them on a card: a name that says something, a stage there is, lists that are lists. */
+  function conceptFields(i: { name?: string; text?: string; stage?: string; links?: unknown; realised?: unknown }): RecordValue {
+    if (i.name !== undefined && !i.name.trim()) throw new CommandError('input', 'a concept has a name');
+    if (i.stage !== undefined && !STAGES.includes(i.stage as Concept['stage'])) throw new CommandError('input', `stage is one of ${STAGES.join(', ')}`);
+    for (const k of ['links', 'realised'] as const) checkList(i[k], k);
+    const out: RecordValue = {};
+    for (const k of ['name', 'text', 'stage', 'links', 'realised'] as const) if (i[k] !== undefined) out[k] = (k === 'name' ? i.name!.trim() : i[k]) as Json;
+    return out;
+  }
+
+  /**
+   * Concepts of a round were accepted: the agent is told which, and what the person made different on the card
+   * before accepting. What they changed or added goes along in full, so it works from their words and not its own.
+   */
+  function tellAccepted(round: string, set: Proposal[], left: number) {
+    const say = (v: Json) => (typeof v === 'string' ? `"${v}"` : JSON.stringify(v));
+    const theirs = set.filter((p) => !isAgent(p.by) || p.proposed);
+    const lines = set.map((p) => {
+      const name = `${String(p.after.name ?? concepts.get(p.path)?.name ?? p.path)} (${p.path})`;
+      if (!isAgent(p.by)) return `- ${name}: the person added it to the round themselves.`;
+      if (!p.proposed) return `- ${name}: as you proposed it.`;
+      const how = Object.keys(p.proposed).map((k) => (k === 'name' || k === 'stage' ? `${k} ${p.proposed![k] === null ? '' : `${say(p.proposed![k])} → `}${say(p.after[k])}` : `its ${k}`));
+      return `- ${name}: the person changed it before accepting: ${how.join(', ')}.`;
+    });
+    events.add({
+      type: 'message', by: 'engine', kind: 'accepted', concepts: set.map((p) => p.path), changed: theirs.length,
+      ...(theirs.length && { refs: theirs.map((p) => `concept:${p.path}`) }),
+      text: `The person accepted ${set.length === 1 ? 'a concept' : `${set.length} concepts`} from your proposal of round ${round}${left ? ` (${left} of that round still ${left === 1 ? 'waits' : 'wait'})` : ''}:\n${lines.join('\n')}\n`
+        + (theirs.length ? 'The document has them as the person made them, which is not everywhere what you proposed: go by what it says now, and do not propose your own version again. ' : '')
+        + 'This is news, not a request: carry on with what was waiting for it, if anything was; otherwise a sentence that you have seen it is enough.',
+    });
+  }
+
   /** Questions for the person: a few, each short enough to answer in a field. */
   const asQuestions = (v: unknown): string[] | undefined => {
     if (v === undefined) return undefined;
@@ -577,6 +621,36 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       run: (_c, i) => proposals.list({ status: i.status }),
     },
     {
+      name: 'proposals.edit', kind: 'write',
+      about: 'Change a concept that is still a proposal, before deciding on it: its name, text, stage, links or realised, as the person wants them. Accepted, the concept is as they made it, and the agent is told what they changed. Only the person does this.',
+      input: { id: 'string', name: 'string?', text: 'string?', stage: 'string?', links: 'json?', realised: 'json?' },
+      run(_c, i) {
+        const p = proposals.list({ status: 'pending' }).find((x) => x.id === i.id);
+        if (!p) throw new CommandError('missing', `no proposal ${i.id} is pending`);
+        if (p.kind !== 'concept') throw new CommandError('unsupported', 'only a proposed concept can be changed before it is decided');
+        const was = JSON.stringify(p.after);
+        const now = concepts.get(p.path);
+        proposals.edit(p.id, conceptFields(i), now && (now as unknown as RecordValue));
+        if (JSON.stringify(p.after) === was) return { changed: false };
+        showConcept(p);
+        return { changed: true };
+      },
+    },
+    {
+      name: 'proposals.add', kind: 'write',
+      about: 'Add a concept of the person\'s own to a round of proposed concepts that still waits: a name, and if they have them its text, stage, links and realised. It is decided with the rest of the round, and the agent is told of it when it is accepted. Only the person does this.',
+      input: { round: 'string', name: 'string', text: 'string?', stage: 'string?', links: 'json?', realised: 'json?' },
+      run(c, i) {
+        if (!proposals.list({ status: 'pending', round: i.round }).some((p) => p.kind === 'concept')) throw new CommandError('missing', `no concept is pending in round ${i.round}`);
+        const fields = conceptFields(i);
+        const cid = concepts.slug(i.name);
+        if (concepts.get(cid) || proposals.list({ status: 'pending' }).some((p) => p.kind === 'concept' && p.path === cid)) throw new CommandError('exists', `there already is a concept ${cid}`);
+        const p = proposals.add({ round: i.round, by: c.by, kind: 'concept', path: cid, after: { stage: 'idea', links: [], realised: [], text: '', ...fields }, note: '' });
+        showConcept(p);
+        return { proposed: p.id, id: cid, round: i.round };
+      },
+    },
+    {
       name: 'proposals.decide', kind: 'write',
       about: 'Accept or reject a round of proposals: all that is pending in it, or only some (only: the ids of the proposals). Accepting makes the changes real.',
       input: { round: 'string', accept: 'boolean', only: 'json?' },
@@ -622,6 +696,9 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         // (And after an install: a page that is running does not find what was not there when it started.)
         if (setup || installed === true) restart(SETUP); else if (taken.length) restart();
         events.add({ type: 'proposal.decided', by: c.by, round: i.round, status: i.accept ? 'accepted' : 'rejected', count: set.length, ids: set.map((p) => p.id), left, paths: set.map((p) => `${p.kind}:${p.path}`) });
+        // The agent hears what became of its concepts, and what the person made different in them.
+        const made = set.filter((p) => p.kind === 'concept');
+        if (i.accept && made.length) tellAccepted(i.round, made, left);
         return { decided: set.length, left };
       },
     },

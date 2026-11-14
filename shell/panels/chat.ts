@@ -4,10 +4,13 @@
 import type { Event } from '../../core/events.ts';
 import { run } from '../api.ts';
 import type { App, Panel, Show } from '../app.ts';
+import { conceptForm, type ConceptDraft } from '../conceptform.ts';
 import { ago, clear, h, mins, prose, short } from '../dom.ts';
 import { icon } from '../icons.ts';
 
 interface Change {
+  /** Who proposed it: the agent, or the person, who added a concept of their own to the round. */
+  by?: string;
   id: string; kind: string; path: string; before?: Record<string, unknown>; after?: Record<string, unknown>; note: string;
   touches?: { id: string; name: string; stage: string }[];
   /** A drawing: what it looks like. */
@@ -22,7 +25,13 @@ interface Change {
   show?: Show;
   /** A concept: the loose thought of the person it takes in, in their words. */
   thought?: string;
+  /** A concept: the fields the person changed on the card, when they did. */
+  edited?: string[];
 }
+const FIELDS = ['name', 'stage', 'text', 'links', 'realised'] as const;
+/** Of a concept, or of what is proposed for one: the fields a concept has, where they are given. */
+const fieldsOf = (v: Record<string, unknown> | undefined) => Object.fromEntries(FIELDS.filter((k) => v?.[k] !== undefined).map((k) => [k, v![k]])) as Partial<ConceptDraft>;
+const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 /** A round is 'decided' when its pieces went different ways: some taken, some refused. */
 interface Round {
   round: string; by: string; changes: Change[]; status: 'pending' | 'accepted' | 'rejected' | 'decided'; el?: HTMLElement;
@@ -59,6 +68,11 @@ export function chatPanel(): Panel {
   const answered = new Map<string, string[]>();
   const drafts = new Map<string, string[]>();
   const asks = new Map<string, { questions: string[]; about?: string; el: HTMLElement }>();
+  /**
+   * Proposed concepts the person is changing on their card, by the proposal's id, and a concept of their own they
+   * are adding to a round, by `new:<round>`: what is typed, what it was when they started, and what it can be linked to.
+   */
+  const editing = new Map<string, { draft: ConceptDraft; base: ConceptDraft; others: { id: string; name: string }[]; el?: HTMLElement }>();
   const list = h('div.chat');
   /**
    * What is still to be decided stays in sight: a line at the top of the conversation for every round that waits,
@@ -76,7 +90,7 @@ export function chatPanel(): Panel {
       return h('div.pin', { onclick: () => r.el?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }) },
         h('div.what', {}, h('b', {}, code ? 'A change to the project waits' : left === 1 ? 'A proposal waits' : `${left} proposals wait`), h('span', {}, what)),
         code && app.info.page && h<'button'>('button', { onclick: (e: MouseEvent) => { e.stopPropagation(); void app.playCopy(code.show); } }, 'Play'),
-        h<'button'>('button.primary', { onclick: (e: MouseEvent) => { e.stopPropagation(); void app.act('proposals.decide', { round: r.round, accept: true }); } }, left === 1 ? 'Accept' : 'Accept all'));
+        h<'button'>('button.primary', { onclick: (e: MouseEvent) => { e.stopPropagation(); void decide(r, true); } }, left === 1 ? 'Accept' : 'Accept all'));
     }));
   }
   const status = h('div.agent-status', { hidden: true });
@@ -367,6 +381,64 @@ export function chatPanel(): Panel {
     return h('div.pictures', {}, pic(c.pictures?.before, 'as it is'), pic(c.pictures?.after, c.phase === 'silhouette' ? 'the silhouette' : c.isNew ? 'new' : 'as proposed'), !c.pictures?.after && h('div.note', {}, 'No picture could be made of it.'));
   }
 
+  /** A proposed concept is opened to be changed, or a new one is started in the round: with the fields a concept has. */
+  async function startEdit(r: Round, c?: Change) {
+    const [now, there] = await Promise.all([
+      c?.before ? app.act<Record<string, unknown>>('concepts.get', { id: c.path }) : undefined,
+      app.act<{ id: string; name: string }[]>('concepts.list'),
+    ]);
+    if (c?.before && !now) return;
+    // A change to a concept that is there names only what it changes: the rest is the concept as it is.
+    const base: ConceptDraft = { name: '', stage: 'idea', text: '', links: [], realised: [], ...fieldsOf(now), ...fieldsOf(c?.after) };
+    // It can be linked to what is in the document, and to what else is new in this round.
+    const coming = r.changes.filter((x) => x.kind === 'concept' && !x.before && x.status !== 'rejected').map((x) => ({ id: x.path, name: String(x.after?.name ?? x.path) }));
+    const others = [...(there ?? []).map((x) => ({ id: x.id, name: x.name })), ...coming].filter((x, n, all) => x.id !== c?.path && all.findIndex((y) => y.id === x.id) === n);
+    editing.set(c ? c.id : `new:${r.round}`, { draft: copy(base), base, others });
+    roundCard(r);
+  }
+
+  /** What was typed on a card goes into the proposal. False when it could not: it stays open, as it was typed. */
+  async function keep(r: Round, key: string): Promise<boolean> {
+    const e = editing.get(key);
+    if (!e) return true;
+    if (key.startsWith('new:')) {
+      if (!e.draft.name.trim()) { app.toast('Name it first.'); return false; }
+      if ((await app.act('proposals.add', { round: r.round, ...e.draft })) === undefined) return false;
+    } else {
+      const input: Record<string, unknown> = {};
+      for (const k of FIELDS) if (JSON.stringify(e.draft[k]) !== JSON.stringify(e.base[k])) input[k] = e.draft[k];
+      if (Object.keys(input).length && (await app.act('proposals.edit', { id: key, ...input })) === undefined) return false;
+    }
+    editing.delete(key);
+    roundCard(r);
+    return true;
+  }
+
+  /** A round is decided, or one piece of it. What is still being typed in what is accepted is kept first: it is part of it. */
+  async function decide(r: Round, accept: boolean, only?: Change) {
+    const mine = [...editing.keys()].filter((key) => (key === `new:${r.round}` ? !only : r.changes.some((c) => c.id === key && (!only || only === c))));
+    for (const key of mine) {
+      const e = editing.get(key)!;
+      // (A concept that was started and left empty is nothing to add.)
+      if (!accept || (key.startsWith('new:') && !e.draft.name.trim() && !e.draft.text.trim())) editing.delete(key);
+      else if (!(await keep(r, key))) return;
+    }
+    await app.act('proposals.decide', { round: r.round, accept, ...(only && { only: [only.id] }) });
+  }
+
+  /** The fields of a concept on its card, to type in: kept in the proposal with Save, as it was with Cancel. */
+  function conceptEditor(r: Round, key: string): HTMLElement {
+    const e = editing.get(key)!;
+    if (e.el) return e.el;
+    const form = conceptForm(e.draft, { others: e.others, touch: () => {} });
+    requestAnimationFrame(form.fit);
+    e.el = h('div.cedit', {}, form.fields,
+      h('div.t-row', {},
+        h<'button'>('button', { onclick: () => { editing.delete(key); roundCard(r); } }, 'Cancel'),
+        h<'button'>('button.primary', { onclick: () => void keep(r, key) }, key.startsWith('new:') ? 'Add to the proposal' : 'Save')));
+    return e.el;
+  }
+
   function roundCard(r: Round): HTMLElement {
     const el = r.el ?? h('div.card.prop');
     r.el = el;
@@ -379,9 +451,13 @@ export function chatPanel(): Panel {
     const count = (st: string) => r.changes.filter((c) => c.status === st).length;
     const state = r.status === 'decided' ? `${count('accepted')} accepted · ${count('rejected')} rejected`
       : r.status === 'pending' && left < total ? `${left} of ${total} waiting` : r.status;
-    const decide = (accept: boolean, only?: Change) => void app.act('proposals.decide', { round: r.round, accept, ...(only && { only: [only.id] }) });
     // A round of several is decided as one or piece by piece: each piece has its own yes and no.
     const each = total > 1 && r.status === 'pending';
+    // A concept that still waits is the person's to change first, and they can add one of their own to the round.
+    const open = (c: Change) => r.status === 'pending' && !c.status && c.kind === 'concept';
+    const adding = `new:${r.round}`;
+    // (What is being typed in stays the same field when the card is drawn again, and stays typed in.)
+    const typing = el.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
     clear(el,
       h('div.t-head', {}, h('b', {}, coded ? 'A change to the project' : total === 1 ? 'A proposal' : `A proposal, ${total} changes`), h('span.state', {}, state)),
       r.changes.map((c) => h('div.change', { data: { status: c.status ?? 'pending' } },
@@ -391,23 +467,31 @@ export function chatPanel(): Panel {
             ? h('div.path.concept', { data: { id: c.path }, onclick: () => c.before && app.open('concepts', c.path) },
               h('b', {}, String(c.after?.name ?? c.touches?.[0]?.name ?? c.path)),
               !c.before && c.after?.stage ? h('span.t-chip.stage', { data: { stage: String(c.after.stage) } }, String(c.after.stage)) : null,
-              !c.before && h('span.was.new', {}, 'new'))
+              !c.before && h('span.was.new', {}, c.by === 'me' ? 'added by you' : 'new'))
             : h('div.path', { onclick: () => c.kind === 'drawing' && app.open('art', c.path) }, h('i', {}, c.kind), ' ', c.path),
           total > 1 && c.status && h('span.state', {}, c.status),
-          each && !c.status && h('span.each', {},
-            h<'button'>('button.yes', { 'aria-label': `Accept ${c.path}`, onclick: () => decide(true, c) }, icon('yes')),
-            h<'button'>('button.no', { 'aria-label': `Reject ${c.path}`, onclick: () => decide(false, c) }, icon('close')))),
-        c.kind === 'drawing' ? pictures(c) : c.kind === 'code' ? codeFiles(c, r) : c.kind === 'setup' ? setupLines(c) : c.kind === 'concept' ? conceptLines(c) : fieldLines(c),
+          (open(c) || (each && !c.status)) && h('span.each', {},
+            open(c) && !editing.has(c.id) && h<'button'>('button.edit', { 'aria-label': `Edit ${c.path}`, onclick: () => void startEdit(r, c) }, icon('edit')),
+            each && !c.status && h<'button'>('button.yes', { 'aria-label': `Accept ${c.path}`, onclick: () => void decide(r, true, c) }, icon('yes')),
+            each && !c.status && h<'button'>('button.no', { 'aria-label': `Reject ${c.path}`, onclick: () => void decide(r, false, c) }, icon('close')))),
+        c.kind === 'drawing' ? pictures(c) : c.kind === 'code' ? codeFiles(c, r) : c.kind === 'setup' ? setupLines(c)
+          : c.kind !== 'concept' ? fieldLines(c) : open(c) && editing.has(c.id) ? conceptEditor(r, c.id) : conceptLines(c),
+        c.kind === 'concept' && c.edited?.length && h('div.note.yours', {}, `You changed its ${c.edited.join(', ')}.`),
         c.thought && h('div.note.from', {}, 'From your thought: ', h('i', {}, c.thought.length > 160 ? `${c.thought.slice(0, 159)}…` : c.thought)),
         c.note && c.note !== 'a new concept' && h('div.note', {}, c.note),
         // What the agent needs to hear about this piece is asked with it, while it is still to be decided or was taken.
         c.questions?.length && c.status !== 'rejected' ? questionFields(c.id, c.questions) : null)),
+      r.status === 'pending' && editing.has(adding) && h('div.change.adding', {},
+        h('div.pathline', {}, h('div.path.concept', {}, h('b', {}, 'A concept of your own'))),
+        conceptEditor(r, adding)),
       touched.size > 0 && h('div.touches', {}, 'touches ', [...touched].map(([id, t]) => h('span.t-chip.stage', { data: { stage: t.stage }, onclick: () => app.open('concepts', id) }, `${t.name} · ${t.stage}`))),
       r.status === 'pending' && h('div.t-row', {},
         // With the way to the change, playing the copy goes there and marks it.
         coded && app.info.page && h<'button'>('button', { onclick: () => void app.playCopy(r.changes.find((c) => c.kind === 'code')?.show) }, r.changes.some((c) => c.show) ? 'Show me in the copy' : 'Play the copy'),
-        h<'button'>('button.primary', { onclick: () => decide(true) }, total === 1 ? 'Accept' : left < total ? 'Accept the rest' : 'Accept all'),
-        h<'button'>('button.danger', { onclick: () => decide(false) }, total === 1 ? 'Reject' : left < total ? 'Reject the rest' : 'Reject all')));
+        r.changes.some((c) => c.kind === 'concept') && !editing.has(adding) && h<'button'>('button', { onclick: () => void startEdit(r) }, 'Add a concept'),
+        h<'button'>('button.primary', { onclick: () => void decide(r, true) }, total === 1 ? 'Accept' : left < total ? 'Accept the rest' : 'Accept all'),
+        h<'button'>('button.danger', { onclick: () => void decide(r, false) }, total === 1 ? 'Reject' : left < total ? 'Reject the rest' : 'Reject all')));
+    if (typing?.isConnected) typing.focus();
     queueMicrotask(paintPins);
     return el;
   }
@@ -451,6 +535,7 @@ export function chatPanel(): Panel {
         // Once the agent has been asked to read the project, the offer to do so is no longer one.
         if (ev.by === 'engine' && ev.kind === 'init') { asked = true; for (const w of welcomes) w.querySelector('.t-row')?.remove(); }
         if (ev.by === 'engine' && ev.kind === 'resume') return h('div.sys.engine', {}, icon('engine'), ' Tandem was started again while the agent was at work: it carries on where it was.');
+        if (ev.by === 'engine' && ev.kind === 'accepted') return h('div.sys.engine', {}, icon('engine'), ` The agent was told what you accepted${ev.changed ? ', and what you made different in it' : ''}.`);
         if (ev.by === 'engine') return h('div.sys.engine', {}, icon('engine'), ev.kind === 'init' ? ' The agent was asked to read this project and set tandem up for it: its concepts, and how it is run.' : ` to the agent: ${String(ev.text ?? '')}`);
         return h(`div.msg.${ev.by === 'me' ? 'me' : 'agent'}${ev.error ? '.error' : ''}`, {},
           Array.isArray(ev.refs) && h('div.refs', {}, (ev.refs as string[]).map((r) => refChip(app, r))),
@@ -627,9 +712,10 @@ export function chatPanel(): Panel {
       if (r && r.status === 'pending') {
         // All that was waiting, or only the pieces named.
         const ids = ev.ids as string[] | undefined;
-        for (const c of r.changes) if (!c.status && (!ids || ids.includes(c.id))) c.status = ev.status as Change['status'];
+        for (const c of r.changes) if (!c.status && (!ids || ids.includes(c.id))) { c.status = ev.status as Change['status']; editing.delete(c.id); }
         const ways = new Set(r.changes.map((c) => c.status ?? 'pending'));
         r.status = ways.has('pending') ? 'pending' : ways.size === 1 ? [...ways][0] as Round['status'] : 'decided';
+        if (r.status !== 'pending') editing.delete(`new:${r.round}`);
         roundCard(r);
       }
       return;

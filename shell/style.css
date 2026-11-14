@@ -271,6 +271,11 @@ details.cwas summary { color: var(--t-soft); font-size: 12.5px; cursor: pointer;
 .change .each { display: flex; gap: 6px; flex: none; }
 #tandem .change .each button { width: 38px; height: 34px; padding: 0; border-radius: 9px; font-size: 16px; line-height: 1; }
 #tandem .change .each .yes { color: var(--t-good); }
+#tandem .change .each .edit { color: var(--t-soft); }
+.cedit { margin: 4px 0 8px; }
+#tandem .cedit input.title { font-size: 16px; }
+#tandem .cedit h3 { margin-top: 12px; }
+.change.adding .path.concept b { color: var(--t-soft); font-weight: 600; }
 #tandem .change .each .no { color: var(--t-bad); }
 .card.prop[data-status=decided] { border-color: var(--t-line); }
 .change .path { font-family: var(--t-mono); font-size: 13px; color: var(--t-accent); margin-bottom: 3px; word-break: break-all; }

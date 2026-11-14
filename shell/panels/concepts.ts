@@ -10,15 +10,8 @@ import type { Concept, Stage } from '../../core/concepts.ts';
 import type { Event } from '../../core/events.ts';
 import type { App, Panel } from '../app.ts';
 import { ago, clear, h, prose } from '../dom.ts';
+import { conceptForm } from '../conceptform.ts';
 import { icon } from '../icons.ts';
-
-const FIRM: { id: Stage; says: string }[] = [
-  { id: 'idea', says: 'A thought: the agent explores and offers directions.' },
-  { id: 'design', says: 'Being worked out in words: the agent helps settle what it is, and leaves the game alone.' },
-  { id: 'build', says: 'Being made real: the agent codes it in its working copy and asks for the art.' },
-  { id: 'playtest', says: 'In the game: the agent plays it, measures it and tunes it with small proposals.' },
-];
-const LINKS = ['part-of', 'leads-to', 'clashes-with'];
 
 type Brief = { id: string; name: string; stage: Stage; locked: boolean; summary: string; links?: { to: string; kind: string }[]; changes?: number; waiting?: boolean };
 type Thought = { id: string; text: string; ts: number };
@@ -212,41 +205,12 @@ export function conceptsPanel(): Panel {
       unsaved.hidden = true;
     }
 
-    const name = h<'input'>('input.title', { value: draft.name, 'aria-label': 'Name', oninput: () => { draft.name = name.value; touch(); } });
-    const text = h<'textarea'>('textarea.words', { value: draft.text, placeholder: 'In your own words: what is it, what should it feel like?', 'aria-label': 'Description',
-      oninput: () => { draft.text = text.value; touch(); fit(); } });
-    const fit = () => { text.style.height = 'auto'; text.style.height = `${Math.max(120, text.scrollHeight + 2)}px`; };
-
-    const firmSays = h('p.t-hint');
-    const firm = h('div.segments', {}, FIRM.map((f) => h<'button'>('button', { data: { id: f.id }, onclick: () => { draft.stage = f.id; touch(); paintFirm(); } }, f.id)));
-    const paintFirm = () => {
-      firm.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.id === draft.stage));
-      firmSays.textContent = FIRM.find((f) => f.id === draft.stage)!.says;
-    };
-
-    const linksEl = h('div.rows');
     const others = (others_ ?? []).filter((o) => o.id !== id);
-    const paintLinks = () => clear(linksEl, draft.links.map((l, i) => h('div.check', {},
-      h('span.k', {}, l.kind.replace('-', ' ')),
-      h('span.t-chip.tap', { onclick: () => void leave(() => detail(l.to)) }, others.find((o) => o.id === l.to)?.name ?? l.to),
-      h<'button'>('button.icon', { 'aria-label': 'Remove', onclick: () => { draft.links.splice(i, 1); touch(); paintLinks(); } }, icon('close')))));
-    const kind = h<'select'>('select', { 'aria-label': 'Kind of link' }, LINKS.map((k) => h<'option'>('option', { value: k }, k.replace('-', ' '))));
-    const to = h<'select'>('select', { 'aria-label': 'Linked concept' }, h<'option'>('option', { value: '' }, 'another concept…'), others.map((o) => h<'option'>('option', { value: o.id }, o.name)));
-    to.addEventListener('change', () => {
-      if (!to.value) return;
-      draft.links.push({ to: to.value, kind: kind.value });
-      to.value = '';
-      touch(); paintLinks();
-    });
-
-    const realised = h<'textarea'>('textarea.small', { value: draft.realised.join('\n'), rows: Math.max(2, draft.realised.length), placeholder: 'One per line: a rule, a drawing, a test', 'aria-label': 'What makes it real',
-      oninput: () => { draft.realised = realised.value.split('\n').map((s) => s.trim()).filter(Boolean); touch(); } });
+    const form = conceptForm(draft, { others, touch, open: (to) => void leave(() => detail(to)) });
 
     clear(body,
       h('div.bar', {}, h<'button'>('button.link', { onclick: () => void leave(list) }, icon('back'), 'The document'), h('span.grow'), app.lockButton(`concept:${id}`, c.locked)),
-      name, firm, firmSays, text,
-      h('h3', {}, 'Links'), linksEl, h('div.adder', {}, kind, to),
-      h('h3', {}, 'What makes it real'), realised,
+      form.fields,
       // What the project gained for it: the change that waits (in the chat, where it is decided), and what was accepted.
       (made?.waiting || made?.changes.length) ? [
         h('h3', {}, 'Changes for it'),
@@ -259,8 +223,7 @@ export function conceptsPanel(): Panel {
         h<'button'>('button.primary', { onclick: () => void leave(() => app.attach(`concept:${id}`)) }, 'Talk about this'),
         h<'button'>('button.danger', { onclick: async () => { if (confirm(`Throw "${c.name}" away?`) && (await app.act('concepts.remove', { id })) !== undefined) void list(); } }, 'Delete')));
     if (foot) clear(foot, unsaved);
-    paintFirm(); paintLinks();
-    requestAnimationFrame(fit);
+    requestAnimationFrame(form.fit);
 
     async function leave(then: () => unknown) {
       // Going somewhere else with something unsaved: asked, not decided for them.

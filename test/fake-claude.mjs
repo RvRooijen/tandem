@@ -58,6 +58,13 @@ if (prompt.startsWith('fail')) {
   say({ type: 'result', is_error: true, result: 'out of patience', session_id: 'sess-1' });
   process.exit(1);
 }
+// Told that concepts were accepted: it has nothing to propose, it says what it heard.
+if (prompt.includes('The person accepted')) {
+  const text = `Seen: ${[...prompt.matchAll(/^- (.+)$/gm)].map((m) => m[1]).join(' | ')}${prompt.includes('[The message is about:]') ? ' With what they say now.' : ''}`;
+  say({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
+  say({ type: 'result', is_error: false, result: text, session_id: 'sess-1' });
+  process.exit(0);
+}
 // Asked to code: it changes the game's code where it stands, which is its working copy.
 if (prompt.startsWith('code:')) {
   const { writeFileSync } = await import('node:fs');

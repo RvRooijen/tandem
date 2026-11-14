@@ -195,13 +195,16 @@ test('chat: a message goes out, the agent answers with a proposal, and it is acc
   assert.match($('.change .path b', card).textContent!, /^Tulips r\d+$/);
   assert.equal($('.change .path .t-chip.stage', card).textContent, 'idea');
   assert.equal($('.change .ctext', card).textContent, 'Tulips are worth a bit more.', 'what it would say, all of it');
-  assert.deepEqual(all('button', card).map((b) => b.textContent), ['Accept', 'Reject'], 'a proposal is decided; there is nothing else to press');
+  const id = $('.change .path', card).dataset.id!;
+  assert.deepEqual(all('button', card).map((b) => b.getAttribute('aria-label') ?? b.textContent), [`Edit ${id}`, 'Add a concept', 'Accept', 'Reject'], 'a proposed concept is changed, added to, or decided');
 
   click(button('Accept', card));
   await until(() => card.dataset.status === 'accepted', 'the card to say accepted');
-  const id = $('.change .path', card).dataset.id!;
   assert.equal(host.concepts.get(id)!.text, 'Tulips are worth a bit more.');
   assert.equal(all('button', card).length, 0, 'a decided proposal has no buttons');
+  // The agent hears that it was taken, and says so.
+  await until(() => all('.sys.engine').some((x) => /The agent was told what you accepted\.$/.test(x.textContent!)), 'the line that says the agent was told');
+  await until(() => all('.msg.agent').some((x) => x.textContent!.includes(`Seen: Tulips ${id.slice(7)} (${id}): as you proposed it.`)), 'the agent to have heard it');
   await until(() => !app.agent.busy, 'the agent to be done');
   // (It is out of the way of the tests that follow.)
   await host.run('concepts.remove', { id }, 'me');
@@ -214,7 +217,7 @@ test('chat: a round of several is one card, decided as one or piece by piece', a
   const card = all('.card.prop').at(-1)!;
   assert.match($('.t-head', card).textContent!, /A proposal, 3 changes.*pending/);
   assert.deepEqual(all('button', card).map((b) => b.getAttribute('aria-label') ?? b.textContent),
-    ['Accept poppies', 'Reject poppies', 'Accept thistles', 'Reject thistles', 'Accept clover', 'Reject clover', 'Accept all', 'Reject all']);
+    ['Edit poppies', 'Accept poppies', 'Reject poppies', 'Edit thistles', 'Accept thistles', 'Reject thistles', 'Edit clover', 'Accept clover', 'Reject clover', 'Add a concept', 'Accept all', 'Reject all']);
   const piece = (path: string) => all('.change', card).find((c) => $('.path', c).dataset.id === path)!;
 
   // One is taken: it is real now, and the others still wait.
@@ -229,7 +232,7 @@ test('chat: a round of several is one card, decided as one or piece by piece', a
   // One is refused, and what is left is taken with the button for the rest.
   click($('button[aria-label="Reject thistles"]', card));
   await until(() => piece('thistles').dataset.status === 'rejected', 'the piece to say rejected');
-  assert.deepEqual(all('.t-row button', card).map((b) => b.textContent), ['Accept the rest', 'Reject the rest']);
+  assert.deepEqual(all('.t-row button', card).map((b) => b.textContent), ['Add a concept', 'Accept the rest', 'Reject the rest']);
   click(button('Accept the rest', card));
   await until(() => card.dataset.status === 'decided', 'the card to be decided');
   assert.match($('.t-head .state', card).textContent!, /2 accepted · 1 rejected/);
@@ -237,6 +240,78 @@ test('chat: a round of several is one card, decided as one or piece by piece', a
   assert.equal(host.concepts.get('clover')!.text, 'Clover grow.');
   assert.equal(host.concepts.get('thistles'), undefined, 'the refused one never came to be');
   for (const id of ['poppies', 'clover']) await host.run('concepts.remove', { id }, 'me');
+});
+
+test('chat: a proposed concept is typed in on its card before it is accepted, and one of the person\'s own is added to the round', async () => {
+  await host.run('concepts.create', { name: 'Hedges', text: 'A hedge along the path.' }, 'me');
+  await host.run('concepts.create', { name: 'Ponds', text: 'A pond with frogs.' }, AGENT, 'r955');
+  await host.run('concepts.update', { id: 'hedges', text: 'A hedge along the path, clipped square.' }, AGENT, 'r955');
+  const card = () => all('.card.prop').find((c) => $('.path[data-id=ponds]', c))!;
+  await until(() => card()?.querySelectorAll('.change').length === 2, 'the round');
+  const piece = (path: string) => all('.change', card()).find((c) => $('.path', c)?.dataset.id === path)!;
+
+  // Opened, it has the fields a concept has, filled with what is proposed.
+  click($('button[aria-label="Edit ponds"]', card()));
+  await until(() => $('.cedit', piece('ponds')), 'the fields');
+  const field = (label: string, path: string) => $(`.cedit [aria-label="${label}"]`, piece(path)) as HTMLInputElement;
+  assert.deepEqual([field('Name', 'ponds').value, field('Description', 'ponds').value, $('.cedit .segments .on', piece('ponds')).textContent], ['Ponds', 'A pond with frogs.', 'idea']);
+  assert.equal($('button[aria-label="Edit ponds"]', card()), null, 'it is open already');
+  // It can be linked to what is in the document.
+  assert.deepEqual(all('option', field('Linked concept', 'ponds')).map((o) => o.textContent), ['another concept…', 'Hedges']);
+  type(field('Description', 'ponds'), 'A pond with frogs and one heron.');
+  // What is typed stays when the card is drawn again (the agent adds to the round meanwhile).
+  await host.run('concepts.create', { name: 'Reeds bed', text: 'Reeds.' }, AGENT, 'r955');
+  await until(() => card().querySelectorAll('.change').length === 3, 'the card to follow');
+  assert.equal(field('Description', 'ponds').value, 'A pond with frogs and one heron.');
+  click(all('.cedit .segments button', piece('ponds')).find((b) => b.textContent === 'design')!);
+  click(button('Save', piece('ponds')));
+  await until(() => !$('.cedit', piece('ponds')) && $('.ctext', piece('ponds'))?.textContent === 'A pond with frogs and one heron.', 'the card to say what was typed');
+  assert.equal($('.path .t-chip.stage', piece('ponds')).textContent, 'design');
+  assert.equal($('.note.yours', piece('ponds')).textContent, 'You changed its text, stage.');
+  assert.equal(host.concepts.get('ponds'), undefined, 'it is still a proposal');
+  // Cancel leaves it as it was.
+  click($('button[aria-label="Edit ponds"]', card()));
+  await until(() => $('.cedit', piece('ponds')), 'the fields again');
+  type(field('Name', 'ponds'), 'Lakes');
+  click(button('Cancel', piece('ponds')));
+  assert.equal($('.path b', piece('ponds')).textContent, 'Ponds');
+
+  // A change to a concept that is there opens with the whole concept, and only what was typed is changed.
+  click($('button[aria-label="Edit hedges"]', card()));
+  await until(() => $('.cedit', piece('hedges')), 'the fields of the hedge');
+  assert.deepEqual([field('Name', 'hedges').value, field('Description', 'hedges').value], ['Hedges', 'A hedge along the path, clipped square.']);
+  type(field('Description', 'hedges'), 'A hedge along the path, clipped round.');
+
+  // One of their own: it has to have a name, and can be linked to what else is new in the round.
+  click(button('Add a concept', card()));
+  await until(() => $('.change.adding .cedit', card()), 'the fields of a new one');
+  const adding = () => $('.change.adding', card());
+  click(button('Add to the proposal', adding()));
+  assert.match($('#t-toast').textContent!, /Name it first/);
+  type($('[aria-label="Name"]', adding()), 'Stepping stones');
+  type($('[aria-label="Description"]', adding()), 'Flat stones across the pond.');
+  const to = $('[aria-label="Linked concept"]', adding()) as HTMLSelectElement;
+  assert.deepEqual(all('option', to).map((o) => o.textContent), ['another concept…', 'Hedges', 'Ponds', 'Reeds bed']);
+  to.value = 'ponds';
+  to.dispatchEvent(new w.Event('change'));
+  click(button('Add to the proposal', adding()));
+  await until(() => piece('stepping-stones'), 'it to be a piece of the round');
+  assert.equal(adding(), null);
+  assert.match($('.pathline', piece('stepping-stones')).textContent!, /Stepping stones.*idea.*added by you/);
+  assert.match($('.t-head', card()).textContent!, /A proposal, 4 changes/);
+
+  // Accepting takes what is still being typed with it; the agent is told what was made different.
+  const before = host.events.last();
+  click(button('Accept all', card()));
+  await until(() => card().dataset.status === 'accepted', 'the round to be accepted');
+  assert.equal(host.concepts.get('hedges')!.text, 'A hedge along the path, clipped round.', 'what was open was kept first');
+  assert.deepEqual((({ text, stage }) => [text, stage])(host.concepts.get('ponds')!), ['A pond with frogs and one heron.', 'design']);
+  assert.deepEqual(host.concepts.get('stepping-stones')!.links, [{ to: 'ponds', kind: 'part-of' }]);
+  assert.equal($('.cedit', card()), null);
+  await until(() => all('.sys.engine').some((x) => /The agent was told what you accepted, and what you made different in it\.$/.test(x.textContent!)), 'the line that says so');
+  await until(() => host.events.since(before).some((e) => e.type === 'message' && e.by === 'agent' && /Ponds \(ponds\): the person changed it before accepting: its text, stage "idea" → "design"\. \| .*Stepping stones \(stepping-stones\): the person added it.*With what they say now/.test(String(e.text))), 'the agent to have heard it');
+  await until(() => !app.agent.busy, 'the agent to be done');
+  for (const id of ['hedges', 'ponds', 'reeds-bed', 'stepping-stones']) await host.run('concepts.remove', { id }, 'me');
 });
 
 test('chat: what the agent asks has a field for the answer, on the concept it is about or on a card of its own', async () => {

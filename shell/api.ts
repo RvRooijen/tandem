@@ -70,23 +70,33 @@ export async function reachable(url: string): Promise<boolean> {
   }
 }
 
-/** Follow the event log: what is already in it from `since` on, then everything as it happens. */
-export function follow(since: number, on: (ev: Event) => void, state?: (live: boolean) => void): () => void {
-  let last = since, source: EventSource | undefined, closed = false;
+/**
+ * Follow the event log: what is already in it from `since` on, then everything as it happens. The core says it is
+ * there every few seconds; when nothing is heard for `quiet` ms the stream is taken for dead and opened again. (A
+ * core that starts again does not always end the stream: through a proxy it can just go silent.)
+ */
+export function follow(since: number, on: (ev: Event) => void, state?: (live: boolean) => void, quiet = 12_000): () => void {
+  let last = since, source: EventSource | undefined, closed = false, heard = 0, again = 0;
+  const reopen = () => {
+    state?.(false);
+    source?.close();
+    clearTimeout(again);
+    if (!closed) again = window.setTimeout(open, 2000);
+  };
   const open = () => {
+    heard = Date.now();
     source = new EventSource(`/api/events?since=${last}`);
-    source.onopen = () => state?.(true);
+    source.onopen = () => { heard = Date.now(); state?.(true); };
     source.onmessage = (m) => {
+      heard = Date.now();
       const ev = JSON.parse(m.data) as Event;
+      if (ev.type === 'beat') return;
       if (ev.n > 0) { if (ev.n <= last) return; last = ev.n; }
       on(ev);
     };
-    source.onerror = () => {
-      state?.(false);
-      source?.close();
-      if (!closed) setTimeout(open, 2000);
-    };
+    source.onerror = reopen;
   };
   open();
-  return () => { closed = true; source?.close(); };
+  const watch = window.setInterval(() => { if (source && source.readyState !== 2 && Date.now() - heard > quiet) reopen(); }, Math.max(250, quiet / 4));
+  return () => { closed = true; clearInterval(watch); clearTimeout(again); source?.close(); };
 }

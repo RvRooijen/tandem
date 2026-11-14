@@ -18,7 +18,12 @@ export default defineConfig({
     // With the slash: the shell has a module called api.ts, which is not the core's to answer.
     // And /starting to start.ts, which says what the core is doing while it cannot answer yet.
     proxy: {
-      '/api/': { target: `http://127.0.0.1:${process.env.TANDEM_PORT ?? 5201}`, changeOrigin: false },
+      '/api/': {
+        target: `http://127.0.0.1:${process.env.TANDEM_PORT ?? 5201}`, changeOrigin: false,
+        // When the core goes away in the middle of an answer (the event stream, when it starts again), the answer
+        // ends here too; otherwise the page goes on listening to nothing.
+        configure: (proxy) => proxy.on('proxyRes', (from, _req, res) => from.on('close', () => { if (!from.complete && !res.writableEnded) res.destroy(); })),
+      },
       '/starting': { target: `http://127.0.0.1:${process.env.TANDEM_STATUS_PORT ?? 5202}`, changeOrigin: false },
     },
   },

@@ -82,7 +82,8 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
         for (const ev of host.events.since(Number(url.searchParams.get('since') ?? 0))) write(ev);
         if (runner) write({ n: 0, type: 'agent.status', ...runner.status() });
         const off = host.events.subscribe(write);
-        const beat = setInterval(() => res.write(': still here\n\n'), 20_000);
+        // Said as an event, so the page hears it: a stream that goes silent is opened again there.
+        const beat = setInterval(() => write({ n: 0, type: 'beat' }), 4000);
         req.on('close', () => { off(); clearInterval(beat); });
         return;
       }
@@ -138,7 +139,7 @@ export async function startLobby(opts: { port?: number } = {}) {
       }
       if (req.method === 'GET' && url.pathname === '/api/events') {
         res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
-        const beat = setInterval(() => res.write(': still here\n\n'), 20_000);
+        const beat = setInterval(() => res.write('data: {"n":0,"type":"beat"}\n\n'), 4000);
         req.on('close', () => clearInterval(beat));
         return void res.write(': no project is open\n\n');
       }

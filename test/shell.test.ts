@@ -1107,6 +1107,23 @@ test('while the core is starting the page waits for it, and says what is being d
   }
 });
 
+test('an event stream that goes silent is opened again from where it was: a core that starts again does not always end it', async () => {
+  const { follow } = await import('../shell/api.ts');
+  const opened: { url: string; closed: boolean; readyState: number; onmessage?: (m: { data: string }) => void; close(): void }[] = [];
+  const Real = (globalThis as unknown as { EventSource: unknown }).EventSource;
+  (globalThis as unknown as { EventSource: unknown }).EventSource = class { url: string; closed = false; readyState = 1; onmessage?: (m: { data: string }) => void; constructor(url: string) { this.url = url; opened.push(this); } close() { this.closed = true; this.readyState = 2; } };
+  const got: number[] = [], up: boolean[] = [];
+  const stop = follow(5, (ev) => got.push(ev.n), (live) => up.push(live), 400);
+  try {
+    opened[0].onmessage!({ data: JSON.stringify({ n: 6, type: 'message' }) });
+    // While the core says it is there, the stream is left alone; that it says so is not passed on.
+    for (let i = 0; i < 4; i++) { await new Promise((r) => setTimeout(r, 150)); opened[0].onmessage!({ data: '{"n":0,"type":"beat"}' }); }
+    assert.deepEqual([opened.length, got], [1, [6]]);
+    await until(() => opened.length === 2, 'the stream to be opened again', 5000);
+    assert.deepEqual([opened[0].closed, opened[1].url, up.at(-1)], [true, '/api/events?since=6', false]);
+  } finally { stop(); (globalThis as unknown as { EventSource: unknown }).EventSource = Real; }
+});
+
 test('parity: everything the shell does is a command the agent could name', async () => {
   const known = new Set((await host.run('commands.list', {}, 'me') as { name: string }[]).map((c) => c.name));
   for (const c of s.runner!.commands) known.add(c.name);

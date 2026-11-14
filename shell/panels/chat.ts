@@ -57,6 +57,25 @@ export function chatPanel(): Panel {
   const drafts = new Map<string, string[]>();
   const asks = new Map<string, { questions: string[]; about?: string; el: HTMLElement }>();
   const list = h('div.chat');
+  /**
+   * What is still to be decided stays in sight: a line at the top of the conversation for every round that waits,
+   * while its card is scrolled out of view. Tapped, it goes to the card.
+   */
+  const pins = h('div.pins');
+  function paintPins() {
+    const view = body?.getBoundingClientRect();
+    clear(pins, [...rounds.values()].filter((r) => r.status === 'pending' && r.el?.isConnected).map((r) => {
+      const at = r.el!.getBoundingClientRect();
+      if (view && at.bottom > view.top + 24 && at.top < view.bottom - 24) return null;
+      const code = r.changes.find((c) => c.kind === 'code');
+      const left = r.changes.filter((c) => !c.status).length;
+      const what = code ? String(code.note ?? '').split('\n')[0] || 'what the working copy changed' : r.changes.filter((c) => !c.status).map((c) => String(c.after?.name ?? c.path)).join(', ');
+      return h('div.pin', { onclick: () => r.el?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }) },
+        h('div.what', {}, h('b', {}, code ? 'A change to the project waits' : left === 1 ? 'A proposal waits' : `${left} proposals wait`), h('span', {}, what)),
+        code && app.info.page && h<'button'>('button', { onclick: (e: MouseEvent) => { e.stopPropagation(); void app.playCopy(code.show); } }, 'Play'),
+        h<'button'>('button.primary', { onclick: (e: MouseEvent) => { e.stopPropagation(); void app.act('proposals.decide', { round: r.round, accept: true }); } }, left === 1 ? 'Accept' : 'Accept all'));
+    }));
+  }
   const status = h('div.agent-status', { hidden: true });
   const refsEl = h('div.refs');
   const usage = h('div.usage');
@@ -385,6 +404,7 @@ export function chatPanel(): Panel {
         coded && app.info.page && h<'button'>('button', { onclick: () => void app.playCopy(r.changes.find((c) => c.kind === 'code')?.show) }, r.changes.some((c) => c.show) ? 'Show me in the copy' : 'Play the copy'),
         h<'button'>('button.primary', { onclick: () => decide(true) }, total === 1 ? 'Accept' : left < total ? 'Accept the rest' : 'Accept all'),
         h<'button'>('button.danger', { onclick: () => decide(false) }, total === 1 ? 'Reject' : left < total ? 'Reject the rest' : 'Reject all')));
+    queueMicrotask(paintPins);
     return el;
   }
 
@@ -638,7 +658,8 @@ export function chatPanel(): Panel {
     id: 'chat', title: 'Chat',
     show(b, foot) {
       body = b;
-      b.append(list);
+      b.append(pins, list);
+      b.onscroll = () => paintPins();
       if (!list.children.length) list.append(EMPTY());
       foot.append(status, usage, offerEl, sharedEl, refsEl, picker, h('div.composer', {}, newBtn, clip, input, sendBtn));
       paintShared();
@@ -646,7 +667,7 @@ export function chatPanel(): Panel {
       for (const r of rounds.values()) roundCard(r);
       requestAnimationFrame(toBottom);
     },
-    hide() { body = undefined; },
+    hide() { if (body) body.onscroll = null; body = undefined; },
     refs() { if (body) paintRefs(); },
     event(ev) {
       if (ev.type === 'chat.new') {
@@ -655,6 +676,7 @@ export function chatPanel(): Panel {
         for (const [key, r] of rounds) if (r.status !== 'pending') rounds.delete(key);
         list.replaceChildren(...[...rounds.values()].map((r) => r.el!).filter(Boolean));
         if (!list.children.length) list.append(EMPTY());
+        paintPins();
         return;
       }
       list.querySelector('.empty')?.remove();

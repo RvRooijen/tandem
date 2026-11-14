@@ -215,6 +215,15 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 .prose th { background: rgba(255, 255, 255, 0.05); }
 .prose pre { font-family: var(--t-mono); font-size: 12px; background: #101014; padding: 8px; border-radius: 8px; overflow-x: auto; white-space: pre; margin: 6px 0; }
 .prose code { font-family: var(--t-mono); font-size: 13px; background: #101014; padding: 1px 5px; border-radius: 5px; }
+/* What still waits to be decided, kept at the top of the conversation while its card is out of view. */
+.pins { position: sticky; top: -12px; z-index: 3; margin: -12px -12px 10px; }
+.pins:empty { display: none; }
+.pin { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #2b2516; border-bottom: 1px solid #6a5223; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); cursor: pointer; }
+.pin .what { flex: 1; min-width: 0; font-size: 13px; }
+.pin .what b { display: block; color: var(--t-accent); font-size: 12px; }
+.pin .what span { display: block; color: var(--t-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tandem .pin button { flex: none; min-height: 34px; padding: 0 12px; border-radius: 9px; border: 1px solid #6a5223; background: none; font-weight: 600; font-size: 13px; }
+#tandem .pin button.primary { background: var(--t-accent); border-color: var(--t-accent); }
 .card { background: var(--t-raise); border: 1px solid var(--t-line); border-radius: 14px; padding: 11px 12px; }
 .card .t-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
 .card .state { font-size: 12px; color: var(--t-soft); }

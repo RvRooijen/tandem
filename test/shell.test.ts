@@ -770,6 +770,20 @@ test('a change to the project is a card: which files, the copy played in the fra
   const card = all('.card.prop').find((c) => /A change to the project/.test(c.textContent!))!;
   assert.deepEqual(all('.field .k', card).map((k) => k.textContent), ['src/seasons.ts', 'src/game.ts']);
   assert.match(card.textContent!, /new\+40/);
+  // While it waits and its card is out of view, it is pinned at the top of the conversation; in view, it is not.
+  const pin = () => all('#t-body .pins .pin').find((x) => /A change to the project waits/.test(x.textContent!));
+  await until(pin, 'the pin');
+  assert.match(pin()!.textContent!, /The cottage follows the season\./);
+  assert.deepEqual(all('button', pin()!).map((x) => x.textContent), ['Play', 'Accept']);
+  const body_ = $('#t-body');
+  const [bodyRect, cardRect] = [body_.getBoundingClientRect, card.getBoundingClientRect];
+  body_.getBoundingClientRect = () => ({ top: 0, bottom: 600 }) as DOMRect;
+  card.getBoundingClientRect = () => ({ top: 200, bottom: 400 }) as DOMRect;
+  body_.dispatchEvent(new w.Event('scroll'));
+  assert.equal(pin(), undefined, 'the card itself is there to see');
+  body_.getBoundingClientRect = bodyRect; card.getBoundingClientRect = cardRect;
+  body_.dispatchEvent(new w.Event('scroll'));
+  assert.ok(pin());
   assert.match(card.textContent!, /\+12−3/);
   assert.match($('.note', card).textContent!, /The cottage follows the season/);
   assert.deepEqual(all('button', card).map((b) => b.textContent), ['Play the copy', 'Accept', 'Reject']);
@@ -814,6 +828,7 @@ test('a change to the project is a card: which files, the copy played in the fra
   host.events.add({ type: 'proposal.decided', by: 'me', round: 'code', status: 'accepted', count: 1, paths: ['code:working copy'] });
   host.events.add({ type: 'code.changed', by: 'me', files: [files[0].path] });
   await until(() => card.dataset.status === 'accepted', 'the decision');
+  await until(() => !pin(), 'decided, it is no longer pinned');
   assert.match(all('.chat .sys').at(-1)!.textContent!, /the working copy is the project now: 1 file changed/);
   await until(() => frame.src === 'http://localhost:5210/', 'the frame to show the project again');
   assert.equal($('#t-copy').hidden, true);

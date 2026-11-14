@@ -3,6 +3,7 @@
 // last is opened again.
 //   tandem's page    http://localhost:5173   (the phone page: the project in a frame, the tools over it)
 //   the core         http://127.0.0.1:5201   (commands, events, the agent)
+//   what it is doing http://127.0.0.1:5202   (while the core is starting and cannot answer yet)
 //   the project      http://localhost:5210   (its own page, started with the command tandem was given for it, on an
 //                                            inner port, and shown through tandem: core/through.ts)
 // All listen on this machine only: the core can start an agent with a command
@@ -13,6 +14,7 @@
 // project's page is started again too, on the new one; 77: how the project is
 // run was changed, and its page is started again with that). Tandem's page stays up.
 import { spawn, type ChildProcess } from 'node:child_process';
+import { createServer } from 'node:http';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +24,9 @@ import { innerPort, startThrough } from './through.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PAGE_PORT = Number(process.env.TANDEM_PAGE_PORT ?? 5210);
+const STATUS_PORT = Number(process.env.TANDEM_STATUS_PORT ?? 5202);
+/** What is being started, and how far that is; `doing` is empty once the core answers for itself. */
+let starting = { name: '', root: '', doing: '', since: Date.now() };
 let core: ChildProcess | undefined, page: ChildProcess | undefined, paging: string | undefined;
 let stopping = false;
 
@@ -49,7 +54,9 @@ function startProject() {
   }
 
   console.log(project ? `tandem: ${project.name}, in ${project.root}` : 'tandem: no project open; choose one in the page');
-  core = spawn(process.execPath, ['--no-warnings', 'core/server.ts'], { cwd: ROOT, stdio: 'inherit', env: { ...env, TANDEM_SUPERVISED: '1' } });
+  starting = { name: project?.name ?? '', root: project?.root ?? '', doing: 'starting the core', since: Date.now() };
+  core = spawn(process.execPath, ['--no-warnings', 'core/server.ts'], { cwd: ROOT, stdio: ['inherit', 'inherit', 'inherit', 'ipc'], env: { ...env, TANDEM_SUPERVISED: '1' } });
+  core.on('message', (m: { doing?: string; up?: boolean }) => { starting.doing = m.up ? '' : String(m.doing ?? ''); });
   core.on('exit', (code) => {
     if (stopping) return;
     // How the project is run was changed: its page is started again too, with the new command.
@@ -64,6 +71,7 @@ function stop(code = 0) {
   if (stopping) return;
   stopping = true;
   core?.kill();
+  status.close();
   stopTree(page);
   stopTree(shell);
   setTimeout(() => process.exit(code), 300);
@@ -73,7 +81,24 @@ process.on('SIGTERM', () => stop());
 
 // The project's page goes through tandem: as it is, with tandem's few lines added to it, so that things on it can
 // be pointed at. Whatever project is open, it is shown on this port.
-startThrough({ port: PAGE_PORT, to: innerPort(PAGE_PORT) }).catch((e) => console.log(`the project's page cannot be shown on port ${PAGE_PORT}: ${e instanceof Error ? e.message : e}`));
+// (A tandem that was stopped a moment ago may still hold the port: tried for a while before giving up.)
+(async () => {
+  for (let tries = 0; ; tries++) {
+    try { return void await startThrough({ port: PAGE_PORT, to: innerPort(PAGE_PORT) }); } catch (e) {
+      if (stopping) return;
+      if ((e as { code?: string }).code !== 'EADDRINUSE' || tries >= 40) return console.log(`the project's page cannot be shown on port ${PAGE_PORT}: ${e instanceof Error ? e.message : e}`);
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+})();
+
+// While the core starts it cannot answer; this says what it is doing meanwhile (the page asks through /starting).
+const status = createServer((_req, res) => {
+  res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+  res.end(JSON.stringify({ ...starting, seconds: Math.round((Date.now() - starting.since) / 1000) }));
+});
+status.on('error', (e) => console.log(`what the core is doing while it starts cannot be told on port ${STATUS_PORT}: ${e.message}`));
+status.listen(STATUS_PORT, '127.0.0.1');
 
 // Tandem's own page.
 const shell = spawn('npx', ['vite'], { cwd: ROOT, stdio: 'inherit', env: process.env, detached: true });

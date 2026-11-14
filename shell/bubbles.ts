@@ -119,7 +119,12 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
     },
 
     /** The tools were opened or shut. */
-    shut(now: boolean) { shut = now; paint(); },
+    shut(now: boolean) {
+      shut = now;
+      // With the tools open the chat itself is in view: what was said is not said again when they are shut.
+      if (!now) said.length = 0;
+      paint();
+    },
 
     /** Everything that happens passes here; `live` is false for what is read back from before the page was opened. */
     feed(ev: Event, live: boolean) {

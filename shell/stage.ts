@@ -10,7 +10,13 @@ import { clear, h } from './dom.ts';
 
 /** Something on the project's page, as the page says it is: where, what is written on it, and how the code would name it. */
 /** Something on the project's page: what it says, and what is written around it (the card a picture is on). */
-export interface Picked { x: number; y: number; w: number; h: number; words: string; near: string; tag: string; selector: string; path: string }
+export interface Picked {
+  x: number; y: number; w: number; h: number; words: string; near: string; tag: string; selector: string; path: string;
+  /** A thing in a scene three.js draws there: what it is, its geometry and material, where it is, which one of how many like it. */
+  three?: Record<string, unknown>;
+  /** A picture of it as it is on the screen (a data URL), when one was asked for and could be made. */
+  image?: string;
+}
 
 export interface Stage {
   /** What the frame shows now. */
@@ -34,8 +40,8 @@ export interface Stage {
    * screen when it is about one thing; null when the page does not answer.
    */
   act(what: Record<string, unknown>): Promise<Record<string, unknown> | null>;
-  /** What is at a place of this screen, on the project's page; null when nothing is, or the page does not answer. */
-  pick(x: number, y: number): Promise<Picked | null>;
+  /** What is at a place of this screen, on the project's page; null when nothing is, or the page does not answer. With `image`, a picture of it comes along. */
+  pick(x: number, y: number, image?: boolean): Promise<Picked | null>;
 }
 
 export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapshot: unknown): void; changed(): void }): Stage {
@@ -114,14 +120,15 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
         setTimeout(() => { if (acting.delete(id)) resolve(null); }, 2500);
       });
     },
-    pick(x, y) {
+    pick(x, y, image = false) {
       if (!stage.can.find) return Promise.resolve(null);
       const id = ++asked;
       const r = frame.getBoundingClientRect();
       return new Promise((resolve) => {
         picking.set(id, resolve);
-        send({ type: 'pick', id, x: x - r.left, y: y - r.top });
-        setTimeout(() => { if (picking.delete(id)) resolve(null); }, 800);
+        send({ type: 'pick', id, x: x - r.left, y: y - r.top, ...(image && { image: true }) });
+        // (A picture takes a moment to make.)
+        setTimeout(() => { if (picking.delete(id)) resolve(null); }, image ? 5000 : 800);
       });
     },
     find(at) {
@@ -162,7 +169,7 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
     } else if (m.type === 'picked' && m.id !== undefined) {
       const r = frame.getBoundingClientRect();
       const p = m as unknown as Picked;
-      picking.get(m.id)?.(m.missing ? null : { x: r.left + Number(p.x), y: r.top + Number(p.y), w: Number(p.w), h: Number(p.h), words: String(p.words ?? ''), near: String(p.near ?? ''), tag: String(p.tag ?? ''), selector: String(p.selector ?? ''), path: String(p.path ?? '') });
+      picking.get(m.id)?.(m.missing ? null : { x: r.left + Number(p.x), y: r.top + Number(p.y), w: Number(p.w), h: Number(p.h), words: String(p.words ?? ''), near: String(p.near ?? ''), tag: String(p.tag ?? ''), selector: String(p.selector ?? ''), path: String(p.path ?? ''), ...(p.three && typeof p.three === 'object' && { three: p.three }), ...(typeof p.image === 'string' && p.image.startsWith('data:image/') && { image: p.image }) });
       picking.delete(m.id);
     } else if (m.type === 'found' && m.id !== undefined) {
       const r = frame.getBoundingClientRect();

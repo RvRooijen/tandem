@@ -30,6 +30,36 @@ export async function info(): Promise<Info> {
   return (await fetch('/api/info')).json();
 }
 
+/** What is being started while the core cannot answer: which project, and what is being done for it. */
+export interface Starting { name: string; root: string; doing: string; seconds: number }
+
+/** What tandem is doing while the core is away; null when nobody says (tandem itself is not running). */
+export async function starting(): Promise<Starting | null> {
+  try {
+    const res = await fetch('/starting', { cache: 'no-store' });
+    return res.ok ? await res.json() as Starting : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Wait for the core to answer (on `root`, when another project is being opened), however long that takes: a
+ * project on a slow disk can take a minute. What is being done meanwhile is told to `says`, in words.
+ */
+export async function coreUp(says: (text: string, running: boolean) => void, root?: string, every = 600): Promise<Info> {
+  for (;;) {
+    try {
+      const got = await info();
+      if (root === undefined || got.root === root) return got;
+    } catch { /* not there yet */ }
+    const now = await starting();
+    const took = now && now.seconds >= 5 ? ` (${now.seconds} s)` : '';
+    says(now?.doing ? `${now.name ? `Opening ${now.name}: ` : ''}${now.doing}${took}` : now ? `Almost there${took}` : '', now !== null);
+    await new Promise((r) => setTimeout(r, every));
+  }
+}
+
 /** Does a page at another address answer yet? (A project's own page takes a moment to start.) */
 export async function reachable(url: string): Promise<boolean> {
   try {

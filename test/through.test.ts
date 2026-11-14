@@ -3,7 +3,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
-import { connect, type AddressInfo } from 'node:net';
+import { connect, createServer as createNetServer, type AddressInfo } from 'node:net';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { innerPort, startThrough, withTandem } from '../core/through.ts';
@@ -13,6 +13,9 @@ const inner: Server = createServer((req, res) => {
   if (req.url === '/') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', etag: '"abc"', 'content-length': String(Buffer.byteLength(PAGE)) }); return void res.end(PAGE); }
   if (req.url === '/app.js') { res.writeHead(200, { 'content-type': 'text/javascript', etag: '"js"' }); return void res.end('export const a = "</head>";\n'); }
   if (req.url === '/save' && req.method === 'POST') { let body = ''; req.on('data', (d) => { body += d; }); return void req.on('end', () => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ got: body, enc: req.headers['accept-encoding'] ?? null })); }); }
+  // A page that forbids being shown in another page's frame, the way ASP.NET does by itself.
+  if (req.url === '/strict') { res.writeHead(200, { 'content-type': 'text/html', 'x-frame-options': 'SAMEORIGIN', 'content-security-policy': "default-src 'self'; frame-ancestors 'self'" }); return void res.end(PAGE); }
+  if (req.url === '/strict.json') { res.writeHead(200, { 'content-type': 'application/json', 'x-frame-options': 'DENY', 'content-security-policy': "frame-ancestors 'none'" }); return void res.end('{}'); }
   res.writeHead(404, { 'content-type': 'text/html' });
   res.end('<p>nothing here</p>');
 });
@@ -41,9 +44,18 @@ test('a page of HTML gets tandem\'s line, once; everything else passes as it is'
   assert.equal(missing.status, 404);
   const saved = await (await fetch(`${at}/save`, { method: 'POST', body: 'x=1', headers: { 'accept-encoding': 'gzip' } })).json();
   assert.deepEqual(saved, { got: 'x=1', enc: null }, 'a body goes along, and the answer is asked for as it is');
-  assert.equal(await (await fetch(`${at}/__tandem/page.js`)).text(), readFileSync(new URL('../bridge/page.js', import.meta.url), 'utf8'));
+  assert.equal(await (await fetch(`${at}/__tandem/page.js`)).text(), ['scene.js', 'page.js'].map((f) => readFileSync(new URL(`../bridge/${f}`, import.meta.url), 'utf8')).join(''), 'tandem\'s lines: those for a scene first, then those for the page');
   assert.equal(withTandem(html), html, 'never twice');
   assert.equal(withTandem('<p>bare</p>'), '<p>bare</p><script src="/__tandem/page.js"></script>');
+});
+
+test('a page that forbids being shown in a frame can be shown in tandem\'s; the rest of its policy stays', async () => {
+  const page = await fetch(`${at}/strict`);
+  assert.equal(page.headers.get('x-frame-options'), null);
+  assert.equal(page.headers.get('content-security-policy'), "default-src 'self'");
+  const other = await fetch(`${at}/strict.json`);
+  assert.equal(other.headers.get('x-frame-options'), null);
+  assert.equal(other.headers.get('content-security-policy'), null, 'a policy that said nothing else is gone');
 });
 
 test('the project\'s page and the working copy\'s are started far enough apart for each to count up from its own port', () => {
@@ -68,9 +80,13 @@ test('a live connection is passed on both ways', async () => {
 });
 
 test('a page that is not up does not answer here either', async () => {
-  const nowhere = await startThrough({ port: 0, to: 1 });
+  // (Something that hangs up at once stands in for it: a port with nothing on it is not refused everywhere, and
+  // where it is not, finding that out takes minutes.)
+  const down = createNetServer((socket) => socket.destroy());
+  await new Promise<void>((r) => down.listen(0, '127.0.0.1', r));
+  const nowhere = await startThrough({ port: 0, to: (down.address() as AddressInfo).port });
   try { await assert.rejects(fetch(`http://127.0.0.1:${(nowhere.address() as AddressInfo).port}/`)); }
-  finally { nowhere.close(); nowhere.closeAllConnections(); }
+  finally { nowhere.close(); nowhere.closeAllConnections(); down.close(); }
 });
 
 test('tandem\'s lines in a page find a thing by the words on it, or by a selector', async () => {
@@ -189,4 +205,80 @@ test('tandem\'s lines in a page find a thing by the words on it, or by a selecto
   assert.equal((await act({ do: 'tap', at: 'Draw the names' })).ok, false);
   assert.deepEqual(await act({ do: 'go', path: 'https://elsewhere.example/' }), { ok: false, error: 'a place in this app starts with / (or ? or #)' });
   dom.window.close();
+});
+
+test('in a scene three.js draws, what is pointed at is the thing in the scene: what it is, where, and which one of those like it', async () => {
+  const dom = new JSDOM('<iframe></iframe>', { runScripts: 'outside-only', pretendToBeVisual: true });
+  const frame = dom.window.document.querySelector('iframe')!.contentWindow as unknown as Window & { eval(s: string): void; __THREE_DEVTOOLS__: EventTarget };
+  frame.document.body.innerHTML = '<div id="app"><canvas></canvas></div>';
+  const canvas = frame.document.querySelector('canvas')!;
+  (frame as unknown as { Element: { prototype: Element } }).Element.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 300, right: 400, bottom: 300, x: 0, y: 0, toJSON() {} });
+  (frame.document as unknown as { elementFromPoint: unknown }).elementFromPoint = () => canvas;
+  canvas.scrollIntoView = () => {};
+  (canvas as unknown as { getContext: unknown }).getContext = () => null;
+  const said: any[] = [];
+  dom.window.addEventListener('message', (ev) => said.push(JSON.parse(JSON.stringify(ev.data))));
+  for (const f of ['scene.js', 'page.js']) frame.eval(readFileSync(new URL(`../bridge/${f}`, import.meta.url), 'utf8'));
+  const wait = async (what: () => unknown) => { for (let i = 0; i < 100 && !what(); i++) await new Promise((r) => setTimeout(r, 20)); assert.ok(what(), 'the page answered'); };
+
+  // A scene as three keeps one, as far as tandem reads it: a table, and two small things alike in front of it,
+  // seen by a camera at the middle that looks down the z axis (a quarter turn wide, on a canvas of 4 by 3).
+  const at = (x: number, y: number, z: number) => ({ elements: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1] });
+  const quad = (half: number, type: string, made?: Record<string, number>) => {
+    const array = new Float32Array([-half, -half, 0, half, -half, 0, half, half, 0, -half, half, 0]);
+    const index = [0, 1, 2, 0, 2, 3];
+    return { type, parameters: made, attributes: { position: { array, itemSize: 3, count: 4, version: 0, getX: (i: number) => array[i * 3], getY: (i: number) => array[i * 3 + 1], getZ: (i: number) => array[i * 3 + 2] } }, index: { count: 6, getX: (i: number) => index[i] } };
+  };
+  const scene: any = { isScene: true, type: 'Scene', visible: true, children: [] };
+  const small = quad(0.2, 'BufferGeometry'), red = { type: 'ShaderMaterial', side: 0, uniforms: { uTime: {}, uColor: {} } };
+  const mesh = (uuid: string, geometry: unknown, material: unknown, matrixWorld: unknown, more = {}) => { const m = { isMesh: true, type: 'Mesh', uuid, visible: true, geometry, material, matrixWorld, parent: scene, children: [], ...more }; scene.children.push(m); return m; };
+  mesh('table-1', quad(1, 'PlaneGeometry', { width: 2, height: 2 }), { type: 'MeshStandardMaterial', side: 0, color: { getHexString: () => '886644' }, map: {} }, at(0, 0, -5), { name: 'table', userData: { kind: 'furniture' } });
+  mesh('die-1', small, red, at(-1, 0, -3));
+  mesh('die-2', small, red, at(1, 0, -3));
+  mesh('unseen', quad(1, 'PlaneGeometry'), red, at(0, 0, -1), { visible: false });
+  const f = 1, near = 0.1, far = 100;
+  const camera = { isCamera: true, isPerspectiveCamera: true, matrixWorld: at(0, 0, 0), matrixWorldInverse: at(0, 0, 0), projectionMatrix: { elements: [f / (4 / 3), 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) / (near - far), -1, 0, 0, (2 * far * near) / (near - far), 0] } };
+  // Three tells its devtools of a renderer when it makes one; what it draws from then on is known.
+  let draws = 0;
+  const renderer = { domElement: canvas, render() { draws++; } };
+  frame.__THREE_DEVTOOLS__.dispatchEvent(new (frame as unknown as { CustomEvent: typeof CustomEvent }).CustomEvent('observe', { detail: renderer }));
+  renderer.render.call(renderer, ...([scene, camera] as unknown as []));
+
+  let n = 0;
+  const ask = async (type: string, answer: string, data: Record<string, unknown>) => {
+    const id = ++n;
+    frame.dispatchEvent(new (frame as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent('message', { data: { tandem: 1, type, id, ...data }, source: dom.window as never }));
+    await wait(() => said.some((m) => m.type === answer && m.id === id));
+    const { tandem: _t, type: _y, id: _i, ...rest } = said.find((m) => m.type === answer && m.id === id);
+    return rest;
+  };
+  // The middle of the canvas: the table, behind the thing that is not drawn. It has a name, and that is what it is called.
+  const table = await ask('pick', 'picked', { x: 200, y: 150 });
+  assert.equal(table.words, 'Mesh "table"');
+  assert.deepEqual([table.tag, table.selector], ['canvas', '#app > canvas']);
+  assert.deepEqual(table.three, {
+    uuid: 'table-1', type: 'Mesh', name: 'table',
+    geometry: { type: 'PlaneGeometry', made: { width: 2, height: 2 }, points: 4 },
+    material: { type: 'MeshStandardMaterial', color: '#886644', texture: true },
+    position: [0, 0, -5], size: [2, 2, 0], point: [0, 0, -5], index: 1, of: 1, graph: 'Scene > Mesh "table"', userData: '{"kind":"furniture"}',
+  });
+  // To the right of it, nearer: the second of the two small things. It has no name: what it is, and which one.
+  const die = await ask('pick', 'picked', { x: 250, y: 150 });
+  assert.equal(die.words, 'Mesh, BufferGeometry, 2 of 2');
+  assert.deepEqual([die.three.uuid, die.three.point, die.three.position, die.three.index, die.three.of], ['die-2', [1, 0, -3], [1, 0, -3], 2, 2]);
+  assert.deepEqual(die.three.material, { type: 'ShaderMaterial', uniforms: ['uTime', 'uColor'] });
+  assert.deepEqual([die.x, die.y, die.w, die.h].map(Math.round), [240, 140, 20, 20], 'where it is on the screen: the box it fits in');
+  // Beside everything: the canvas itself, as on any page.
+  const none = await ask('pick', 'picked', { x: 390, y: 10 });
+  assert.deepEqual([none.three, none.words, none.w], [undefined, '', 400]);
+  // Found again by the id three gave it, for the ring.
+  const found = await ask('find', 'found', { at: 'three:die-1' });
+  assert.deepEqual([found.x, found.y, found.w, found.h].map(Math.round), [140, 140, 20, 20]);
+  assert.deepEqual(await ask('find', 'found', { at: 'three:gone' }), { missing: true });
+  // Let go on it, a picture of it is asked for: taken when the scene is next drawn, and the page draws it once
+  // more itself when it does not by then. (This stand-in for a browser cannot draw: there is no picture, and it is said without.)
+  const before = draws;
+  const withPicture = await ask('pick', 'picked', { x: 250, y: 150, image: true });
+  assert.equal(draws, before + 1, 'drawn once more for the picture');
+  assert.deepEqual([withPicture.three.uuid, withPicture.image], ['die-2', undefined]);
 });

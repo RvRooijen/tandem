@@ -1,13 +1,16 @@
-// Tandem's layer over the project's page: a round button, a sheet that slides
-// up over the lower part of the screen with the tools in it, a ring for
-// pointing at something in the project. The project underneath keeps running
-// and stays in view, so it can be used and talked about at once.
+// Tandem's layer over the project's page: a round button, a sheet with the
+// tools in it, a ring for pointing at something in the project. On a phone the
+// sheet covers the page while it is open; on a wide screen it is a panel beside
+// the page, and both are in view at once.
 import type { Event } from '../core/events.ts';
 import type { AgentStatus } from '../core/runner.ts';
 import { info as getInfo, run, type Info } from './api.ts';
 import { createBubbles } from './bubbles.ts';
 import { clear, h } from './dom.ts';
 import type { Picked, Stage } from './stage.ts';
+
+/** A file the core keeps with the conversation (chat.attach). */
+export interface Kept { name: string; label: string; url: string; image: boolean }
 
 export interface Panel {
   id: string;
@@ -22,6 +25,8 @@ export interface Panel {
   /** Something happened; called whether the panel is showing or not. */
   event?(ev: Event, live: boolean): void;
   agent?(): void;
+  /** What the next message is about changed. */
+  refs?(): void;
 }
 
 /** Where a change shows: the way there, as a person would go, and the thing itself. */
@@ -38,8 +43,17 @@ export interface App {
   open(tab: string, id?: string): void;
   close(): void;
   current(): string | null;
-  /** Hang something on the next message and go to the chat. */
-  attach(ref: string): void;
+  /** True on a wide screen: the tools are a panel beside the project's page, not over it. */
+  beside(): boolean;
+  /** Bring the project's page in view: where the tools cover it, they are shut. */
+  reveal(): void;
+  /** Hang something on the next message and go to the chat; with a picture of it (a data URL), that goes along too. */
+  attach(ref: string, picture?: string): void;
+  /** The pictures of what the next message is about, by what they are of: kept by the core, sent along as files. */
+  pictures: Map<string, Kept>;
+  /** Done when every picture that was handed over is kept; `picturing` is how many are still on their way. */
+  pictured: Promise<void>;
+  picturing: number;
   point(x: number, y: number, text?: string, at?: string): void;
   /** Show the agent's working copy in the frame instead of the project, and back. */
   /** Show the working copy, started from what the browser keeps of the project; with `show`, go to where the change is and mark it. */
@@ -73,6 +87,13 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
   root.append(fab, bubbleEl, banner, ring, sheet, toastEl, zoomEl);
 
   let shown: string | null = null, last = 'chat';
+  // A wide screen has room for the tools beside the page. The stylesheet goes by these two classes on the body.
+  const WIDE = '(min-width: 900px)';
+  const paintLayout = () => {
+    document.body.classList.toggle('t-wide', app.beside());
+    document.body.classList.toggle('t-open', shown !== null);
+  };
+  window.matchMedia?.(WIDE).addEventListener?.('change', () => paintLayout());
   let ringTimer = 0, toastTimer = 0;
   let pointed: { x: number; y: number; text: string; at?: string } | undefined;
   const badges = new Set<string>();
@@ -97,6 +118,8 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
   let pressed: HTMLButtonElement | null = null, pressedAt = 0;
   root.addEventListener('click', (ev) => {
     pressed = (ev.target as Element | null)?.closest?.('button') as HTMLButtonElement | null;
+    // A tab, or a button in the bar beside the tabs, opens a panel: what is loading then is the panel, and that is shown in it.
+    if (pressed?.closest('#t-sheet > header')) pressed = null;
     pressedAt = Date.now();
   }, true);
 
@@ -125,7 +148,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
   // (What says nothing itself, a canvas, is named by what is written around it.)
   const short = (text: string) => (text.length > 36 ? `${text.slice(0, 35)}…` : text);
   const naming = (got: Picked) => (got.words ? `"${short(got.words)}"` : got.near ? `${got.tag} by "${short(got.near)}"` : got.tag);
-  fab.addEventListener('pointerdown', (ev) => { if (!shown) drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, on: false, last: 0 }; });
+  fab.addEventListener('pointerdown', (ev) => { if (!shown || app.beside()) drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, on: false, last: 0 }; });
   fab.addEventListener('pointermove', (ev) => {
     if (!drag || ev.pointerId !== drag.id) return;
     const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
@@ -156,10 +179,10 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     fab.classList.remove('drag');
     fab.style.transform = '';
     if (ev.type === 'pointercancel') { ring.hidden = true; return; }
-    void stage.pick(ev.clientX, ev.clientY).then((got) => {
+    void stage.pick(ev.clientX, ev.clientY, true).then((got) => {
       ring.hidden = true;
       if (!got) return app.toast(stage.can.find ? 'There is nothing there to point at.' : 'This page cannot be asked what is there.');
-      app.attach(`page:${JSON.stringify({ words: got.words, ...(got.near && { near: got.near }), tag: got.tag, selector: got.selector, path: got.path })}`);
+      app.attach(`page:${JSON.stringify({ words: got.words, ...(got.near && { near: got.near }), tag: got.tag, selector: got.selector, path: got.path, ...(got.three && { three: got.three }) })}`, got.image);
     });
   };
   fab.addEventListener('pointerup', drop);
@@ -176,7 +199,12 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     events: [],
     agent: { busy: false, doing: '', text: '', waiting: 0, session: false, off: false, context: 0, limit: 0 },
     refs: [],
+    pictures: new Map(),
+    pictured: Promise.resolve(),
+    picturing: 0,
     current: () => shown,
+    beside: () => window.matchMedia?.(WIDE).matches ?? false,
+    reveal() { if (!app.beside()) app.close(); },
 
     open(tab, id) {
       const panel = panels.find((p) => p.id === tab) ?? panels[0];
@@ -186,9 +214,12 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       for (const [pid, el] of tabEls) el.classList.toggle('on', pid === panel.id);
       sheet.classList.remove('shut');
       fab.classList.add('open');
+      paintLayout();
       clear(body); clear(foot);
       body.scrollTop = 0;
       panel.show(body, foot, id);
+      // A panel that has to ask the core first has drawn nothing yet: it is loading, and says so where it will be.
+      if (!body.childNodes.length) body.append(h('div.working.loading', {}, h('i.spin'), h('span', {}, 'Loading…')));
       paintBadges();
       bubbles.shut(false);
     },
@@ -198,19 +229,35 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       shown = null;
       sheet.classList.add('shut');
       fab.classList.remove('open');
+      paintLayout();
       bubbles.shut(true);
       // What was pointed at while the tools covered the page is shown now that the page can be seen.
       if (pointed) { const p = pointed; pointed = undefined; app.point(p.x, p.y, p.text, p.at); }
     },
 
-    attach(ref) {
+    attach(ref, picture) {
       if (!app.refs.includes(ref)) app.refs.push(ref);
       app.open('chat');
+      if (!picture) return;
+      // The picture is handed to the core like a photo the person shares; it goes with the message as a file.
+      let what = '';
+      try { const p = JSON.parse(ref.slice(ref.indexOf(':') + 1)) as { words?: string; near?: string; tag?: string }; what = p.words || p.near || p.tag || ''; } catch { /* no name for it */ }
+      const name = `pointed at ${what.replace(/[^\w\- ]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40) || 'something'}.jpg`;
+      app.picturing++;
+      app.pictured = app.pictured.then(async () => {
+        try {
+          const kept = await run<Kept>('chat.attach', { name, data: picture.replace(/^data:[^,]*,/, '') });
+          if (!app.refs.includes(ref)) return;
+          app.pictures.set(ref, kept);
+          for (const p of panels) p.refs?.();
+        } catch { app.toast('The picture of what you pointed at could not be kept; it goes without one.'); }
+        app.picturing--;
+      });
     },
 
     point(x, y, text = '', at) {
-      // The tools are the whole screen while they are open: the pointing waits until the page is in view.
-      if (shown) { pointed = { x, y, text, at }; return app.toast(`The agent points at something on the page${text ? `: ${text}` : ''}. Shut the tools to see it.`); }
+      // Where the tools cover the page while they are open, the pointing waits until the page is in view.
+      if (shown && !app.beside()) { pointed = { x, y, text, at }; return app.toast(`The agent points at something on the page${text ? `: ${text}` : ''}. Shut the tools to see it.`); }
       const ringAt = (px: number, py: number, w = 46, h = 46) => showRing(px, py, w, h, text, at !== undefined, true);
       if (at !== undefined) {
         void stage.find(at).then((r) => {
@@ -236,7 +283,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       const mine = stage.showing === 'project' ? await stage.act({ do: 'state' }) : null;
       let n = stage.loads;
       stage.showCopy(got.url);
-      app.close();
+      app.reveal();
       if (!(await wait(() => stage.loads > n, 40000))) return;
       if (mine?.ok) {
         n = stage.loads;
@@ -393,5 +440,6 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
   // What tandem says while the tools are shut.
   const bubbles = createBubbles(bubbleEl, app);
   for (const p of panels) p.init(app);
+  paintLayout();
   return app;
 }

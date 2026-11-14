@@ -60,12 +60,15 @@ export interface HostOptions {
   tandemDir?: string;
   /** The agent's working copy, when it is not the usual one (a test's); null for none. */
   code?: Code | null;
+  /** Told what is being done while the host is made, step by step: on a slow disk that takes a while. */
+  doing?: (what: string) => void;
 }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 export async function createHost(opts: HostOptions = {}): Promise<Host> {
   const project = loadProject(opts.project ?? process.env.TANDEM_PROJECT ?? process.cwd(), { data: opts.dataDir, tandem: opts.tandemDir });
+  opts.doing?.('setting up its .tandem folder');
   prepare(project);
   const dataDir = project.dirs.data, looksDir = project.dirs.looks;
 
@@ -73,9 +76,11 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   // the commands that need it are simply not there.
   const adapter = project.config.adapter;
   const hasGame = !!adapter && existsSync(join(project.root, adapter));
+  if (hasGame) opts.doing?.('loading its adapter');
   const game = (hasGame ? (await import(join(project.root, adapter!))).game : undefined) as GameModule;
   if (hasGame && !game) throw new Error(`${adapter} does not export \`game\``);
 
+  opts.doing?.('reading what is kept there: the chat, the concepts, what was proposed');
   const registry = createRegistry();
   const events = createEventLog(join(dataDir, 'events.jsonl'));
   const proposals = createProposals(join(dataDir, 'proposals'));
@@ -86,6 +91,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   // Working files and project files: the agent codes in a copy of its own (code.ts), when the project is in a
   // repository. What the engine itself writes in the project (concepts, locks, accepted drawings) is committed by
   // it, so the copy can take it in; the person's own uncommitted work is theirs and is left alone.
+  opts.doing?.('looking at its git repository');
   const candidate = opts.code === undefined && process.env.TANDEM_CODE !== 'off'
     ? createCode({ root: project.root, paths: ['.tandem/concepts', '.tandem/locks.json', '.tandem/.gitignore', '.tandem/tandem.json', '.tandem/page.sh', 'art', 'depth'] }) : undefined;
   const code = opts.code ?? (candidate?.usable() ? candidate : undefined);
@@ -321,7 +327,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     // ---- talking
     {
       name: 'chat.send', kind: 'write', agent: 'free',
-      about: 'Say something in the conversation. refs is a list of things it is about: "concept:<id>", "drawing:<name>", "entity:<id>", "point:<x>,<y>", "page:<json>" (something on the project\'s page: {words, near, tag, selector, path}; near is what is written around it). files is a list of what chat.attach gave back: photos and files that go with it.',
+      about: 'Say something in the conversation. refs is a list of things it is about: "concept:<id>", "drawing:<name>", "entity:<id>", "point:<x>,<y>", "page:<json>" (something on the project\'s page: {words, near, tag, selector, path}; near is what is written around it; three, when it is a thing in a scene three.js draws there: what it is, its geometry and material, where it is). files is a list of what chat.attach gave back: photos and files that go with it.',
       input: { text: 'string', refs: 'json?', files: 'json?' },
       run(c, i) {
         checkList(i.refs, 'refs');

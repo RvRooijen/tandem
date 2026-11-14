@@ -3,7 +3,9 @@
 // frame, so that something on any page can be pointed at: by the agent, by the
 // words on it as the person reads them or by a CSS selector; and by the
 // person, who drags tandem's button onto it (tandem then asks what is at that
-// place). And the agent can use the page as a person would, in the person's
+// place, and gets a picture of it along). In a scene three.js draws that is
+// the thing in the scene, not the canvas it is drawn on (bridge/scene.js, which
+// goes before this). And the agent can use the page as a person would, in the person's
 // own browser where they see it happen: read what is on it, tap something,
 // fill a field in, go somewhere. A page opened on its own is not touched.
 (() => {
@@ -89,6 +91,120 @@
     }
     return '';
   }
+  // ---- a picture of what is pointed at, for the agent to look at
+
+  const PICTURE = 1024;
+  /** What colour is behind something: the first thing under it that has one. */
+  function behind(el) {
+    for (let at = el; at && at.nodeType === 1; at = at.parentElement) {
+      const c = getComputedStyle(at).backgroundColor;
+      if (c && c !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(c)) return c;
+    }
+    return '#ffffff';
+  }
+  /** A part of something that can be drawn (a canvas, a picture, a video), as a picture no larger than it has to be. */
+  function copyOf(from, sx, sy, sw, sh, back) {
+    if (!(sw >= 1 && sh >= 1)) return null;
+    const scale = Math.min(1, PICTURE / Math.max(sw, sh));
+    const out = document.createElement('canvas');
+    out.width = Math.max(1, Math.round(sw * scale));
+    out.height = Math.max(1, Math.round(sh * scale));
+    const ctx = out.getContext('2d');
+    if (!ctx) return null;
+    ctx.fillStyle = back;
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(from, sx, sy, sw, sh, 0, 0, out.width, out.height);
+    // (A picture from somewhere else may not be read back: then there is none.)
+    try { return out.toDataURL('image/jpeg', 0.86); } catch { return null; }
+  }
+  /** A part of a canvas, given as a place on the page: with some room around it, so it is seen where it is. */
+  function ofCanvas(canvas, place) {
+    const r = canvas.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0)) return null;
+    const room = Math.max(24, Math.min(place.w, place.h) * 0.25);
+    const x0 = Math.max(r.left, place.x - room), y0 = Math.max(r.top, place.y - room);
+    const x1 = Math.min(r.left + r.width, place.x + place.w + room), y1 = Math.min(r.top + r.height, place.y + place.h + room);
+    const kx = canvas.width / r.width, ky = canvas.height / r.height;
+    try { return copyOf(canvas, (x0 - r.left) * kx, (y0 - r.top) * ky, (x1 - x0) * kx, (y1 - y0) * ky, behind(canvas)); } catch { return null; }
+  }
+  /**
+   * Anything else on the page, drawn again from what it is made of: a copy of it with every style written out,
+   * put in a picture the browser draws. What it cannot draw that way (a font or a picture from elsewhere) is left
+   * out or looks plainer; a browser that will not hand such a picture back gives none.
+   */
+  function ofElement(el) {
+    return new Promise((resolve) => {
+      const r = el.getBoundingClientRect();
+      const w = Math.ceil(r.width), h = Math.ceil(r.height);
+      if (w < 1 || h < 1) return resolve(null);
+      let left = 200;
+      const copy = (from) => {
+        if (from.nodeType === 3) return document.createTextNode(from.nodeValue);
+        if (from.nodeType !== 1 || /^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|IFRAME|LINK|META)$/.test(from.tagName) || --left < 0) return null;
+        let to;
+        if (/^(CANVAS|IMG|VIDEO)$/.test(from.tagName)) {
+          // What is drawn, as it is now; where that may not be read, an empty place of its size.
+          to = document.createElement('img');
+          const fr = from.getBoundingClientRect();
+          const pw = from.tagName === 'IMG' ? from.naturalWidth : from.tagName === 'VIDEO' ? from.videoWidth : from.width;
+          const ph = from.tagName === 'IMG' ? from.naturalHeight : from.tagName === 'VIDEO' ? from.videoHeight : from.height;
+          let data = null;
+          try { data = copyOf(from, 0, 0, pw, ph, behind(from)); } catch { /* not to be read */ }
+          if (data) to.setAttribute('src', data);
+          to.setAttribute('width', String(Math.round(fr.width)));
+          to.setAttribute('height', String(Math.round(fr.height)));
+        } else to = from.cloneNode(false);
+        const cs = getComputedStyle(from);
+        let css = '';
+        for (let i = 0; i < cs.length; i++) { const v = cs.getPropertyValue(cs[i]); if (v) css += `${cs[i]}:${v};`; }
+        to.setAttribute('style', css);
+        to.removeAttribute('class');
+        to.removeAttribute('id');
+        if (from.tagName === 'INPUT' || from.tagName === 'TEXTAREA') { to.setAttribute('value', from.value ?? ''); if (from.tagName === 'TEXTAREA') to.textContent = from.value ?? ''; }
+        if (!/^(CANVAS|IMG|VIDEO|TEXTAREA)$/.test(from.tagName)) for (const kid of from.childNodes) { const k = copy(kid); if (k) to.append(k); }
+        return to;
+      };
+      let svg;
+      try {
+        const root = copy(el);
+        if (!root) return resolve(null);
+        // Where it stood among other things does not matter here: it is alone in its picture.
+        root.style.margin = '0';
+        root.style.position = 'static';
+        root.style.transform = 'none';
+        const holder = document.createElement('div');
+        holder.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+        holder.setAttribute('style', `width:${w}px;height:${h}px;background:${behind(el)};overflow:hidden;`);
+        holder.append(root);
+        svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject x="0" y="0" width="100%" height="100%">${new XMLSerializer().serializeToString(holder)}</foreignObject></svg>`;
+      } catch { return resolve(null); }
+      const img = new Image();
+      const give = setTimeout(() => resolve(null), 2500);
+      img.onload = () => { clearTimeout(give); let out = null; try { out = copyOf(img, 0, 0, w, h, '#ffffff'); } catch { /* not handed back */ } resolve(out); };
+      img.onerror = () => { clearTimeout(give); resolve(null); };
+      img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    });
+  }
+  /** A picture of something on the page, as it is now; `place` is where it is when it is a thing in a scene. */
+  function pictureOf(el, place) {
+    return new Promise((resolve) => {
+      const scene = window.__tandemScene;
+      if (el.tagName === 'CANVAS') {
+        const whole = place ?? (() => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; })();
+        // What three draws is copied right after it is drawn: at any other moment the canvas may hold nothing.
+        if (scene?.whenDrawn(el, () => resolve(ofCanvas(el, whole)))) return;
+        return resolve(ofCanvas(el, whole));
+      }
+      if (el.tagName === 'IMG' || el.tagName === 'VIDEO') {
+        const pw = el.tagName === 'IMG' ? el.naturalWidth : el.videoWidth, ph = el.tagName === 'IMG' ? el.naturalHeight : el.videoHeight;
+        let data = null;
+        try { data = copyOf(el, 0, 0, pw, ph, behind(el)); } catch { /* not to be read */ }
+        if (data) return resolve(data);
+      }
+      ofElement(el).then(resolve, () => resolve(null));
+    });
+  }
+
   const TAPPED = 'button, a[href], [role=button], [role=link], [role=tab], summary, input[type=submit], input[type=button], input[type=checkbox], input[type=radio]';
   const FIELD = 'input:not([type=submit]):not([type=button]):not([type=checkbox]):not([type=radio]):not([type=hidden]), textarea, select';
 
@@ -220,12 +336,30 @@
       if (!el) return say({ type: 'picked', id: m.id, missing: true });
       const r = el.getBoundingClientRect();
       const near = around(el);
-      return say({
-        type: 'picked', id: m.id, x: r.left, y: r.top, w: r.width, h: r.height,
-        words: cut(words(el), 120), ...(near && { near }), tag: el.tagName.toLowerCase(), selector: selectorOf(el), path: location.pathname + location.hash,
-      });
+      // On a canvas three draws on, what is pointed at is the thing in the scene there, when there is one.
+      let thing = null;
+      if (el.tagName === 'CANVAS') { try { thing = window.__tandemScene?.at(el, Number(m.x), Number(m.y)) ?? null; } catch { /* a scene that cannot be read: the canvas it is */ } }
+      const place = thing ? { x: thing.x, y: thing.y, w: thing.w, h: thing.h } : { x: r.left, y: r.top, w: r.width, h: r.height };
+      const got = {
+        type: 'picked', id: m.id, ...place,
+        words: thing ? thing.words : cut(words(el), 120), ...(near && { near }), tag: el.tagName.toLowerCase(), selector: selectorOf(el), path: location.pathname + location.hash,
+        ...(thing && { three: thing.three }),
+      };
+      // Let go on it: a picture of it goes along.
+      if (!m.image) return say(got);
+      return void pictureOf(el, thing ? place : null).then((image) => say({ ...got, ...(image && { image }) }), () => say(got));
     }
     if (m.type !== 'find') return;
+    // A thing in a scene, by the id three gave it: where it is on its canvas now.
+    if (typeof m.at === 'string' && m.at.startsWith('three:')) {
+      const where = window.__tandemScene?.where(m.at.slice(6));
+      if (!where) return say({ type: 'found', id: m.id, missing: true });
+      where.canvas.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+      return void requestAnimationFrame(() => {
+        const now = window.__tandemScene.where(m.at.slice(6)) ?? where;
+        say({ type: 'found', id: m.id, x: now.x, y: now.y, w: now.w, h: now.h });
+      });
+    }
     const el = byWords(m.at) ?? bySelector(m.at);
     if (!el) return say({ type: 'found', id: m.id, missing: true });
     el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });

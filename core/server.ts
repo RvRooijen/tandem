@@ -153,15 +153,21 @@ export async function startLobby(opts: { port?: number } = {}) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  // Started by start.ts, the core tells it what it is doing until it answers itself: the page shows that meanwhile.
+  const tell = (m: { doing: string } | { up: true }) => { if (process.connected) process.send?.(m); };
   // The project is the one named when starting, or the one that was open last; without either, the page chooses.
   const dir = process.env.TANDEM_PROJECT || readState().project;
   if (!dir || !existsSync(dir)) {
     const lobby = await startLobby();
+    tell({ up: true });
     for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, () => process.exit(0));
     console.log(`tandem core: no project open; choose one in the page (http://127.0.0.1:${lobby.port}/api)`);
     await new Promise(() => {});
   }
-  const s = await startServer({ host: await createHost({ project: dir }) });
+  const host = await createHost({ project: dir, doing: (doing) => tell({ doing }) });
+  tell({ doing: 'starting the agent' });
+  const s = await startServer({ host });
+  tell({ up: true });
   // A project tandem has not been in before: its chat opens with a first line.
   welcome(s.host);
   // Stopped from outside: what the core started stops with it.

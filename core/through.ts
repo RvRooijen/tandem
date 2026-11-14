@@ -1,9 +1,12 @@
 // A project's page, through tandem. The page is started on an inner port and
 // shown from here, on the port it is known at. Everything passes as it is,
 // except that a page of HTML gets one line more: tandem's own few lines
-// (bridge/page.js), so that things on any page can be pointed at without the
-// project knowing of tandem. A page that is not up yet does not answer here
-// either: whoever waits for it keeps waiting.
+// (bridge/scene.js and bridge/page.js), so that things on any page, and in a
+// scene three.js draws on it, can be pointed at without the project knowing of
+// tandem. A page that says it may not be shown in another
+// page's frame (X-Frame-Options, frame-ancestors) loses that on the way: a
+// frame is where tandem shows it. A page that is not up yet does not answer
+// here either: whoever waits for it keeps waiting.
 import { createServer, request, type IncomingMessage, type Server } from 'node:http';
 import { connect } from 'node:net';
 import { readFileSync } from 'node:fs';
@@ -11,7 +14,8 @@ import { fileURLToPath } from 'node:url';
 
 const SCRIPT = '/__tandem/page.js';
 const TAG = `<script src="${SCRIPT}"></script>`;
-const script = () => readFileSync(fileURLToPath(new URL('../bridge/page.js', import.meta.url)));
+// (The lines for a scene of three.js go first: they have to be there before the page's own code makes its renderer.)
+const script = () => Buffer.concat(['scene.js', 'page.js'].map((name) => readFileSync(fileURLToPath(new URL(`../bridge/${name}`, import.meta.url)))));
 
 /**
  * The inner port a page is started on, for the port it is shown at. The project's page and the working copy's are
@@ -19,6 +23,19 @@ const script = () => readFileSync(fileURLToPath(new URL('../bridge/page.js', imp
  * own, and the two must never meet.
  */
 export const innerPort = (port: number, copy = false) => port + 2000 + (copy ? 99 : 0);
+
+/** The headers of an answer, without what forbids showing it in a frame; the rest of its content security policy stays. */
+export function framable<T extends Record<string, string | string[] | undefined>>(headers: T): T {
+  const out: Record<string, string | string[] | undefined> = { ...headers };
+  delete out['x-frame-options'];
+  for (const name of ['content-security-policy', 'content-security-policy-report-only']) {
+    const policies = ([] as string[]).concat(out[name] ?? [])
+      .map((policy) => policy.split(';').map((d) => d.trim()).filter((d) => d && !/^frame-ancestors(\s|$)/i.test(d)).join('; '))
+      .filter(Boolean);
+    if (policies.length) out[name] = policies; else delete out[name];
+  }
+  return out as T;
+}
 
 /** One line more in a page of HTML: before the end of its head, or of its body, or after everything. */
 export function withTandem(html: string): string {
@@ -43,14 +60,14 @@ export function startThrough(opts: { port: number; to: number; host?: string }):
     const inner = request({ host, port: opts.to, method: req.method, path: req.url, headers }, (got) => {
       const html = /text\/html/.test(String(got.headers['content-type'] ?? '')) && req.method === 'GET';
       if (!html) {
-        res.writeHead(got.statusCode ?? 502, got.headers);
+        res.writeHead(got.statusCode ?? 502, framable(got.headers));
         return void got.pipe(res);
       }
       const parts: Buffer[] = [];
       got.on('data', (d: Buffer) => parts.push(d));
       got.on('end', () => {
         const body = Buffer.from(withTandem(Buffer.concat(parts).toString('utf8')));
-        const out = { ...got.headers, 'content-length': String(body.length) };
+        const out = { ...framable(got.headers), 'content-length': String(body.length) };
         delete out['transfer-encoding'];
         delete out['content-encoding'];
         // What the page looked like is not kept by the browser as proof that it has not changed: its length did.

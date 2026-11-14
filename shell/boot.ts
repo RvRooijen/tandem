@@ -1,6 +1,6 @@
 // Starting the shell: ask the core which project this is, put its page in a
 // frame, the tools on top, and from then on follow the event log.
-import { follow, info as getInfo, run } from './api.ts';
+import { coreUp, follow, info as getInfo, run, type Info } from './api.ts';
 import { createApp } from './app.ts';
 import { h } from './dom.ts';
 import { artPanel } from './panels/art.ts';
@@ -11,12 +11,20 @@ import { createStage } from './stage.ts';
 
 export async function boot() {
   const root = document.getElementById('root')!, layer = document.getElementById('tandem')!;
-  let info;
+  let info: Info;
   try {
     info = await getInfo();
   } catch {
-    layer.append(h('div#t-down', {}, h('b', {}, 'The tandem core is not running.'), h('p', {}, 'Start tandem in the project\'s folder, then load this page again.')));
-    return undefined;
+    // The core is starting (again), or tandem is not running at all. Either way: said, and gone on with once it answers.
+    const spin = h('i.spin'), title = h('b'), text = h('p');
+    const down = h('div#t-down', {}, spin, title, text);
+    layer.append(down);
+    info = await coreUp((doing, running) => {
+      spin.hidden = !running;
+      title.textContent = running ? 'Tandem is starting.' : 'The tandem core is not running.';
+      text.textContent = running ? doing : 'Start tandem in the project\'s folder; this page goes on by itself once it is there.';
+    });
+    down.remove();
   }
   document.title = info.project ? `${info.name} · tandem` : 'tandem';
 
@@ -32,6 +40,9 @@ export async function boot() {
   // Everything up to now is history; what comes after is live.
   const since = Math.max(0, info.last - 400);
   follow(since, (ev) => app.feed(ev, ev.n > info.last || ev.n === 0), (up) => { document.body.classList.toggle('t-offline', !up); });
+
+  // Beside the page the tools are in nobody's way: they start open.
+  if (app.beside()) app.open('chat');
 
   (window as unknown as { tandem: unknown }).tandem = { app, run };
   return app;

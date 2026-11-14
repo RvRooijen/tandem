@@ -30,17 +30,20 @@ interface Round {
 export function refChip(app: App, ref: string, onRemove?: () => void): HTMLElement {
   const [kind, rest] = [ref.slice(0, ref.indexOf(':')), ref.slice(ref.indexOf(':') + 1)];
   // Something on the project's page: what is written on it, or what kind of thing it is.
-  let onPage: { words?: string; near?: string; tag?: string; selector?: string } = {};
+  let onPage: { words?: string; near?: string; tag?: string; selector?: string; three?: { uuid?: string } } = {};
   if (kind === 'page') { try { onPage = JSON.parse(rest); } catch { /* shown as it is */ } }
   const open = () => {
     if (kind === 'concept') app.open('concepts', rest);
     else if (kind === 'drawing') app.open('art', rest);
     else if (kind === 'point') { const [x, y] = rest.split(',').map(Number); app.point(x, y); }
-    else if (kind === 'page' && onPage.selector) { app.close(); app.point(0, 0, '', onPage.selector); }
+    else if (kind === 'page' && (onPage.three?.uuid || onPage.selector)) { app.reveal(); app.point(0, 0, '', onPage.three?.uuid ? `three:${onPage.three.uuid}` : onPage.selector); }
   };
   const short = (text: string) => (text.length > 40 ? `${text.slice(0, 39)}…` : text);
-  const label = kind === 'page' ? `on the page: ${onPage.words ? `"${short(onPage.words)}"` : `${onPage.tag ?? 'something'}${onPage.near ? ` by "${short(onPage.near)}"` : ''}`}` : `${kind} ${rest}`;
+  // (The picture that goes with it, while it is not sent yet.)
+  const picture = onRemove ? app.pictures.get(ref) : undefined;
+  const label = kind === 'page' && onPage.three ? `in the scene: ${short(onPage.words ?? 'something')}` : kind === 'page' ? `on the page: ${onPage.words ? `"${short(onPage.words)}"` : `${onPage.tag ?? 'something'}${onPage.near ? ` by "${short(onPage.near)}"` : ''}`}` : `${kind} ${rest}`;
   return h('span.t-chip.ref', { data: { kind } },
+    picture && h<'img'>('img', { src: picture.url, alt: 'A picture of it', onclick: () => app.zoom(picture.url) }),
     h('span', { onclick: open }, label),
     onRemove && h<'button'>('button', { 'aria-label': 'Take off', onclick: onRemove }, '✕'));
 }
@@ -157,6 +160,8 @@ export function chatPanel(): Panel {
     // A photo can go without words.
     const text = input.value.trim() || (shared.length ? (shared.length === 1 ? 'Have a look at this.' : 'Have a look at these.') : '');
     if (!text) return;
+    // (A picture of something pointed at that is still on its way to the core is waited for.)
+    if (app.picturing) await app.pictured;
     input.value = '';
     grow();
     // What was written as @name by hand counts as pointed at, too.
@@ -164,12 +169,16 @@ export function chatPanel(): Panel {
       const x = (await known()).find((k) => k.id === m[1]);
       if (x && !app.refs.includes(x.ref)) app.refs.push(x.ref);
     }
+    // What was pointed at goes with its picture, like a photo the person shared.
     const refs = app.refs.splice(0), files = shared;
+    const pictures = new Map(app.pictures);
+    app.pictures.clear();
+    const sent = [...files, ...refs.map((r) => pictures.get(r)).filter((p) => p !== undefined)];
     shared = [];
     paintRefs(); paintShared();
     offerEl.hidden = true;
-    const ok = await app.act('chat.send', { text, ...(refs.length && { refs }), ...(files.length && { files }) });
-    if (ok === undefined) { input.value = text; app.refs.push(...refs); shared = files; paintRefs(); paintShared(); }
+    const ok = await app.act('chat.send', { text, ...(refs.length && { refs }), ...(sent.length && { files: sent }) });
+    if (ok === undefined) { input.value = text; app.refs.push(...refs); for (const [r, p] of pictures) app.pictures.set(r, p); shared = files; paintRefs(); paintShared(); }
   }
 
   function grow() {
@@ -182,7 +191,7 @@ export function chatPanel(): Panel {
   input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) void send(); });
 
   function paintRefs() {
-    clear(refsEl, app.refs.map((r) => refChip(app, r, () => { app.refs.splice(app.refs.indexOf(r), 1); paintRefs(); })));
+    clear(refsEl, app.refs.map((r) => refChip(app, r, () => { app.refs.splice(app.refs.indexOf(r), 1); app.pictures.delete(r); paintRefs(); })));
     refsEl.hidden = !app.refs.length;
   }
 
@@ -425,7 +434,7 @@ export function chatPanel(): Panel {
       case 'playtest':
         return playtestCard(ev);
       case 'stage.point':
-        return h('div.sys.tap', { onclick: () => { app.close(); app.point(Number(ev.x), Number(ev.y), String(ev.text ?? ''), typeof ev.at === 'string' ? ev.at : undefined); } },
+        return h('div.sys.tap', { onclick: () => { app.reveal(); app.point(Number(ev.x), Number(ev.y), String(ev.text ?? ''), typeof ev.at === 'string' ? ev.at : undefined); } },
           typeof ev.at === 'string' ? `◎ pointed at "${ev.at}" on the page` : '◎ pointed at the game', ev.text ? `: ${ev.text}` : '');
       case 'stage.open':
         return h('div.sys.tap', { onclick: () => app.open(String(ev.tab), ev.id ? String(ev.id) : undefined) }, `↗ opened ${ev.tab}${ev.id ? ` · ${ev.id}` : ''}`);
@@ -522,6 +531,7 @@ export function chatPanel(): Panel {
       requestAnimationFrame(toBottom);
     },
     hide() { body = undefined; },
+    refs() { if (body) paintRefs(); },
     event(ev) {
       if (ev.type === 'chat.new') {
         asked = false; welcomes.length = 0;

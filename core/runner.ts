@@ -138,7 +138,23 @@ export function createRunner(host: Host) {
         } else if (kind === 'drawing') {
           out.push(`Drawing ${rest}${host.locks.has(`drawing:${rest}`) ? ' (LOCKED)' : ''}: one of the game's drawings, made in pixeldraw. See it with art.look.`);
         } else if (kind === 'page') {
-          const p = JSON.parse(rest) as { words?: string; near?: string; tag?: string; selector?: string; path?: string };
+          const p = JSON.parse(rest) as { words?: string; near?: string; tag?: string; selector?: string; path?: string; three?: Record<string, any> };
+          // A thing in a scene three.js draws: it has no words, so it is told by what it is and where.
+          if (p.three) {
+            const t = p.three, g = t.geometry ?? {}, m = t.material;
+            const list = (a: unknown) => (Array.isArray(a) ? a.join(', ') : '?');
+            out.push([
+              `Something in the 3D scene on the project's page that the person pointed at${p.path ? ` (the page at ${p.path})` : ''}: a ${t.type ?? 'Mesh'}${t.name ? ` named "${t.name}"` : ' with no name'}.`,
+              `Its geometry: ${g.type ?? '?'}${g.name ? ` "${g.name}"` : ''}${g.made ? ` made with ${JSON.stringify(g.made)}` : ''}, ${g.points ?? '?'} points; it is ${list(t.size)} large (x, y, z, as it stands in the scene).`,
+              m ? `Its material: ${m.type ?? '?'}${m.name ? ` "${m.name}"` : ''}${m.color ? `, colour ${m.color}` : ''}${m.texture ? ', with a texture' : ''}${Array.isArray(m.uniforms) ? `, uniforms ${m.uniforms.join(', ')}` : ''}.` : '',
+              `It is at ${list(t.position)} in the scene, and they pointed at ${list(t.point)} on it.`,
+              t.instance !== undefined ? `It is instance ${Number(t.instance) + 1} of ${t.instances} of an InstancedMesh.` : Number(t.of) > 1 ? `It is number ${t.index} of ${t.of} things like it in the scene (same geometry and material), counted in the order the scene holds them.` : 'Nothing else in the scene is like it.',
+              `In the scene it hangs as: ${t.graph ?? '?'}.`,
+              t.userData ? `Its userData: ${t.userData}.` : '',
+              `It is drawn on a <canvas>${p.selector ? `, in the page as ${p.selector}` : ''}. Find where the code makes it by its name, geometry and material; a picture of it as it looked comes with the message when one could be made.`,
+            ].filter(Boolean).join(' '));
+            continue;
+          }
           // What says nothing itself (a canvas, a picture) is told apart by what is written around it: which one
           // of the things the code draws there is meant.
           const near = p.near ? ` Around it on the page is written: "${p.near}"${p.words ? '' : '; it says nothing itself, so that is what tells which one they mean'}.` : p.words ? '' : ' Nothing is written on it or around it, so which of the things the code can show there they mean is not known from this: say which one you took it to be.';

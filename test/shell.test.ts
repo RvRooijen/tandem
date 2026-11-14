@@ -571,6 +571,32 @@ test('the agent shows things on the person\'s screen', async () => {
   assert.match($('.t-chip.ref[data-kind=page]').textContent!, /on the page: canvas by "Skin Haunted Manor"/);
   app.refs.length = 0;
   app.close();
+  // A thing in a scene three.js draws is pointed at the same way: what the page says of it goes with the message,
+  // and so does a picture of it, kept by the core like a photo the person shares.
+  const die = { x: 180, y: 300, w: 60, h: 60, words: 'Mesh, IcosahedronGeometry 0.8, 2 of 5', tag: 'canvas', selector: '#app > canvas', path: '/',
+    three: { uuid: 'abc', type: 'Mesh', geometry: { type: 'IcosahedronGeometry', made: { radius: 0.8, detail: 0 }, points: 60 }, material: { type: 'ShaderMaterial' }, position: [1, 0.8, -2], size: [1.5, 1.5, 1.5], point: [1.1, 1.2, -1.8], index: 2, of: 5, graph: 'Scene > Mesh' } };
+  toFrame.length = 0;
+  ran.length = 0;
+  pointer('pointerdown', 340, 60);
+  pointer('pointermove', 200, 400);
+  await answer(die);
+  await until(() => !$('#t-ring').hidden && $('#t-ring span').textContent === '"Mesh, IcosahedronGeometry 0.8, 2 of…"', 'the thing in the scene to be marked');
+  pointer('pointerup', 200, 400);
+  assert.equal((await answer({ ...die, image: 'data:image/jpeg;base64,/9j/AAAA' })).image, true, 'let go on it, a picture of it is asked for');
+  await until(() => app.refs.length === 1 && app.pictures.size === 1, 'the thing and its picture to go with the next message');
+  assert.deepEqual(JSON.parse(app.refs[0].slice('page:'.length)).three, die.three);
+  assert.ok(ran.includes('chat.attach'));
+  assert.match($('.t-chip.ref[data-kind=page]').textContent!, /in the scene: Mesh, IcosahedronGeometry 0.8, 2 of 5/);
+  assert.match(($('.t-chip.ref[data-kind=page] img') as HTMLImageElement).src, /\/api\/file\/files\/.*pointed%20at%20Mesh%20IcosahedronGeometry/);
+  type($('#t-foot textarea'), 'Make this one glow.');
+  click(button('Send'));
+  await until(() => host.events.since(0).some((e) => e.type === 'message' && e.text === 'Make this one glow.'), 'the message');
+  const glow = host.events.since(0).find((e) => e.type === 'message' && e.text === 'Make this one glow.')!;
+  assert.equal((glow.refs as string[]).length, 1);
+  assert.match((glow.files as { label: string; image: boolean }[])[0].label, /^pointed at Mesh IcosahedronGeometry/);
+  assert.equal((glow.files as { image: boolean }[])[0].image, true);
+  assert.equal(app.pictures.size, 0);
+  app.close();
 
   // The agent uses the page as a person would: asked of this screen, done in the frame, and answered to it.
   const doing = async (what: string, says: Record<string, unknown>) => {
@@ -742,6 +768,45 @@ test('playing the copy starts it from what the browser keeps of the project, goe
   app.playProject();
 });
 
+test('on a wide screen the tools are a panel beside the page: it stays in view, so pointing does not wait and nothing has to be shut', async () => {
+  (w as unknown as { matchMedia: unknown }).matchMedia = () => ({ matches: true });
+  try {
+    app.open('chat');
+    assert.ok(w.document.body.classList.contains('t-wide') && w.document.body.classList.contains('t-open'));
+    fromFrame({ type: 'page', can: { find: true } });
+    toFrame.length = 0;
+    await host.run('stage.point', { at: 'Make a group' }, AGENT);
+    await until(() => toFrame.some((m) => m.type === 'find'), 'the page to be asked at once');
+    fromFrame({ type: 'found', id: toFrame.find((m) => m.type === 'find').id, x: 40, y: 500, w: 200, h: 44 });
+    await until(() => !$('#t-ring').hidden && $('#t-ring').classList.contains('box'), 'the ring, beside the open tools');
+    app.reveal();
+    assert.ok(!$('#t-sheet').classList.contains('shut'), 'the page is in view already');
+    app.close();
+    assert.ok(!w.document.body.classList.contains('t-open'), 'shut, the page has the whole screen again');
+  } finally {
+    delete (w as unknown as { matchMedia?: unknown }).matchMedia;
+    app.close();
+  }
+  assert.ok(!w.document.body.classList.contains('t-wide'));
+  app.open('chat');
+  app.reveal();
+  assert.ok($('#t-sheet').classList.contains('shut'), 'on a narrow one the tools cover the page, and are shut for it');
+});
+
+test('a tab that has to ask the core first says it is loading in the panel, not on the tab', async () => {
+  app.open('chat');
+  const concepts = all('.t-tab').find((t) => t.textContent === 'Concepts')!;
+  click(concepts);
+  assert.ok(!concepts.classList.contains('working') && !(concepts as HTMLButtonElement).disabled, 'the tab stays a tab');
+  assert.ok($('#t-body .loading .spin'), 'the panel says it is loading');
+  await until(() => !$('#t-body .loading'), 'the panel to be drawn');
+  assert.ok($('#t-body').childNodes.length > 0);
+  // The chat is there at once: nothing to wait for.
+  tab('Chat');
+  assert.ok(!$('#t-body .loading'));
+  app.close();
+});
+
 test('a new conversation clears the chat and keeps what is still to be decided', async () => {
   tab('Chat');
   // (The engine's message in the test before this one set the agent to work, as it should; let it finish.)
@@ -787,6 +852,8 @@ test('with the tools shut, tandem speaks in a bubble: what it says goes again, w
   await until(() => !app.agent.busy, 'the agent to be done');
   // (Whatever the tests before left undecided is decided, so the bubbles here are this test's.)
   for (const round of new Set((await host.run('proposals.list', { status: 'pending' }, 'me') as { round: string }[]).map((p) => p.round))) await host.run('proposals.decide', { round, accept: false }, 'me');
+  // (And what was said while they were shut before is not said again once the tools have been open.)
+  app.open('chat');
   app.close();
   await until(() => all('.bubble').length === 0, 'no bubbles');
   assert.ok($('#t-bubbles').hidden);
@@ -956,6 +1023,28 @@ test('projects: the folders that could be one are listed, and another is chosen 
   await until(() => /It is made/.test($('#t-toast').textContent!), 'the answer');
   assert.ok(existsSync(join(beside, 'winter-game/.git')));
   assert.equal(readFileSync(join(beside, 'winter-game/README.md'), 'utf8'), '# Winter Game\n');
+});
+
+test('while the core is starting the page waits for it, and says what is being done meanwhile', async () => {
+  const { coreUp } = await import('../shell/api.ts');
+  const before = globalThis.fetch;
+  let asked = 0;
+  const json = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } }));
+  globalThis.fetch = ((url: string) => {
+    if (url === '/starting') return asked < 3 ? json({ name: 'Winter Game', root: '/w', doing: 'setting up its .tandem folder', seconds: 7 }) : Promise.resolve(new Response('', { status: 500 }));
+    // Away at first, then up on the project that was open, then on the one that was asked for.
+    asked++;
+    return asked < 3 ? Promise.reject(new Error('refused')) : json({ project: 'w', name: 'Winter Game', root: asked < 5 ? '/other' : '/w' });
+  }) as typeof fetch;
+  try {
+    const said: [string, boolean][] = [];
+    const got = await coreUp((text, running) => said.push([text, running]), '/w', 5);
+    assert.equal(got.root, '/w');
+    assert.deepEqual(said[0], ['Opening Winter Game: setting up its .tandem folder (7 s)', true]);
+    assert.deepEqual(said.at(-1), ['', false], 'and when nobody says what is being done, that is told too');
+  } finally {
+    globalThis.fetch = before;
+  }
 });
 
 test('parity: everything the shell does is a command the agent could name', async () => {

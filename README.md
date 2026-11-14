@@ -18,6 +18,7 @@ any other folder you add there). What was open last is opened again the next tim
 
     tandem's page    http://localhost:5173    open this one
     the core         http://127.0.0.1:5201    commands, events, the agent
+    what it is doing http://127.0.0.1:5202    while the core is starting (on a slow disk opening a project takes a while) and cannot answer yet
     the project      http://localhost:5210    its own page, shown in tandem's
     the copy         http://localhost:5211    the agent's working copy, when you ask to play it
 

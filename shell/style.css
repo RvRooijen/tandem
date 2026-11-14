@@ -1,6 +1,7 @@
 /* Tandem's page: the project's own page in a frame that fills the screen, and
    tandem's tools over it. The tools look like neither a game nor a web page:
-   ink-dark, quiet, one warm accent. Everything is sized for a thumb. */
+   ink-dark, quiet, one warm accent. Everything is sized for a thumb; on a wide
+   screen the tools are a panel beside the page (at the end of this file). */
 html, body { height: 100%; margin: 0; background: #17161c; overscroll-behavior: none; }
 body { overflow: hidden; -webkit-tap-highlight-color: transparent; }
 #root { position: fixed; inset: 0; }
@@ -151,6 +152,7 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 #tandem .t-chip.mode[data-mode=kernel] { color: var(--t-good); }
 #tandem .t-chip.mode[data-mode=hybrid] { color: var(--t-accent); }
 #tandem .t-chip.mode[data-mode=js] { color: var(--t-bad); }
+#tandem .t-chip.ref img { width: 26px; height: 26px; object-fit: cover; border-radius: 6px; margin: 2px 6px 2px -4px; cursor: zoom-in; }
 #tandem .t-chip.ref button { border: 0; background: none; color: var(--t-soft); padding: 0 0 0 4px; font-size: 12px; min-width: 22px; min-height: 22px; }
 
 #tandem .item { padding: 11px 12px; border-radius: 12px; background: var(--t-raise); margin-bottom: 8px; cursor: pointer; }
@@ -342,8 +344,27 @@ pre.diff span[data-how=at] { color: var(--t-soft); opacity: 0.6; }
 #t-zoom { position: fixed; inset: 0; z-index: 50; background: rgba(8, 8, 12, 0.92); display: grid; place-items: center; padding: 12px; cursor: zoom-out; }
 #t-zoom img { max-width: 100%; max-height: 100%; image-rendering: pixelated; border-radius: 8px; }
 #t-down { position: fixed; inset: 0; display: grid; place-content: center; text-align: center; gap: 8px; background: var(--t-bg); padding: 24px; }
+#t-down .spin { width: 22px; height: 22px; border-width: 3px; justify-self: center; margin-bottom: 6px; }
+#t-down p { color: var(--t-soft); min-height: 1.4em; }
+.working .doing { display: block; font-size: 12.5px; min-height: 1.4em; }
+.working b { font-weight: 600; color: var(--t-ink); }
 
 @media (prefers-reduced-motion: reduce) {
   #t-sheet, #t-fab { transition: none; }
   #t-fab.busy .mark, #t-ring.go i { animation: none; }
 }
+
+/* ---- a wide screen (body.t-wide, set in app.ts): the tools are a panel on the right, and while it is open
+   (body.t-open) the project's page has the rest of the screen. The page keeps its left edge, so a place on it is
+   the same place on the screen either way. */
+body.t-wide { --t-panel: clamp(400px, 32vw, 520px); }
+body.t-wide.t-open #root { right: var(--t-panel); }
+body.t-wide #t-sheet { left: auto; margin: 0; width: var(--t-panel); max-width: none; border-left: 1px solid var(--t-line); }
+body.t-wide #t-sheet.shut { transform: translateX(105%); }
+/* The round button stays while the panel is open: it is still dragged onto the page to point at something. */
+body.t-wide #t-fab { right: 16px; top: 16px; }
+body.t-wide #t-fab.open { display: grid; }
+body.t-wide.t-open #t-fab { right: calc(var(--t-panel) + 16px); }
+body.t-wide #t-bubbles { right: 16px; top: 70px; }
+body.t-wide.t-open #t-toast { left: calc((100vw - var(--t-panel)) / 2); }
+body.t-wide #tandem button:hover:not(:disabled) { filter: brightness(1.15); }

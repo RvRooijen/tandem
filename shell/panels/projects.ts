@@ -1,7 +1,7 @@
 // Which project tandem is working on, and choosing another. Tandem is started
 // once; from here it is pointed at a folder. Opening one starts the core again
 // on it, and the page with it.
-import { info as getInfo } from '../api.ts';
+import { coreUp } from '../api.ts';
 import type { App, Panel } from '../app.ts';
 import { clear, h } from '../dom.ts';
 
@@ -10,18 +10,18 @@ interface Listing { open: string | null; roots: string[]; projects: Found[] }
 interface Folder { dir: string; parent: string | null; folders: string[]; home: string; git: boolean }
 
 /** Wait for the core to be back on the project that was asked for, then load the page again on it. */
-export async function reopen(dir: string) {
-  for (let i = 0; i < 120; i++) {
-    await new Promise((r) => setTimeout(r, 500));
-    try { if ((await getInfo()).root === dir) break; } catch { /* the core is starting again */ }
-  }
+export async function reopen(dir: string, says: (text: string) => void = () => {}) {
+  await new Promise((r) => setTimeout(r, 500));
+  await coreUp((text) => says(text), dir);
   location.reload();
 }
 
 export function projectsPanel(): Panel {
   let app!: App;
   let body: HTMLElement | undefined;
-  let opening = '';
+  let opening = '', openingDoing = '';
+  /** What is being done for the project that is being opened, as it is told. */
+  const doing = (text: string) => { openingDoing = text; const el = body?.querySelector('.working .doing'); if (el) el.textContent = text; };
   /** The new project being filled in: kept while the folders are walked. */
   let draft = { name: '', in: '' };
 
@@ -32,7 +32,7 @@ export function projectsPanel(): Panel {
     if (!ok.restarting) { app.toast('It is chosen. Start tandem again to open it.'); return void paint(); }
     opening = name;
     void paint();
-    void reopen(ok.opening);
+    void reopen(ok.opening, doing);
   }
 
   /**
@@ -60,7 +60,7 @@ export function projectsPanel(): Panel {
 
   async function paint() {
     if (!body) return;
-    if (opening) return clear(body, h('div.working', {}, h('i.spin'), h('span', {}, `Opening ${opening}…`)));
+    if (opening) return clear(body, h('div.working', {}, h('i.spin'), h('span', {}, h('b', {}, `Opening ${opening}…`), h('small.doing', {}, openingDoing))));
     const got = await app.act<Listing>('projects.list');
     if (!body || !got) return;
     const open = (p: Found) => (p.open ? app.close() : void openDir(p.dir, p.name));
@@ -86,7 +86,7 @@ export function projectsPanel(): Panel {
       if (!ok.restarting) return app.toast('It is made. Start tandem again to open it.');
       opening = fresh.value.trim();
       void paint();
-      void reopen(ok.opening);
+      void reopen(ok.opening, doing);
     };
     fresh.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') void create(); });
     clear(body,

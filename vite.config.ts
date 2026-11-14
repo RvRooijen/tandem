@@ -16,6 +16,10 @@ export default defineConfig({
     fs: { strict: false },
     watch: { usePolling: true, interval: 500 },
     // With the slash: the shell has a module called api.ts, which is not the core's to answer.
-    proxy: { '/api/': { target: `http://127.0.0.1:${process.env.TANDEM_PORT ?? 5201}`, changeOrigin: false } },
+    // And /starting to start.ts, which says what the core is doing while it cannot answer yet.
+    proxy: {
+      '/api/': { target: `http://127.0.0.1:${process.env.TANDEM_PORT ?? 5201}`, changeOrigin: false },
+      '/starting': { target: `http://127.0.0.1:${process.env.TANDEM_STATUS_PORT ?? 5202}`, changeOrigin: false },
+    },
   },
 });

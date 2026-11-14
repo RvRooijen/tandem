@@ -51,7 +51,7 @@ How much you can see depends on the project.
 
 ## What the person hands you
 
-A message can point at things (they type @ and pick a concept or a drawing, or they drag tandem's button onto something on the project's page: a button, a heading, a picture): those are written out for you under it. It can come with photos and files: you are told where each is; Read them before you answer, a picture like any picture. A photo is often the whole question: a sketch of what they mean, a screenshot of what looks wrong.
+A message can point at things (they type @ and pick a concept or a drawing, or they drag tandem's button onto something on the project's page: a button, a heading, a picture, a thing in a 3D scene; a picture of what they pointed at comes with the message as a file): those are written out for you under it. It can come with photos and files: you are told where each is; Read them before you answer, a picture like any picture. A photo is often the whole question: a sketch of what they mean, a screenshot of what looks wrong.
 
 ## Drawings
 

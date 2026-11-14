@@ -10,6 +10,12 @@ import { basename, isAbsolute, join } from 'node:path';
 
 export interface FileChange { path: string; added: number; removed: number; status: 'new' | 'changed' | 'gone' }
 
+/**
+ * The agent's scratchpad: a folder in its working copy that is never part of a change set. What it writes there it
+ * may run (runner.ts): a script that makes a change in many places at once, or tries something out.
+ */
+export const SCRATCH = '.tandem-scratch';
+
 /** A commit that says which concepts it is for. */
 export interface ConceptCommit { hash: string; ts: number; subject: string; concepts: string[] }
 
@@ -52,7 +58,9 @@ export function createCode(o: CodeOptions) {
     const common = git(o.root, 'rev-parse', '--git-common-dir');
     const exclude = join(isAbsolute(common) ? common : join(o.root, common), 'info', 'exclude');
     mkdirSync(join(exclude, '..'), { recursive: true });
-    if (!existsSync(exclude) || !/^\/node_modules$/m.test(readFileSync(exclude, 'utf8'))) appendFileSync(exclude, '\n/node_modules\n');
+    // (Nor is its scratchpad.)
+    for (const line of ['/node_modules', `/${SCRATCH}`])
+      if (!existsSync(exclude) || !readFileSync(exclude, 'utf8').split('\n').includes(line)) appendFileSync(exclude, `\n${line}\n`);
     if (existsSync(join(o.root, 'node_modules')) && !existsSync(join(work, 'node_modules'))) symlinkSync(join(o.root, 'node_modules'), join(work, 'node_modules'));
   }
 

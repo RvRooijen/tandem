@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createCode, forConcepts } from '../core/code.ts';
+import { SCRATCH, createCode, forConcepts } from '../core/code.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'tandem-code-'));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -131,6 +131,22 @@ test('files of the engine that are being worked on in the project do not stop a 
   assert.equal(read('games/g/src/seasons.ts'), 'export const names = ["spring", "summer"];\n');
   assert.equal(read('core/engine.ts'), 'export const engine = "being changed by hand";\n');
   assert.equal(git('status', '--porcelain').trim(), 'M core/engine.ts');
+});
+
+test('the agent\'s scratchpad is in its copy and never part of a change set', () => {
+  code.sync();
+  put(`${SCRATCH}/edit.py`, 'print("many places at once")\n', code.work);
+  assert.deepEqual(code.changes(), [], 'what is written there changes nothing');
+  put('games/g/src/seasons.ts', 'export const names = ["spring", "summer", "late summer"];\n', code.work);
+  assert.deepEqual(code.changes().map((f) => f.path), ['games/g/src/seasons.ts']);
+  code.accept('Late summer');
+  assert.ok(!existsSync(join(root, SCRATCH)), 'and it does not reach the project');
+  assert.deepEqual(git('show', '--name-only', '--format=', 'HEAD').split('\n'), ['games/g/src/seasons.ts']);
+  // Thrown away, the change set goes and the scratchpad stays: it is the agent's, not the project's.
+  put('games/g/src/seasons.ts', 'export const names = [];\n', code.work);
+  code.reject();
+  assert.ok(existsSync(join(code.work, SCRATCH, 'edit.py')));
+  assert.equal(git('status', '--porcelain').trim(), 'M core/engine.ts', 'the project is as it was');
 });
 
 test('a commit says which concepts it is for, and the history is where that is read', () => {

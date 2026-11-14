@@ -5,6 +5,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { SCRATCH } from './code.ts';
 import type { CommandDef } from './commands.ts';
 import type { Event } from './events.ts';
 import { ROOT, type Host } from './host.ts';
@@ -30,10 +31,18 @@ export function runnable(project: Host['project']): string[] {
 /** Looking around from the command line: none of these writes anything. */
 const LOOKING = ['ls', 'grep', 'cat', 'head', 'tail', 'wc'];
 
+/**
+ * What runs a script from the agent's scratchpad. A script can do anything the agent's own tests can, which the
+ * agent also writes and runs: so this gives it nothing it did not have, only a quicker way to make a change in many
+ * places. What is typed straight into the command line (`node -e`, a heredoc) stays refused: a script is a file,
+ * written first, which the conversation shows.
+ */
+export const SCRIPTS = ['node', 'node --test', 'python3'];
+
 /** Whether what the project depends on is installed with npm: then the agent may install it in its working copy. */
 const installs = (project: Host['project']) => existsSync(join(project.root, 'package.json'));
 
-function tools(host: Host): { allow: string[]; deny: string[] } {
+export function tools(host: Host): { allow: string[]; deny: string[] } {
   const { project } = host;
   // The pictures it takes are outside its working copy; a path from the root is written with two slashes.
   const allow = ['Bash(tandem run:*)', 'Bash(tandem list:*)', ...LOOKING.map((c) => `Bash(${c}:*)`), 'Read', 'Glob', 'Grep', `Read(/${project.dirs.looks}/**)`, `Read(/${host.dirs.files}/**)`];
@@ -41,6 +50,8 @@ function tools(host: Host): { allow: string[]; deny: string[] } {
   if (host.code) {
     allow.push(...project.editable.flatMap((p) => [`Edit(${p})`, `Write(${p})`]));
     for (const cmd of runnable(project)) allow.push(`Bash(${cmd}:*)`);
+    // Its scratchpad: what it writes there is its own to run, and never part of the change set.
+    allow.push(`Edit(${SCRATCH}/**)`, `Write(${SCRATCH}/**)`, ...SCRIPTS.map((c) => `Bash(${c} ${SCRATCH}/:*)`));
     // Exactly this, with nothing after it: a dependency is added in package.json, which is in the change set.
     if (installs(project)) allow.push('Bash(npm install)', 'Bash(npm ci)');
     allow.push('Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)');
@@ -182,6 +193,7 @@ export function createRunner(host: Host) {
       host.game ? 'It offers a way to see inside it: the game.*, world.*, ecs.* and playtest.* commands.' : 'It does not offer a way to see inside it while it runs: there are no game.*, ecs.* or playtest.* commands here. You read its code, run its tests, and the person plays it.',
       project.pageCommand(0) ? 'It has a page the person plays in tandem; they can switch it to your working copy.' : 'It has no page set up in tandem (project.configure: page).',
       host.code ? `In your working copy you may run: ${can || 'nothing but the tandem commands; tandem was not told how its tests are run (project.configure: test, check, run)'}` : '',
+      host.code ? `And a script of your own from your scratchpad: ${SCRIPTS.map((c) => `\`${c} ${SCRATCH}/<file>\``).join(', ')}.` : '',
       `From the command line you can look around with ${LOOKING.join(', ')}, also strung together; anything else there is refused, so do not try it.`,
     ].filter(Boolean).join(' ');
     return `${readFileSync(join(ROOT, 'core/agent-intro.md'), 'utf8')}${host.code ? `\n${readFileSync(join(ROOT, 'core/agent-code.md'), 'utf8')}` : ''}\n## The project\n\n${about}\n\n## The commands\n\nRun one with \`tandem run <command> '<json input>'\`.\n\n${list}\n`;

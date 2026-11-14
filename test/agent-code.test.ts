@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tools } from '../core/runner.ts';
 import { startServer } from '../core/server.ts';
 import { fixture } from './helpers.ts';
 
@@ -186,4 +187,13 @@ test('a change set says which concepts it is for: on the card, in the commit, an
   await me('proposals.decide', { round: 'code', accept: true });
   assert.equal(git('log', '-1', '--format=%B'), 'Tidied up.');
   await refused(me('concepts.history', { id: 'no-such-thing' }), 'missing');
+});
+
+test('the agent may run a script of its own from its scratchpad, and nothing typed straight into the command line', () => {
+  const { allow, deny } = tools(host);
+  for (const rule of ['Write(.tandem-scratch/**)', 'Edit(.tandem-scratch/**)', 'Bash(node .tandem-scratch/:*)', 'Bash(node --test .tandem-scratch/:*)', 'Bash(python3 .tandem-scratch/:*)'])
+    assert.ok(allow.includes(rule), rule);
+  // An interpreter by itself is not allowed: only with a file from the scratchpad after it.
+  assert.ok(!allow.some((r) => /^Bash\((python3?|node|sh|bash)(:\*)?\)$/.test(r)));
+  assert.ok(deny.includes('Write(.tandem/**)'), 'tandem\'s own folder stays out of reach');
 });

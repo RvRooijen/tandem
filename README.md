@@ -51,7 +51,7 @@ project that wants tandem out of its history ignores `.tandem` and that is all:
     }
 
 - **page**: how the project's page is started, with `{port}` where the port goes (and `{project}` for the project's own folder, to name a script of its own). The working copy's page gets `TANDEM_COPY=1` in its environment, for a project that wants the copy to keep its hands off something (a database). Tandem shows it in a frame, and starts it a second time from the agent's working copy when you want to play that. For a project with Vite in its package.json this is guessed.
-- **test**, **check**, **run**: what the agent may run in its working copy. Without them it can change code but run nothing, and says so.
+- **test**, **check**, **run**: what the agent may run in its working copy. Without them it can change code but run nothing, and says so. It also has a scratchpad (`.tandem-scratch` in its working copy, never part of a change set): a script it writes there it may run with node or python3, to make a change in many places at once or to try something out.
 - **art**: drawings live in `art/` (depth maps in `depth/`) as text, in pixeldraw's format. `build` is the project's own step that turns them into what it loads.
 - **adapter**: a module that lets tandem see inside the running project (see below).
 - **edit**: what the agent may change, as patterns; everything but `.tandem`, `art` and `depth` by default.

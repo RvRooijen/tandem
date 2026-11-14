@@ -66,6 +66,29 @@
   }
 
   const cut = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+
+  /**
+   * What is written around something: what the thing it is in says, when that is a line or two (the card a picture
+   * is on, with its name); else what stands just before and after it there. It tells apart what says nothing itself
+   * (a canvas, a picture) and one of many that say the same (a Buy button in every row).
+   */
+  function around(el) {
+    const own = words(el);
+    for (let at = el; at.parentElement && at !== document.body; at = at.parentElement) {
+      const says = words(at.parentElement);
+      if (says === own) continue;
+      if (says.length <= 160) return says;
+      const beside = (step) => {
+        for (let s = at[step]; s; s = s[step]) {
+          const has = /^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE)$/.test(s.tagName) || !seen(s) ? '' : words(s);
+          if (has) return cut(has, 80);
+        }
+        return '';
+      };
+      return [beside('previousElementSibling'), beside('nextElementSibling')].filter(Boolean).join(' … ');
+    }
+    return '';
+  }
   const TAPPED = 'button, a[href], [role=button], [role=link], [role=tab], summary, input[type=submit], input[type=button], input[type=checkbox], input[type=radio]';
   const FIELD = 'input:not([type=submit]):not([type=button]):not([type=checkbox]):not([type=radio]):not([type=hidden]), textarea, select';
 
@@ -196,10 +219,10 @@
       const el = at(Number(m.x), Number(m.y));
       if (!el) return say({ type: 'picked', id: m.id, missing: true });
       const r = el.getBoundingClientRect();
-      const said = words(el);
+      const near = around(el);
       return say({
         type: 'picked', id: m.id, x: r.left, y: r.top, w: r.width, h: r.height,
-        words: said.length > 120 ? `${said.slice(0, 119)}…` : said, tag: el.tagName.toLowerCase(), selector: selectorOf(el), path: location.pathname + location.hash,
+        words: cut(words(el), 120), ...(near && { near }), tag: el.tagName.toLowerCase(), selector: selectorOf(el), path: location.pathname + location.hash,
       });
     }
     if (m.type !== 'find') return;

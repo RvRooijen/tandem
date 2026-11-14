@@ -30,7 +30,7 @@ interface Round {
 export function refChip(app: App, ref: string, onRemove?: () => void): HTMLElement {
   const [kind, rest] = [ref.slice(0, ref.indexOf(':')), ref.slice(ref.indexOf(':') + 1)];
   // Something on the project's page: what is written on it, or what kind of thing it is.
-  let onPage: { words?: string; tag?: string; selector?: string } = {};
+  let onPage: { words?: string; near?: string; tag?: string; selector?: string } = {};
   if (kind === 'page') { try { onPage = JSON.parse(rest); } catch { /* shown as it is */ } }
   const open = () => {
     if (kind === 'concept') app.open('concepts', rest);
@@ -38,7 +38,8 @@ export function refChip(app: App, ref: string, onRemove?: () => void): HTMLEleme
     else if (kind === 'point') { const [x, y] = rest.split(',').map(Number); app.point(x, y); }
     else if (kind === 'page' && onPage.selector) { app.close(); app.point(0, 0, '', onPage.selector); }
   };
-  const label = kind === 'page' ? `on the page: ${onPage.words ? `"${onPage.words.length > 40 ? `${onPage.words.slice(0, 39)}…` : onPage.words}"` : onPage.tag ?? 'something'}` : `${kind} ${rest}`;
+  const short = (text: string) => (text.length > 40 ? `${text.slice(0, 39)}…` : text);
+  const label = kind === 'page' ? `on the page: ${onPage.words ? `"${short(onPage.words)}"` : `${onPage.tag ?? 'something'}${onPage.near ? ` by "${short(onPage.near)}"` : ''}`}` : `${kind} ${rest}`;
   return h('span.t-chip.ref', { data: { kind } },
     h('span', { onclick: open }, label),
     onRemove && h<'button'>('button', { 'aria-label': 'Take off', onclick: onRemove }, '✕'));

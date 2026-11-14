@@ -9,7 +9,8 @@ import { reachable, type Info } from './api.ts';
 import { clear, h } from './dom.ts';
 
 /** Something on the project's page, as the page says it is: where, what is written on it, and how the code would name it. */
-export interface Picked { x: number; y: number; w: number; h: number; words: string; tag: string; selector: string; path: string }
+/** Something on the project's page: what it says, and what is written around it (the card a picture is on). */
+export interface Picked { x: number; y: number; w: number; h: number; words: string; near: string; tag: string; selector: string; path: string }
 
 export interface Stage {
   /** What the frame shows now. */
@@ -161,7 +162,7 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
     } else if (m.type === 'picked' && m.id !== undefined) {
       const r = frame.getBoundingClientRect();
       const p = m as unknown as Picked;
-      picking.get(m.id)?.(m.missing ? null : { x: r.left + Number(p.x), y: r.top + Number(p.y), w: Number(p.w), h: Number(p.h), words: String(p.words ?? ''), tag: String(p.tag ?? ''), selector: String(p.selector ?? ''), path: String(p.path ?? '') });
+      picking.get(m.id)?.(m.missing ? null : { x: r.left + Number(p.x), y: r.top + Number(p.y), w: Number(p.w), h: Number(p.h), words: String(p.words ?? ''), near: String(p.near ?? ''), tag: String(p.tag ?? ''), selector: String(p.selector ?? ''), path: String(p.path ?? '') });
       picking.delete(m.id);
     } else if (m.type === 'found' && m.id !== undefined) {
       const r = frame.getBoundingClientRect();

@@ -122,7 +122,9 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
   // dragged; let go, that thing goes with the next message, and the button is back where it was.
   let drag: { id: number; x: number; y: number; on: boolean; last: number } | undefined;
   let dragged = false;
-  const naming = (got: Picked) => (got.words ? `"${got.words.length > 36 ? `${got.words.slice(0, 35)}…` : got.words}"` : got.tag);
+  // (What says nothing itself, a canvas, is named by what is written around it.)
+  const short = (text: string) => (text.length > 36 ? `${text.slice(0, 35)}…` : text);
+  const naming = (got: Picked) => (got.words ? `"${short(got.words)}"` : got.near ? `${got.tag} by "${short(got.near)}"` : got.tag);
   fab.addEventListener('pointerdown', (ev) => { if (!shown) drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, on: false, last: 0 }; });
   fab.addEventListener('pointermove', (ev) => {
     if (!drag || ev.pointerId !== drag.id) return;
@@ -157,7 +159,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     void stage.pick(ev.clientX, ev.clientY).then((got) => {
       ring.hidden = true;
       if (!got) return app.toast(stage.can.find ? 'There is nothing there to point at.' : 'This page cannot be asked what is there.');
-      app.attach(`page:${JSON.stringify({ words: got.words, tag: got.tag, selector: got.selector, path: got.path })}`);
+      app.attach(`page:${JSON.stringify({ words: got.words, ...(got.near && { near: got.near }), tag: got.tag, selector: got.selector, path: got.path })}`);
     });
   };
   fab.addEventListener('pointerup', drop);

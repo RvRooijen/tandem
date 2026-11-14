@@ -138,8 +138,11 @@ export function createRunner(host: Host) {
         } else if (kind === 'drawing') {
           out.push(`Drawing ${rest}${host.locks.has(`drawing:${rest}`) ? ' (LOCKED)' : ''}: one of the game's drawings, made in pixeldraw. See it with art.look.`);
         } else if (kind === 'page') {
-          const p = JSON.parse(rest) as { words?: string; tag?: string; selector?: string; path?: string };
-          out.push(`Something on the project's page that the person pointed at${p.path ? ` (the page at ${p.path})` : ''}: a <${p.tag ?? '?'}>${p.words ? ` that says "${p.words}"` : ''}${p.selector ? `, in the page as ${p.selector}` : ''}. Find it in the code by those words or that name.`);
+          const p = JSON.parse(rest) as { words?: string; near?: string; tag?: string; selector?: string; path?: string };
+          // What says nothing itself (a canvas, a picture) is told apart by what is written around it: which one
+          // of the things the code draws there is meant.
+          const near = p.near ? ` Around it on the page is written: "${p.near}"${p.words ? '' : '; it says nothing itself, so that is what tells which one they mean'}.` : p.words ? '' : ' Nothing is written on it or around it, so which of the things the code can show there they mean is not known from this: say which one you took it to be.';
+          out.push(`Something on the project's page that the person pointed at${p.path ? ` (the page at ${p.path})` : ''}: a <${p.tag ?? '?'}>${p.words ? ` that says "${p.words}"` : ''}${p.selector ? `, in the page as ${p.selector}` : ''}.${near} Find it in the code by those words or that name.`);
         } else if (kind === 'point') {
           out.push(`A point in the project's world: ${rest} (world units)`);
         } else out.push(ref);

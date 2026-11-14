@@ -84,7 +84,14 @@ test('tandem\'s lines in a page find a thing by the words on it, or by a selecto
       <button class="go"><span>Make a group</span></button>
       <button class="gone" style="display:none">Make a group</button>
       <img alt="A knitted band">
-    </main>`;
+    </main>
+    <section>
+      <div class="card"><div class="slot"><canvas></canvas></div><div class="name">Haunted Manor</div></div>
+      <div class="card"><div class="slot"><canvas></canvas></div><div class="name">Coven</div></div>
+      <h2>Your board</h2>
+      <canvas class="board"></canvas>
+      <p>Tap a stack to lift it and tap a cell to put it down; three of a colour on top of each other clear, and what was under them comes up for the next move.</p>
+    </section>`;
   // (This stand-in for a browser lays nothing out: everything is given a size, and moving to a thing is nothing.)
   const proto = (frame as unknown as { Element: { prototype: Element } }).Element.prototype;
   proto.getBoundingClientRect = function (this: Element) { return { left: 5, top: 7, width: this.tagName === 'BUTTON' ? 120 : 300, height: 40, right: 0, bottom: 0, x: 5, y: 7, toJSON() {} }; };
@@ -130,11 +137,17 @@ test('tandem\'s lines in a page find a thing by the words on it, or by a selecto
     const { tandem: _t, type: _y, id: _i, ...rest } = said.find((m) => m.type === 'picked' && m.id === id);
     return rest;
   };
-  assert.deepEqual(await pick(), { x: 5, y: 7, w: 120, h: 40, words: 'Make a group', tag: 'button', selector: 'main > button.go', path: 'blank' });
+  assert.deepEqual(await pick(), { x: 5, y: 7, w: 120, h: 40, words: 'Make a group', near: 'Make a group for the family, then share the link. Name of the group Make a group Make a group', tag: 'button', selector: 'main > button.go', path: 'blank' });
   under = frame.document.querySelector('h1');
   assert.deepEqual([(await pick()).words, (await pick()).selector], ['Lots to draw', 'header > h1']);
   under = frame.document.querySelector('input');
   assert.deepEqual([(await pick()).words, (await pick()).tag], ["Christmas at gran's", 'input'], 'a field is itself, named by what it shows');
+  // What says nothing itself is told apart by what is written around it: the card a picture is on, or, where the
+  // thing it is in says too much to be about it, what stands just before and after it.
+  under = frame.document.querySelectorAll('.card canvas')[1];
+  assert.deepEqual([(await pick()).words, (await pick()).near, (await pick()).tag], ['', 'Coven', 'canvas'], 'the second card\'s picture, by the name on its card');
+  under = frame.document.querySelector('canvas.board');
+  assert.equal((await pick()).near, 'Your board … Tap a stack to lift it and tap a cell to put it down; three of a colour on top …');
   under = frame.document.body;
   assert.deepEqual(await pick(), { missing: true }, 'the bare page is nothing to point at');
 
@@ -154,6 +167,10 @@ test('tandem\'s lines in a page find a thing by the words on it, or by a selecto
     '[field] Name of the group: empty (shows "Christmas at gran\'s")',
     '[button] Make a group',
     '[picture] A knitted band',
+    'Haunted Manor',
+    'Coven',
+    '## Your board',
+    'Tap a stack to lift it and tap a cell to put it down; three of a colour on top of each other clear, and what was under them comes up for the next move.',
   ], 'what a person would read it by; not what cannot be seen');
   // A field is filled in by what it is called, in a way the page notices.
   const input = frame.document.querySelector('input')!;

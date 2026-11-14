@@ -321,7 +321,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     // ---- talking
     {
       name: 'chat.send', kind: 'write', agent: 'free',
-      about: 'Say something in the conversation. refs is a list of things it is about: "concept:<id>", "drawing:<name>", "entity:<id>", "point:<x>,<y>", "page:<json>" (something on the project\'s page: {words, tag, selector, path}). files is a list of what chat.attach gave back: photos and files that go with it.',
+      about: 'Say something in the conversation. refs is a list of things it is about: "concept:<id>", "drawing:<name>", "entity:<id>", "point:<x>,<y>", "page:<json>" (something on the project\'s page: {words, near, tag, selector, path}; near is what is written around it). files is a list of what chat.attach gave back: photos and files that go with it.',
       input: { text: 'string', refs: 'json?', files: 'json?' },
       run(c, i) {
         checkList(i.refs, 'refs');

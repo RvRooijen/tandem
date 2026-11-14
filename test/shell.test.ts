@@ -557,6 +557,20 @@ test('the agent shows things on the person\'s screen', async () => {
   assert.ok(!$('#t-sheet').classList.contains('shut'));
   app.refs.length = 0;
   app.close();
+  // A picture says nothing itself: it is named by what is written around it, and that goes with the message.
+  const picture = { x: 40, y: 380, w: 90, h: 90, words: '', near: 'Skin Haunted Manor', tag: 'canvas', selector: 'button.pane > canvas', path: '/' };
+  toFrame.length = 0;
+  pointer('pointerdown', 340, 60);
+  pointer('pointermove', 200, 400);
+  await answer(picture);
+  await until(() => !$('#t-ring').hidden && $('#t-ring span').textContent === 'canvas by "Skin Haunted Manor"', 'the picture to be marked by the name beside it');
+  pointer('pointerup', 200, 400);
+  await answer(picture);
+  await until(() => app.refs.length === 1, 'the picture to go with the next message');
+  assert.deepEqual(JSON.parse(app.refs[0].slice('page:'.length)), { words: '', near: 'Skin Haunted Manor', tag: 'canvas', selector: 'button.pane > canvas', path: '/' });
+  assert.match($('.t-chip.ref[data-kind=page]').textContent!, /on the page: canvas by "Skin Haunted Manor"/);
+  app.refs.length = 0;
+  app.close();
 
   // The agent uses the page as a person would: asked of this screen, done in the frame, and answered to it.
   const doing = async (what: string, says: Record<string, unknown>) => {

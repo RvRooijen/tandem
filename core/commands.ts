@@ -25,8 +25,8 @@ export interface CommandDef<I = any, O = any> {
   input?: Record<string, string>;
   /**
    * What an agent's write does. Unset: refused (only the person may). 'free': it just runs, because it cannot
-   * touch the real project (playing in a sandbox, starting a playtest). 'proposes': the command itself turns an
-   * agent's call into a proposal.
+   * touch the real project (playing in a sandbox, starting a playtest; the one exception is art.accept, a drawing
+   * worker's drawing, which is the agent's to judge). 'proposes': the command itself turns an agent's call into a proposal.
    */
   agent?: 'free' | 'proposes';
   run(ctx: Ctx, input: I): O | Promise<O>;

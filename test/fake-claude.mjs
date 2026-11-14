@@ -65,6 +65,18 @@ if (prompt.includes('The person accepted')) {
   say({ type: 'result', is_error: false, result: text, session_id: 'sess-1' });
   process.exit(0);
 }
+// Told that a drawing worker's round ended: it judges it the way the agent is asked to. A silhouette it approves,
+// a drawing in colour it takes into the project, and a worker that failed or was stopped it closes.
+if (prompt.includes('The drawing worker ')) {
+  const id = prompt.match(/The drawing worker (w[a-z0-9]+),/)[1];
+  const does = prompt.includes('has a silhouette ready') ? 'art.approve' : prompt.includes('ready in colour') ? 'art.accept' : 'art.close';
+  const looked = does === 'art.close' ? { status: 0 } : spawnSync('tandem', ['run', 'art.look', JSON.stringify({ name: prompt.match(/, on ([\w-]+),/)[1], worker: id })], { encoding: 'utf8' });
+  const out = spawnSync('tandem', ['run', does, JSON.stringify({ worker: id })], { encoding: 'utf8' });
+  const text = `Worker ${id}: looked (${looked.status === 0 ? 'ok' : looked.stderr.trim()}), ${does} (${out.status === 0 ? 'ok' : out.stderr.trim()}).`;
+  say({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
+  say({ type: 'result', is_error: false, result: text, session_id: 'sess-1' });
+  process.exit(0);
+}
 // Asked to code: it changes the game's code where it stands, which is its working copy.
 if (prompt.startsWith('code:')) {
   const { writeFileSync } = await import('node:fs');

@@ -10,8 +10,8 @@ function chunk(type: string, data: Buffer): Buffer {
   return out;
 }
 
-/** px is 0xAABBGGRR per pixel; scale repeats each pixel. */
-export function encodePng(px: Uint32Array, w: number, h: number, scale = 1): Buffer {
+/** px is 0xAABBGGRR per pixel; scale repeats each pixel. Everything is opaque unless `alpha` says the AA counts. */
+export function encodePng(px: Uint32Array, w: number, h: number, scale = 1, alpha = false): Buffer {
   const W = w * scale, H = h * scale;
   const raw = Buffer.alloc((W * 4 + 1) * H);
   for (let y = 0; y < H; y++) {
@@ -21,7 +21,7 @@ export function encodePng(px: Uint32Array, w: number, h: number, scale = 1): Buf
     for (let x = 0; x < W; x++) {
       const c = px[sy * w + Math.floor(x / scale)];
       const o = row + 1 + x * 4;
-      raw[o] = c & 255; raw[o + 1] = (c >> 8) & 255; raw[o + 2] = (c >> 16) & 255; raw[o + 3] = 255;
+      raw[o] = c & 255; raw[o + 1] = (c >> 8) & 255; raw[o + 2] = (c >> 16) & 255; raw[o + 3] = alpha ? c >>> 24 : 255;
     }
   }
   const ihdr = Buffer.alloc(13);

@@ -614,7 +614,7 @@ test('art: the drawings are listed, one is looked at and locked, and a worker\'s
 
   // Drawing work is asked for in the chat, not here: this tab is for looking. When a worker draws (here it was
   // asked for the way the agent would), it is watched here: the drawing as it is typed, then its round with a
-  // picture before and after, to decide right there.
+  // picture before and after. Deciding about it is the agent's: it is told when the round ends, and takes it.
   assert.ok(!all('#t-body button').some((b) => /worker/i.test(b.textContent!)) && !$('#t-body textarea'), 'no form to ask for art');
   await host.run('art.ask', { name: 'gnome', message: 'a taller hat' }, AGENT);
   click($('#t-body .bar button.link'));
@@ -626,35 +626,37 @@ test('art: the drawings are listed, one is looked at and locked, and a worker\'s
   // Every look of it: three looks, each two rows (stand, walk), the widest two frames of 32 across, a pixel between.
   await until(() => ($('canvas.live') as HTMLCanvasElement).width === 67 && ($('canvas.live') as HTMLCanvasElement).height === 199, 'the drawing, live', 90000);
   assert.equal($('.t-hint.looks').textContent, 'Every look, top to bottom: cozy · odd · hollow');
-  await until(() => all('.worker-rest button').some((b) => b.textContent === 'Accept'), 'its round', 60000);
-  assert.deepEqual(all('.worker-rest button').map((b) => b.textContent), ['Send feedback', 'Accept', 'Reject']);
+  assert.deepEqual(all('.worker-rest button').map((b) => b.textContent), ['Stop'], 'while it draws it can be stopped; nothing else is the person\'s to press');
+  const was = (await host.run('art.get', { name: 'gnome' }, 'me') as { text: string }).text;
+  await until(() => all('.pictures figcaption').length === 6, 'its round', 60000);
   assert.deepEqual(all('.pictures figcaption').map((f) => f.textContent), ['cozy, as it is', 'cozy, as proposed', 'odd, as it is', 'odd, as proposed', 'hollow, as it is', 'hollow, as proposed']);
   assert.match($('.worker-rest .said').textContent!, /Changed gnome\. Render ok/);
   assert.match($('.worker-rest').textContent!, /Asked.*a taller hat/);
-  assert.equal($('#t-body .bar .t-chip').textContent, 'to accept');
+  assert.equal(all('.worker-rest button, .worker-rest textarea').length, 0, 'a round that ended has no approve, feedback or accept for the person');
 
-  // Feedback sends it round again, from the same place.
-  type($('textarea[aria-label="Feedback for the worker"]'), 'taller still');
-  click(button('Send feedback'));
-  await until(() => host.events.since(0).filter((e) => e.type === 'art.round').length === 2, 'the second round', 60000);
-  await until(() => all('.worker-rest button').some((b) => b.textContent === 'Accept'), 'its buttons again', 90000);
-  assert.match($('.worker-rest').textContent!, /taller still/);
-  click(button('Reject'));
-  await until(() => /Rejected: the game was left as it is/.test($('.worker-rest').textContent!), 'the rejection');
-  assert.deepEqual(all('.worker-rest button').map((b) => b.textContent), [], 'a decided round has nothing left to press');
+  // The agent was told, looked at it and took it: it is in the project without the person doing anything.
+  await until(() => /Accepted: it is in the game/.test($('.worker-rest').textContent!), 'the agent to have taken it', 90000);
+  assert.equal($('#t-body .bar .t-chip').textContent, 'accepted');
+  assert.equal(all('.worker-rest button').length, 0);
+  assert.equal((await host.run('art.get', { name: 'gnome' }, 'me') as { text: string }).text, `${was.trimEnd()}\n@rect 0 0 1 1 ${was.match(/^(\S) = #/m)![1]}\n`, 'the drawing is the worker\'s now');
   assert.deepEqual(await host.run('art.workers', {}, 'me'), []);
+  await until(() => !app.agent.busy, 'the agent to be done');
 
   // The conversation is not a feed of drawing work: no card, only a line that leads back to the Art tab.
   tab('Chat');
   assert.ok(!all('.card.prop').some((c) => /drawing gnome/.test(c.textContent!)));
-  assert.equal(all('figure.card.look').length, 0, 'and looking at a drawing put nothing in the chat');
   const lines = all('.chat .sys').filter((x) => x.querySelector('.t-ic.i-art')).map((x) => x.textContent!);
-  assert.equal(lines.length, 3);
+  assert.equal(lines.length, 2);
   assert.match(lines[0], /the agent asked a worker to change gnome: a taller hat/);
-  assert.match(lines[1], /gnome: a drawing to accept\. Look in Art/);
+  assert.match(lines[1], /gnome: the drawing is ready; the agent looks at it/);
+  assert.ok(!all('.chat .sys').some((x) => /The drawing worker/.test(x.textContent!)), 'what the engine told the agent about it is not spelled out');
+  // What the agent looked at to judge it is in the conversation, and what it did with it.
+  assert.equal(all('figure.card.look').length, 1);
+  assert.ok(all('.msg.agent').some((x) => /Worker w[a-z0-9]+: looked \(ok\), art\.accept \(ok\)\./.test(x.textContent!)));
+  assert.ok(all('.chat .sys').some((x) => /gnome: in the game now/.test(x.textContent!)));
   click(all('.chat .sys').find((x) => x.querySelector('.t-ic.i-art'))!);
   await until(() => $('canvas.live'), 'the line to lead to the worker');
-  assert.match($('.worker-rest').textContent!, /Rejected/);
+  assert.match($('.worker-rest').textContent!, /Accepted/);
   click($('#t-body .bar button.link'));
   await until(() => all('#t-body .item.drawing').length === 7, 'the drawings again');
   await until(() => /No worker is drawing/.test($('.workers').textContent!), 'the workers, none');
@@ -1255,13 +1257,12 @@ test('with the tools shut, tandem speaks in a bubble: what it says goes again, w
   assert.equal(host.concepts.get('ivy'), undefined);
   host.events.add({ type: 'proposal.decided', by: 'me', round: 'code', status: 'rejected', count: 1, paths: ['code:working copy'] });
   await until(() => !$('.bubble.waits'), 'it to be gone when decided elsewhere');
-  host.events.add({ type: 'art.round', by: 'agent:w1', worker: 'w1', name: 'gnome', state: 'waiting', phase: 'silhouette', text: 'The silhouette is ready.' });
-  await until(() => /gnome: a silhouette to approve/.test($('.bubble.waits b')?.textContent ?? ''), 'the silhouette');
-  const before = ran.filter((n) => n === 'art.approve').length;
-  click(button('Approve', $('.bubble.waits')));
-  await until(() => ran.filter((n) => n === 'art.approve').length === before + 1, 'approving a silhouette to be what Approve does there');
-  host.events.cast({ type: 'art.status', worker: 'w1', name: 'gnome', state: 'running', phase: 'color', doing: 'draws gnome' });
-  await until(() => !$('.bubble.waits'), 'the bubble to go once it draws again');
+  // A worker's round is the agent's to judge: it does not wait for the person. That one failed is said.
+  const round = host.events.add({ type: 'art.round', by: 'agent:w1', worker: 'w1', name: 'gnome', state: 'waiting', phase: 'silhouette', text: 'The silhouette is ready.' });
+  await until(() => app.events.some((e) => e.n === round.n), 'the round to come by');
+  assert.equal($('.bubble.waits'), null);
+  host.events.add({ type: 'art.round', by: 'agent:w1', worker: 'w1', name: 'gnome', state: 'failed', phase: 'color', text: 'The worker failed: the pencil broke' });
+  await until(() => all('.bubble.says').some((b) => /The worker on gnome failed/.test(b.textContent!)), 'the failure to be said');
 
   // The offer to read a project that is new to tandem waits too, and can be put off.
   host.events.add({ type: 'welcome', by: 'engine', existing: true, files: 3, name: 'Fixture' });

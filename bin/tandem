@@ -3,9 +3,11 @@
 #   tandem [start] [folder]            the core, tandem's page, and the project's own page
 #   tandem list [prefix]               every command the running core has
 #   tandem run <command> ['<json>']    run one
+#   tandem export <folder>             the drawings of the project you are in, as sprite sheets it can load
 HERE="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/.." && pwd)"
 case "${1:-}" in
   list|run) exec node --no-warnings "$HERE/core/cli.ts" "$@" ;;
+  export) shift; exec node --no-warnings "$HERE/art/export.ts" "$@" ;;
   start) shift; exec node --no-warnings "$HERE/core/start.ts" "$@" ;;
   *) exec node --no-warnings "$HERE/core/start.ts" "$@" ;;
 esac

@@ -2,8 +2,9 @@
 // pixeldraw's way of working (art/GUIDE.md): silhouette first, then colour, in
 // rounds of edit, render, look. A worker draws in its own workspace and can
 // change only the drawings it was asked about. When a run ends, what it
-// changed becomes a proposal with a picture before and after; the person
-// approves the silhouette, gives feedback, accepts or rejects.
+// changed becomes a proposal with a picture before and after, and the agent is
+// told: judging it is the agent's, from the silhouette to taking it into the
+// project. The person watches.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -44,6 +45,8 @@ export interface Worker {
   doing: string;
   said: string;
   started: number;
+  /** How many runs of it have ended: the silhouette, the colour, and every round of feedback after. */
+  rounds?: number;
 }
 
 // What only a worker needs to hear; the way of working itself is in the guide.
@@ -57,6 +60,8 @@ export interface WorkersOptions {
   events: EventLog;
   proposals: Proposals;
   pictures: PictureMaker;
+  /** A run of a worker ended, however it did: whoever judges its work is told. */
+  ended?(w: Worker): void;
 }
 
 export function createWorkers(o: WorkersOptions) {
@@ -189,10 +194,12 @@ export function createWorkers(o: WorkersOptions) {
       const wasStopped = stopped.delete(w.id);
       if (wasStopped) { w.state = 'stopped'; w.doing = 'stopped'; }
       else if (failed || code !== 0) { w.state = 'failed'; w.doing = failed || err.trim().split('\n').pop() || `claude ended with code ${code}`; }
-      else { w.state = 'waiting'; w.doing = w.phase === 'silhouette' ? 'silhouette done: approve, or another round?' : 'done: accept, or another round?'; }
+      else { w.state = 'waiting'; w.doing = w.phase === 'silhouette' ? 'silhouette done: the agent looks at it' : 'done: the agent looks at it'; }
       try { await propose(w); } catch (e) { w.doing = `could not make a proposal of it: ${e instanceof Error ? e.message : e}`; w.state = 'failed'; }
+      w.rounds = (w.rounds ?? 0) + 1;
       save(w); cast(w);
       events.add({ type: 'art.round', by: `agent:${w.id}`, worker: w.id, name: w.names[0], state: w.state, phase: w.phase, text: w.state === 'failed' ? `The worker failed: ${w.doing}` : w.said });
+      o.ended?.(w);
     });
   }
 

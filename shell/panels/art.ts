@@ -1,8 +1,8 @@
 // The drawings the project is made of, and the drawing work on them. A drawing
 // is a thing of the engine like a concept: look at it, lock it, hand it to the
-// agent. Drawing work is asked for in the chat; a worker is watched here,
-// live: its drawing appears as it is typed, then its round is decided here
-// too, with a picture before and after.
+// agent. Drawing work is asked for in the chat and judged by the agent; a
+// worker is watched here, live: its drawing appears as it is typed, then its
+// round with a picture before and after, and what the agent made of it.
 import type { Event } from '../../core/events.ts';
 import type { App, Panel } from '../app.ts';
 import { drawArt } from '../artview.ts';
@@ -53,7 +53,7 @@ export function artPanel(): Panel {
     return w;
   };
   const stateWords = (w: { state: string; phase: string }) =>
-    w.state === 'running' ? 'drawing' : w.state === 'waiting' ? (w.phase === 'silhouette' ? 'silhouette to approve' : 'to accept') : w.state;
+    w.state === 'running' ? 'drawing' : w.state === 'waiting' ? (w.phase === 'silhouette' ? 'silhouette, with the agent' : 'with the agent') : w.state;
 
   async function paintWorkers() {
     const list = (await app.act<Open[]>('art.workers')) ?? [];
@@ -106,20 +106,15 @@ export function artPanel(): Panel {
 
   // ---------------------------------------------------------------- a worker, watched
 
-  /** Everything under the live drawing: how it is doing, what it said, and what can be decided. */
+  /** Everything under the live drawing: how it is doing, what it said, and what became of it. Deciding is the agent's. */
   function paintWorker(w: Seen, rest: HTMLElement) {
-    const feedback = (rest.querySelector('textarea') as HTMLTextAreaElement | null)?.value ?? '';
-    const box = h<'textarea'>('textarea.small', { rows: 2, placeholder: 'Feedback for another round, in plain words.', 'aria-label': 'Feedback for the worker', value: feedback });
-    const tell = () => {
-      if (!box.value.trim()) return app.toast('Say what should change.');
-      void app.act('art.tell', { worker: w.id, message: box.value.trim() }).then((ok) => { if (ok) box.value = ''; });
-    };
     const pic = (url: string | undefined, label: string) => url && h('figure', { onclick: () => app.zoom(url) }, h<'img'>('img', { src: url, alt: `${w.name}, ${label}` }), h('figcaption', {}, label));
     clear(rest,
       w.state === 'running' && h('div.working', {}, h('i.spin'), h('span', {}, w.doing || 'starting'), h<'button'>('button', { onclick: () => void app.act('art.stop', { worker: w.id }) }, 'Stop')),
       w.decided && h(`div.${w.decided === 'accepted' ? 'pass' : 'fail'}`, {}, w.decided === 'accepted' ? 'Accepted: it is in the game.' : 'Rejected: the game was left as it is.'),
       !w.decided && w.state === 'failed' && h('div.fail', {}, `It failed: ${w.doing}`),
-      !w.decided && w.state === 'stopped' && h('p.t-hint', {}, 'It was stopped. Feedback sets it going again where it was.'),
+      !w.decided && w.state === 'stopped' && h('p.t-hint', {}, 'It was stopped. The agent decides what happens with it.'),
+      !w.decided && w.state === 'waiting' && h('p.t-hint.judged', {}, w.phase === 'silhouette' ? 'The agent looks at the silhouette: it approves it, or sends the worker round again.' : 'The agent looks at the drawing: it takes it into the project, or sends the worker round again.'),
       w.said && w.state !== 'failed' && h('div.said', {}, prose(w.said)),
       // A drawing with looks is compared look by look: the change may be in any of them.
       w.state !== 'running' && w.pictures?.after && (w.pictures.looks?.length
@@ -129,15 +124,6 @@ export function artPanel(): Panel {
           w.pictures.looks.map((l) => h('div.pictures', {}, pic(l.before, `${l.look}, as it is`), pic(l.after, l.before ? `${l.look}, as proposed` : `${l.look}, new`), !l.after && h('div.note', {}, `${l.look} would be gone`))),
         ]
         : h('div.pictures', {}, pic(w.pictures.before, 'as it is'), pic(w.pictures.after, w.phase === 'silhouette' ? 'the silhouette' : w.isNew ? 'new' : 'as proposed'))),
-      !w.decided && w.state !== 'running' && [
-        box,
-        h('div.t-row', {},
-          h<'button'>('button', { onclick: tell }, 'Send feedback'),
-          w.state === 'waiting' && (w.phase === 'silhouette'
-            ? h<'button'>('button.primary', { onclick: () => void app.act('art.approve', { worker: w.id, ...(box.value.trim() && { message: box.value.trim() }) }) }, 'Approve silhouette')
-            : w.pictures?.after && h<'button'>('button.primary', { onclick: () => void app.act('proposals.decide', { round: w.id, accept: true }) }, 'Accept')),
-          h<'button'>('button.danger', { onclick: () => void app.act('art.close', { worker: w.id }) }, w.pictures?.after ? 'Reject' : 'Close it')),
-      ],
       w.asked.length > 0 && [h('h3', {}, 'Asked'), w.asked.map((a) => h('p.t-hint', {}, a))]);
   }
 

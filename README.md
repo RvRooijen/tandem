@@ -51,8 +51,8 @@ project that wants tandem out of its history ignores `.tandem` and that is all:
     }
 
 - **page**: how the project's page is started, with `{port}` where the port goes (and `{project}` for the project's own folder, to name a script of its own). The working copy's page gets `TANDEM_COPY=1` in its environment, for a project that wants the copy to keep its hands off something (a database). Tandem shows it in a frame, and starts it a second time from the agent's working copy when you want to play that. For a project with Vite in its package.json this is guessed.
-- **test**, **check**, **run**: what the agent may run in its working copy. Without them it can change code but run nothing, and says so. It also has a scratchpad (`.tandem-scratch` in its working copy, never part of a change set): a script it writes there it may run with node or python3, to make a change in many places at once or to try something out.
-- **art**: drawings live in `art/` (depth maps in `depth/`) as text, in pixeldraw's format. `build` is the project's own step that turns them into what it loads.
+- **test**, **check**, **run**: what the agent may run in its working copy (besides `gh`, GitHub's command line, which it may run in every project). Without them it can change code but run nothing, and says so. It also has a scratchpad (`.tandem-scratch` in its working copy, never part of a change set): a script it writes there it may run with node or python3, to make a change in many places at once or to try something out.
+- **art**: drawings live in `art/` (depth maps in `depth/`) as text, in pixeldraw's format. `build` is the step that turns them into what the project loads: the project's own, or tandem's, `tandem export <folder>`, which writes a sprite sheet per drawing (`<name>.png`, `<name>.depth.png`) and one `sprites.json` that says where each frame of each animation of each look is, where the tiles and strips of a tilesheet are, and which drawings are characters (a drawing with attachments also gets `<name>.character.png` and `.json`, drawn with any outfit by `art/runtime/pixeldraw.js`; `--runtime=<file>` copies that into the project).
 - **adapter**: a module that lets tandem see inside the running project (see below).
 - **edit**: what the agent may change, as patterns; everything but `.tandem`, `art` and `depth` by default.
 
@@ -76,7 +76,7 @@ you see it work.
 | a git repository | chat, concepts, locks; the agent reads the code and codes in a working copy; its change set is a proposal you accept as one commit |
 | `page` | you use the project inside tandem, and can switch the frame to the agent's working copy before accepting |
 | `test` / `check` | the agent runs them before it says something works |
-| drawings in `art/` | the Art tab: look at a drawing, lock it, ask a worker for a change and watch it draw; its round is a proposal with pictures |
+| drawings in `art/` | the Art tab: look at a drawing, lock it, and watch a worker draw; drawing work is asked for in the chat and judged by the agent |
 | the bridge in its page | the agent can read the world you are in; the working copy starts from where you are; the agent can point at things |
 | an adapter | the agent sees inside: state in words, pictures, entities and systems, a bot that plays it through, and all of that on its working copy too |
 
@@ -107,7 +107,7 @@ page back; it also gets it back to you when it is done or its turn is over.
 - **Working files and project files.** The project is what you use. The agent codes in a working copy (a git worktree in a hidden folder right beside the project, so `../something` still resolves). What the copy differs from the project is one change set: a card with the files, the copy played in the frame, accept (one commit) or reject. Your own uncommitted work is never committed, reset or overwritten for you; if it is in the way of an accept, tandem says which files.
 - **The person's change is made; the agent's is proposed**, for concepts and drawings too. Everything proposed while answering one message is one round.
 - **The chat is where things are asked.** Type @ to point at a concept or a drawing; use the paperclip (or paste) to share a photo or a file, which the agent reads. Art is asked for there too: the Art tab is for looking, locking and watching a worker draw. With the tools shut, tandem speaks in a bubble over the project's page; what waits for an answer stays there with Approve and Decline. The tools never open by themselves.
-- **Art is drawn in rounds.** A drawing worker (a headless Claude with pixeldraw's way of working: silhouette first, then colour) draws in its own copy; you watch it in the Art tab as it is typed. Accepted art goes into the project's art files and the agent is told: bringing it into the project is its work.
+- **Art is drawn in rounds.** A drawing worker (a headless Claude with pixeldraw's way of working: silhouette first, then colour) draws in its own copy; you watch it in the Art tab as it is typed. Judging it is the agent's, from start to finish: it is told when a round ends, approves the silhouette, gives feedback and takes the drawing into the project's art files (art.accept), and then brings it into the project. You have no buttons for any of that; a lock keeps a drawing yours.
 
 ## Layout
 

@@ -1,10 +1,14 @@
 // Art as commands: the game's drawings listed, read and looked at; a drawing
 // changed (by the person at once, by the agent as a proposal); and drawing
-// work handed to a worker, which proposes what it drew. A drawing is a thing
-// like a concept: it can be proposed on, accepted, and locked.
+// work handed to a worker, which proposes what it drew. That work is the
+// agent's to judge from start to finish: it is told when a worker's round
+// ends, approves the silhouette, gives feedback, and takes the drawing into
+// the project (art.accept). A drawing is a thing like a concept: it can be
+// proposed on, accepted, and locked; a locked one no worker and no agent gets.
 import { execFile } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { CommandError, isAgent, type CommandDef } from '../core/commands.ts';
 import type { EventLog } from '../core/events.ts';
 import type { Locks } from '../core/locks.ts';
@@ -31,7 +35,25 @@ export function createArt(o: ArtOptions) {
   const root = o.project.root;
   const spaces = createWorkspaces(root, join(o.project.dirs.data, 'art-work'));
   const pictureOf = createPictures(spaces, o.newLookFile);
-  const workers = createWorkers({ spaces, events: o.events, proposals: o.proposals, pictures: pictureOf });
+  const workers = createWorkers({
+    spaces, events: o.events, proposals: o.proposals, pictures: pictureOf,
+    // A round ended: the agent is set to work on it. Nobody else decides about drawing work.
+    ended(w) {
+      const name = w.names[0];
+      const how = w.state === 'failed' ? `failed: ${w.doing}`
+        : w.state === 'stopped' ? 'was stopped in the middle of a round; what it had drawn so far is what it proposes'
+          : w.phase === 'silhouette' ? 'has a silhouette ready, and waits for it to be approved'
+            : 'has the drawing ready in colour, and waits for it to be taken into the project';
+      const next = w.state === 'failed' ? 'art.tell sets it going again with what you tell it; art.close ends it.'
+        : `${w.state === 'waiting' && w.phase === 'silhouette' ? 'art.approve when the shape is right (it goes on with colour)' : 'art.accept when it is what was asked for (it goes into the project)'}, art.tell with what should be different for another round, or art.close to be done with it without taking anything.`;
+      o.events.add({
+        type: 'message', by: 'engine', kind: 'art', worker: w.id, name, state: w.state, phase: w.phase,
+        text: `The drawing worker ${w.id}, on ${name}, ${how}.${w.said && w.state !== 'failed' ? ` It says: "${w.said.slice(0, 600)}"` : ''} That was round ${w.rounds ?? 1} of its work. `
+          + `Judging it is yours, from start to finish: the person is not asked and has no buttons for it. ${w.state === 'failed' ? '' : `Look at what it drew (art.look with worker "${w.id}") and hold it against what was asked for. Then: `}${next} `
+          + 'Do not keep it going round: after about three rounds of feedback, take the best there is or close it. Say in a sentence what you did with it.',
+      });
+    },
+  });
   const artFile = (name: string) => join(root, 'art', `${name}.txt`);
   const depthFile = (name: string) => join(root, 'depth', `${name}.txt`);
   const has = (name: string) => validName(name) && existsSync(artFile(name));
@@ -51,7 +73,9 @@ export function createArt(o: ArtOptions) {
     const command = o.project.config.art?.build;
     if (!command) return Promise.resolve('the project has no build for its drawings (tandem.json: art.build); nothing was built');
     return new Promise((ok, fail) => {
-      execFile('sh', ['-c', command], { cwd: root, timeout: 120_000 }, (err, stdout, stderr) => {
+      // (`tandem export`, tandem's own build of drawings, is found like any command of the project's.)
+      const env = { ...process.env, PATH: `${fileURLToPath(new URL('../bin', import.meta.url))}:${process.env.PATH ?? ''}` };
+      execFile('sh', ['-c', command], { cwd: root, timeout: 120_000, env }, (err, stdout, stderr) => {
         if (err) fail(new CommandError('failed', `the drawings could not be built into the project: ${(stderr || err.message).trim().split('\n').slice(-2).join(' ')}`));
         else ok(stdout.trim().split('\n').pop() ?? '');
       });
@@ -96,6 +120,13 @@ export function createArt(o: ArtOptions) {
     return w;
   };
   const brief = (w: NonNullable<ReturnType<typeof workers.get>>) => ({ worker: w.id, drawing: w.names[0], state: w.state, phase: w.phase, doing: w.doing, minutes: Math.round((Date.now() - w.started) / 60_000) });
+
+  /** May this round be taken as it is? A silhouette is not a drawing yet. */
+  function acceptable(round: string) {
+    const w = workers.get(round);
+    if (w && workers.busy(round)) throw new CommandError('busy', `${round} is still drawing; wait for its round, or stop it`);
+    if (w?.phase === 'silhouette') throw new CommandError('input', `${round} has only a silhouette of ${w.names[0]}: approve it (art.approve) so it goes on with colour, or reject it`);
+  }
 
   const commands: CommandDef[] = [
     {
@@ -171,7 +202,7 @@ export function createArt(o: ArtOptions) {
     },
     {
       name: 'art.ask', kind: 'write', agent: 'free',
-      about: 'Hand drawing work to a worker: a change to a drawing there is, or a new one (new: true), with a brief in plain words. edit names more drawings it may change. It draws in its own copy, silhouette first, and what it makes comes back as a proposal with pictures; nothing reaches the project until the person accepts it. A locked drawing cannot be given to a worker.',
+      about: 'Hand drawing work to a worker: a change to a drawing there is, or a new one (new: true), with a brief in plain words. edit names more drawings it may change. It draws in its own copy, silhouette first; when a round of it ends the agent is told, and judges it: art.approve, art.tell, art.accept or art.close. Nothing reaches the project until it is accepted. A locked drawing cannot be given to a worker.',
       input: { name: 'string', message: 'string', new: 'boolean?', edit: 'json?' },
       run(c, i) {
         if (!validName(i.name)) throw new CommandError('input', 'a drawing is named in lower-case words with dashes');
@@ -190,7 +221,7 @@ export function createArt(o: ArtOptions) {
     },
     {
       name: 'art.workers', kind: 'read',
-      about: 'The drawing workers that are open: what each draws, whether it is running or waiting (for approval of its silhouette, or to be accepted), and what it is doing.',
+      about: 'The drawing workers that are open: what each draws, whether it is running or waiting (for its silhouette to be approved, or its drawing to be accepted), and what it is doing.',
       run: () => workers.list().map(brief),
     },
     {
@@ -213,6 +244,26 @@ export function createArt(o: ArtOptions) {
         try { workers.approve(w.id, i.message); } catch (e) { throw new CommandError('busy', e instanceof Error ? e.message : String(e)); }
         o.events.add({ type: 'art.told', by: c.by, worker: w.id, name: w.names[0], message: `silhouette approved${i.message ? `: ${i.message}` : ''}` });
         return { says: 'it goes on with colour' };
+      },
+    },
+    {
+      name: 'art.accept', kind: 'write', agent: 'free',
+      about: 'Take what a waiting worker drew into the project: its drawings go into the project\'s art files, and the worker is done. Only a drawing in colour; a silhouette is approved first (art.approve). Drawing work is the agent\'s to judge from start to finish, so this is the one thing it takes into the project itself; a drawing that is locked it cannot take.',
+      input: { worker: 'string' },
+      async run(c, i) {
+        const w = worker(i.worker);
+        acceptable(w.id);
+        const pending = o.proposals.list({ status: 'pending', round: w.id }).filter((p) => p.kind === 'drawing');
+        if (!pending.length) throw new CommandError('missing', `${w.id} has proposed nothing to take; give it feedback (art.tell) or close it (art.close)`);
+        for (const p of pending) o.locks.guard(`drawing:${p.path}`, c.by);
+        await take(pending.map((p) => ({ name: p.path, value: p.after as { text?: string; depth?: string } })), c.by);
+        const set = o.proposals.decide(w.id, 'accepted');
+        workers.close(w.id);
+        o.events.add({ type: 'proposal.decided', by: c.by, round: w.id, status: 'accepted', count: set.length, ids: set.map((p) => p.id), left: 0, paths: set.map((p) => `${p.kind}:${p.path}`) });
+        return {
+          accepted: pending.map((p) => p.path),
+          says: o.accepted ? 'in the project\'s art files now. Tandem tells you in a moment, when they are in your working copy too: bring them into the project then, not in this turn' : 'in the project now, and built into it',
+        };
       },
     },
     {
@@ -257,12 +308,7 @@ export function createArt(o: ArtOptions) {
     decided(round: string) {
       if (workers.get(round)) workers.close(round);
     },
-    /** May this round be accepted as it is? A silhouette is not a drawing yet. */
-    acceptable(round: string) {
-      const w = workers.get(round);
-      if (w && workers.busy(round)) throw new CommandError('busy', `${round} is still drawing; wait for its round, or stop it`);
-      if (w?.phase === 'silhouette') throw new CommandError('input', `${round} has only a silhouette of ${w.names[0]}: approve it (art.approve) so it goes on with colour, or reject it`);
-    },
+    acceptable,
   };
 }
 

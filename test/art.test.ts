@@ -4,12 +4,16 @@
 // claude that uses the real tools of its workspace.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CommandError } from '../core/commands.ts';
 import { startServer } from '../core/server.ts';
+import { exportArt } from '../art/export.ts';
 import { spriteSheet } from '../art/sprites.ts';
+import { tools } from '../core/runner.ts';
 import { AGENT, fixture } from './helpers.ts';
 
 process.env.CLAUDE_BIN = fileURLToPath(new URL('./fake-claude.mjs', import.meta.url));
@@ -78,7 +82,14 @@ test('a worker draws a new drawing: silhouette, approval, colour, and only then 
   // Its own copy can be read as text, to show where it is.
   assert.match((await me('art.get', { name: 'garden-sign', worker: w })).text, /^3 = #5a6988/);
 
+  // The agent is told that the round ended, and what it can do with it: judging it is the agent's.
+  const news = () => host.events.since(0).filter((e) => e.type === 'message' && e.by === 'engine' && e.kind === 'art' && e.worker === w);
+  assert.equal(news().length, 1);
+  assert.deepEqual([news()[0].name, news()[0].state, news()[0].phase], ['garden-sign', 'waiting', 'silhouette']);
+  assert.match(String(news()[0].text), new RegExp(`^The drawing worker ${w}, on garden-sign, has a silhouette ready, and waits for it to be approved\\. It says: "Blocked out garden-sign\\..*That was round 1 of its work\\. Judging it is yours.*art\\.look with worker "${w}".*Then: art\\.approve when the shape is right`));
+
   // A silhouette is not a drawing: it cannot be accepted, only approved.
+  await refused(agent('art.accept', { worker: w }), 'input');
   await refused(me('proposals.decide', { round: w, accept: true }), 'input');
   assert.equal((await me('proposals.list', { status: 'pending' })).length, 1, 'and refusing that left the proposal as it was');
   await agent('art.approve', { worker: w });
@@ -88,6 +99,8 @@ test('a worker draws a new drawing: silhouette, approval, colour, and only then 
   assert.equal(second.phase, 'color');
   assert.match(String(second.note), /Coloured garden-sign\..*Depth kept: true/, 'the approved silhouette was kept as its depth map');
   await refused(me('art.approve', { worker: w }), 'busy');
+  assert.equal(news().length, 2);
+  assert.match(String(news()[1].text), /has the drawing ready in colour, and waits for it to be taken into the project\..*That was round 2 of its work\..*Then: art\.accept when it is what was asked for/);
 
   // The worker's version can be looked at before deciding. The agent's look is shown in the chat; the person's own is not news.
   const n = host.events.last();
@@ -97,8 +110,17 @@ test('a worker draws a new drawing: silhouette, approval, colour, and only then 
   await agent('art.look', { name: 'garden-sign', worker: w });
   assert.equal(host.events.since(n)[0].type, 'look');
 
-  // Accepted: the drawing and its depth map are the game's, the game is built with it, the worker is gone.
-  await me('proposals.decide', { round: w, accept: true });
+  // Taken by the agent: the drawing and its depth map are the game's, the game is built with it, the worker is gone.
+  // A drawing the person locked meanwhile is not the agent's to take.
+  await me('locks.set', { ref: 'drawing:garden-sign', locked: true });
+  await refused(agent('art.accept', { worker: w }), 'locked');
+  await me('locks.set', { ref: 'drawing:garden-sign', locked: false });
+  const taken = await agent('art.accept', { worker: w });
+  assert.deepEqual(taken.accepted, ['garden-sign']);
+  assert.match(taken.says, /in the project now, and built into it/);
+  const decided = host.events.since(0).filter((e) => e.type === 'proposal.decided' && e.round === w).at(-1)!;
+  assert.deepEqual([decided.by, decided.status, decided.count, decided.left], [AGENT, 'accepted', 1, 0]);
+  await refused(agent('art.accept', { worker: w }), 'missing');
   assert.match(readFileSync(join(dir, 'art/garden-sign.txt'), 'utf8'), /^r = #d5392f/);
   assert.match(readFileSync(join(dir, 'depth/garden-sign.txt'), 'utf8'), /^3 = #5a6988/);
   assert.ok(JSON.parse(readFileSync(join(dir, 'built.json'), 'utf8')).includes('garden-sign'), 'the project\'s own build of its drawings was run');
@@ -152,6 +174,9 @@ test('a worker that fails says so, and a worker can be stopped', async () => {
   const w = (await me('art.ask', { name: 'gnome', message: 'make it fail' })).worker as string;
   await until(() => rounds(w).length === 1, 'the failure');
   assert.equal(rounds(w)[0].state, 'failed');
+  const news = host.events.since(0).filter((e) => e.type === 'message' && e.by === 'engine' && e.kind === 'art' && e.worker === w);
+  assert.match(String(news[0].text), /on gnome, failed: the pencil broke\. That was round 1 of its work\. Judging it is yours, from start to finish: the person is not asked and has no buttons for it\. art\.tell sets it going again/);
+  await refused(agent('art.accept', { worker: w }), 'missing');
   assert.match(String(rounds(w)[0].text), /The worker failed: the pencil broke/);
   assert.equal((await me('proposals.list', { status: 'pending' })).length, 0);
   assert.equal((await me('art.stop', { worker: w })).stopped, false, 'it is not running any more');
@@ -160,4 +185,50 @@ test('a worker that fails says so, and a worker can be stopped', async () => {
   assert.equal((await me('art.workers')).length, 1);
   assert.deepEqual(await agent('art.close', { worker: w }), { closed: true });
   assert.deepEqual(await me('art.workers'), []);
+});
+
+test('tandem exports a project\'s drawings as sheets it can load: looks, animations, depth, tiles, characters', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tandem-export-'));
+  try {
+    const put = (path: string, text: string) => { mkdirSync(join(root, path, '..'), { recursive: true }); writeFileSync(join(root, path), text); };
+    put('art/blob.txt', 'a = #ff0000\nb = #00ff00\n\n@size 2 2\n@recolor red\n@recolor green a=#00ff00\n=== idle\n--- 200\naa\naa\n---\nab\nb.\n=== hop\nbb\n..\n');
+    put('depth/blob.txt', '3 = #5a6988\n\n@size 2 2\n=== idle\n33\n33\n');
+    put('art/wall.txt', 'a = #888888\n\n@size 4 2\n@tiles 2 2\n@tile left 0 0\n@tile right 1 0\n@strip row h left right -\naaaa\naaaa\n');
+    put('art/body.txt', 'a = #0000ff\n\n@size 2 2\naa\naa\n');
+    put('art/hat.txt', 'a = #ff0000\n\n@base body\n@slot head\n@size 2 2\naa\n..\n');
+    put('art/broken.txt', 'this is not a drawing\n@size\n');
+
+    // From the command line, in the project, the way its build is run.
+    const said = execFileSync(fileURLToPath(new URL('../bin/tandem', import.meta.url)), ['export', 'public/sprites', '--runtime=src/pixeldraw.js'], { cwd: root, encoding: 'utf8' });
+    assert.match(said, /left out: broken \(/);
+    assert.match(said, /the runtime that draws a character is src\/pixeldraw\.js\n3 drawings exported to public\/sprites: blob, body, wall\n$/);
+    const index = JSON.parse(readFileSync(join(root, 'public/sprites/sprites.json'), 'utf8'));
+    assert.deepEqual(Object.keys(index), ['blob', 'body', 'wall'], 'an attachment has no sheet of its own');
+    assert.deepEqual(index.blob, { image: 'blob.png', depth: 'blob.depth.png', width: 2, height: 2, looks: { red: { idle: [[0, 0, 200], [3, 0, 150]], hop: [[6, 0, 150]] }, green: { idle: [[0, 3, 200], [3, 3, 150]], hop: [[6, 3, 150]] } } });
+    assert.deepEqual([index.wall.tiles, index.wall.strips], [{ left: [0, 0, 2, 2], right: [2, 0, 2, 2] }, { row: { dir: 'h', start: 'left', middle: 'right', end: null } }]);
+    assert.deepEqual([index.body.character, index.body.attachments], ['body.character.json', ['hat']]);
+    const character = JSON.parse(readFileSync(join(root, 'public/sprites/body.character.json'), 'utf8'));
+    assert.deepEqual([character.format, character.image, Object.keys(character.layers)], ['pixeldraw-character', 'body.character.png', ['body', 'hat']]);
+    assert.match(readFileSync(join(root, 'src/pixeldraw.js'), 'utf8'), /export class Character/);
+    // The sheet is a picture with nothing where nothing is drawn.
+    const png = readFileSync(join(root, 'public/sprites/blob.png'));
+    assert.equal(png.subarray(1, 4).toString(), 'PNG');
+    assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20), png[25]], [8, 5, 6], 'eight by five, with alpha');
+    for (const f of ['blob.depth.png', 'body.png', 'body.character.png', 'wall.png']) assert.ok(existsSync(join(root, 'public/sprites', f)), f);
+
+    // A drawing that is gone takes its files with it; one that is not the project's to load into is refused.
+    rmSync(join(root, 'art/blob.txt'));
+    rmSync(join(root, 'art/hat.txt'));
+    assert.deepEqual(exportArt(root, 'public/sprites').drawings, ['body', 'wall']);
+    for (const f of ['blob.png', 'blob.depth.png', 'body.character.json', 'body.character.png']) assert.ok(!existsSync(join(root, 'public/sprites', f)), `${f} is gone`);
+    assert.ok(existsSync(join(root, 'public/sprites/body.png')));
+    for (const bad of ['../elsewhere', '/tmp/elsewhere', 'art/out', '.tandem/sprites', '.']) assert.throws(() => exportArt(root, bad), /goes in the project|not a place/);
+    assert.throws(() => exportArt(root, 'public/sprites', '../pixeldraw.js'), /goes in the project/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('an agent that codes may run tandem\'s export in its working copy', async () => {
+  const fx = await fixture();
+  try { assert.ok(tools(fx.host).allow.includes('Bash(tandem export:*)')); } finally { fx.cleanup(); }
+  assert.ok(!tools(host).allow.includes('Bash(tandem export:*)'), 'one without a working copy has nowhere to write them');
 });

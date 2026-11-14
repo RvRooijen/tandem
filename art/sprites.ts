@@ -18,18 +18,27 @@ export interface SpriteSheet {
   rgba: Uint8ClampedArray;
   /** The same sheet in the five depth tones, when the drawing has a depth map. */
   depthRgba?: Uint8ClampedArray;
+  /** A tilesheet (@tiles): where each named tile is, [x, y, w, h] in the first frame of the first look. */
+  tiles?: Record<string, [number, number, number, number]>;
+  /** A tilesheet: the pieces that stretch, by the names of their tiles: start, the middle repeated, end, down (v) or right (h). */
+  strips?: Record<string, { dir: string; start: string | null; middle: string | null; end: string | null }>;
 }
 
 type Rgba = number[] | null;
 interface Art {
   width: number; height: number; base?: string;
   anims: { name: string; frames: number[] }[];
-  frames: { pixels: Rgba[][]; duration: number }[];
+  frames: { pixels: Rgba[][]; duration: number; pin?: unknown }[];
+  tiles?: { w: number; h: number; list: { name: string; col: number; row: number; cols: number; rows: number }[]; strips?: { name: string; dir: string; start?: string; middle?: string; end?: string }[] };
 }
 
-export function spriteSheet(name: string, text: string, depthText?: string): SpriteSheet {
+/**
+ * `icon`: an attachment goes into a game with its base, but one that is pinned (a sword, a helmet) has an upright
+ * image of its own, which is a sheet too: the picture of the item.
+ */
+export function spriteSheet(name: string, text: string, depthText?: string, icon = false): SpriteSheet {
   const art = parseArt(text) as Art;
-  if (art.base) throw new Error(`${name} is an attachment of ${art.base}: it goes into a game with its base`);
+  if (art.base && !(icon && art.frames.some((f) => f.pin))) throw new Error(`${name} is an attachment of ${art.base}: it goes into a game with its base`);
   const named = looksOf(art) as string[];
   const looks = named.length ? named : ['default'];
   const { width: w, height: h } = art;
@@ -67,7 +76,14 @@ export function spriteSheet(name: string, text: string, depthText?: string): Spr
             line.forEach((c, px) => { if (c && py < h && px < w) depthRgba!.set([c[0], c[1], c[2], 255], ((y + py) * sheetW + x + px) * 4); }));
         });
   }
-  return { name, width: w, height: h, looks: where, sheetW, sheetH, rgba, depthRgba };
+  let tiles: SpriteSheet['tiles'], strips: SpriteSheet['strips'];
+  if (art.tiles) {
+    const { w: tw, h: th, list } = art.tiles;
+    const [ox, oy] = Object.values(where[looks[0]])[0][0];
+    tiles = Object.fromEntries(list.map((t) => [t.name, [ox + t.col * tw, oy + t.row * th, t.cols * tw, t.rows * th]]));
+    strips = Object.fromEntries((art.tiles.strips ?? []).map((st) => [st.name, { dir: st.dir, start: st.start ?? null, middle: st.middle ?? null, end: st.end ?? null }]));
+  }
+  return { name, width: w, height: h, looks: where, sheetW, sheetH, rgba, depthRgba, ...(tiles && { tiles, strips }) };
 }
 
 /** What a drawing is, without drawing it: its size, its looks, and per animation how many frames. */

@@ -173,26 +173,9 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
           else { rounds.delete(round); waiting.delete(round); unhide(round); }
           break;
         }
-        case 'art.round': {
-          const id = String(ev.worker);
-          if (live) unhide(id);
-          if (ev.state !== 'waiting') {
-            waiting.delete(id);
-            if (live && shut && ev.state === 'failed') said.push({ text: `The worker on ${ev.name} failed.`, error: true, until: Date.now() + 9000 });
-            break;
-          }
-          const sil = ev.phase === 'silhouette';
-          waiting.set(id, {
-            title: sil ? `${ev.name}: a silhouette to approve` : `${ev.name}: a drawing to accept`, text: short(String(ev.text ?? '')), open: ['art', `worker:${id}`],
-            // A silhouette that is approved is not in the project yet: the worker goes on with colour.
-            yes: { label: 'Approve', run: () => void (sil ? app.act('art.approve', { worker: id }) : app.act('proposals.decide', { round: id, accept: true })) },
-            no: { label: 'Decline', run: () => void app.act('art.close', { worker: id }) },
-          });
-          break;
-        }
-        case 'art.status':
-          // It is drawing again (feedback, or the silhouette was approved), or it is gone: nothing to answer now.
-          if (ev.state === 'running' || ev.state === 'closed') waiting.delete(String(ev.worker));
+        case 'art.round':
+          // A worker's round is the agent's to judge: nothing waits for the person. That one failed is said.
+          if (live && shut && ev.state === 'failed') said.push({ text: `The worker on ${ev.name} failed.`, error: true, until: Date.now() + 9000 });
           break;
         default:
           return;

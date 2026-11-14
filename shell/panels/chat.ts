@@ -535,6 +535,8 @@ export function chatPanel(): Panel {
         // Once the agent has been asked to read the project, the offer to do so is no longer one.
         if (ev.by === 'engine' && ev.kind === 'init') { asked = true; for (const w of welcomes) w.querySelector('.t-row')?.remove(); }
         if (ev.by === 'engine' && ev.kind === 'resume') return h('div.sys.engine', {}, icon('engine'), ' Tandem was started again while the agent was at work: it carries on where it was.');
+        // (That a worker's round ended is said by the line of the round itself, right above.)
+        if (ev.by === 'engine' && ev.kind === 'art') return null;
         if (ev.by === 'engine' && ev.kind === 'accepted') return h('div.sys.engine', {}, icon('engine'), ` The agent was told what you accepted${ev.changed ? ', and what you made different in it' : ''}.`);
         if (ev.by === 'engine') return h('div.sys.engine', {}, icon('engine'), ev.kind === 'init' ? ' The agent was asked to read this project and set tandem up for it: its concepts, and how it is run.' : ` to the agent: ${String(ev.text ?? '')}`);
         return h(`div.msg.${ev.by === 'me' ? 'me' : 'agent'}${ev.error ? '.error' : ''}`, {},
@@ -558,7 +560,7 @@ export function chatPanel(): Panel {
         return h('div.sys.tap', { onclick: () => app.open('art', `worker:${ev.worker}`) }, icon('art'), ` ${ev.by === 'me' ? 'you' : 'the agent'} asked a worker ${ev.isNew ? 'for a new drawing,' : 'to change'} ${ev.name}: ${String(ev.message).slice(0, 140)}`);
       case 'art.round':
         return h(`div.sys.tap${ev.state === 'failed' ? '.fail' : ''}`, { onclick: () => app.open('art', `worker:${ev.worker}`) },
-          icon('art'), ev.state === 'failed' ? ` the worker on ${ev.name} failed` : ev.state === 'stopped' ? ` the worker on ${ev.name} was stopped` : ` ${ev.name}: ${ev.phase === 'silhouette' ? 'a silhouette to approve' : 'a drawing to accept'}. Look in Art`);
+          icon('art'), ev.state === 'failed' ? ` the worker on ${ev.name} failed` : ev.state === 'stopped' ? ` the worker on ${ev.name} was stopped` : ` ${ev.name}: ${ev.phase === 'silhouette' ? 'the silhouette is ready' : 'the drawing is ready'}; the agent looks at it`);
       case 'page.take':
         return h('div.sys', {}, icon('page'), ` the agent asked to use the page: ${String(ev.why ?? '')}`);
       case 'page.taken':

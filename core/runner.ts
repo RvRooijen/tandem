@@ -45,7 +45,8 @@ const installs = (project: Host['project']) => existsSync(join(project.root, 'pa
 export function tools(host: Host): { allow: string[]; deny: string[] } {
   const { project } = host;
   // The pictures it takes are outside its working copy; a path from the root is written with two slashes.
-  const allow = ['Bash(tandem run:*)', 'Bash(tandem list:*)', ...LOOKING.map((c) => `Bash(${c}:*)`), 'Read', 'Glob', 'Grep', `Read(/${project.dirs.looks}/**)`, `Read(/${host.dirs.files}/**)`];
+  // (GitHub's command line, in every project: the repository of the project, its issues and pull requests are the agent's to work with.)
+  const allow = ['Bash(tandem run:*)', 'Bash(tandem list:*)', 'Bash(gh:*)', ...LOOKING.map((c) => `Bash(${c}:*)`), 'Read', 'Glob', 'Grep', `Read(/${project.dirs.looks}/**)`, `Read(/${host.dirs.files}/**)`];
   const deny: string[] = [];
   if (host.code) {
     allow.push(...project.editable.flatMap((p) => [`Edit(${p})`, `Write(${p})`]));
@@ -54,6 +55,8 @@ export function tools(host: Host): { allow: string[]; deny: string[] } {
     allow.push(`Edit(${SCRATCH}/**)`, `Write(${SCRATCH}/**)`, ...SCRIPTS.map((c) => `Bash(${c} ${SCRATCH}/:*)`));
     // Exactly this, with nothing after it: a dependency is added in package.json, which is in the change set.
     if (installs(project)) allow.push('Bash(npm install)', 'Bash(npm ci)');
+    // Tandem's own build of the drawings: it writes sprite sheets in a folder of the copy, from the drawings as they are.
+    allow.push('Bash(tandem export:*)');
     allow.push('Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)');
     deny.push(...['.tandem/**', 'art/**', 'depth/**'].flatMap((p) => [`Edit(${p})`, `Write(${p})`]));
   }
@@ -193,6 +196,7 @@ export function createRunner(host: Host) {
       host.game ? 'It offers a way to see inside it: the game.*, world.*, ecs.* and playtest.* commands.' : 'It does not offer a way to see inside it while it runs: there are no game.*, ecs.* or playtest.* commands here. You read its code, run its tests, and the person plays it.',
       project.pageCommand(0) ? 'It has a page the person plays in tandem; they can switch it to your working copy.' : 'It has no page set up in tandem (project.configure: page).',
       host.code ? `In your working copy you may run: ${can || 'nothing but the tandem commands; tandem was not told how its tests are run (project.configure: test, check, run)'}` : '',
+      `GitHub's command line, \`gh\`, is yours to run, as the person is signed in to it${host.code ? `. You stand in your working copy, which is on a branch of its own: what is about the project's repository names the project's folder (\`gh repo create <name> --private --source=${project.root} --remote=origin --push\`)` : ''}. What cannot be undone or is seen by others (deleting a repository, making one public, closing or merging) you do only when the person asked for exactly that.`,
       host.code ? `And a script of your own from your scratchpad: ${SCRIPTS.map((c) => `\`${c} ${SCRATCH}/<file>\``).join(', ')}.` : '',
       `From the command line you can look around with ${LOOKING.join(', ')}, also strung together; anything else there is refused, so do not try it.`,
     ].filter(Boolean).join(' ');

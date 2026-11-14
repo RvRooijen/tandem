@@ -123,6 +123,29 @@ test('the person\'s own unfinished work in a file is never overwritten, reset or
   code.reject();
 });
 
+test('a file that is new in the copy and already in the project, uncommitted but the very same, does not stand in the way', () => {
+  code.sync();
+  // Installing wrote the same lockfile in both.
+  put('lock.json', '{ "locked": 1 }\n', code.work);
+  put('lock.json', '{ "locked": 1 }\n');
+  assert.deepEqual(code.accept('A lockfile').map((f) => [f.path, f.status]), [['lock.json', 'new']]);
+  assert.equal(git('status', '--porcelain'), '', 'it is the project\'s now');
+  assert.equal(read('lock.json'), '{ "locked": 1 }\n');
+  // One that says something else is the person's, and stays as it is.
+  put('notes.md', 'the copy\'s\n', code.work);
+  put('notes.md', 'mine\n');
+  assert.throws(() => code.accept('Notes'), /you have changes of your own in notes\.md that are not committed/);
+  assert.equal(read('notes.md'), 'mine\n');
+  // And when the copy does not go in because of that one, the same one is put back.
+  put('same.md', 'same\n', code.work);
+  put('same.md', 'same\n');
+  assert.throws(() => code.accept('Both'), /changes of your own in notes\.md/);
+  assert.equal(read('same.md'), 'same\n');
+  assert.match(git('status', '--porcelain'), /\?\? same\.md/);
+  for (const f of ['notes.md', 'same.md']) rmSync(join(root, f));
+  code.reject();
+});
+
 test('files of the engine that are being worked on in the project do not stop a change to the game going in', () => {
   put('core/engine.ts', 'export const engine = "being changed by hand";\n');
   code.sync();

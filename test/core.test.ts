@@ -9,7 +9,8 @@ import { tmpdir } from 'node:os';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
-import { CommandError } from '../core/commands.ts';
+import { CommandError, createRegistry } from '../core/commands.ts';
+import { createHost } from '../core/host.ts';
 import { loadProject } from '../core/project.ts';
 import { changeOf, countOf, didWith, outOf, runnable } from '../core/runner.ts';
 import { AGENT, fixture } from './helpers.ts';
@@ -551,4 +552,39 @@ test('a proposed concept is the person\'s to change before deciding, they add th
   await me('proposals.decide', { round: 'r82', accept: false });
   assert.equal(told().length, 2);
   for (const id of ['ferns', 'moss', 'ivy']) await me('concepts.remove', { id });
+});
+
+test('what must not happen in the middle of a command waits until none is running', async () => {
+  const registry = createRegistry();
+  let finish!: () => void;
+  registry.add({ name: 'slow.thing', kind: 'write', about: 'Something that takes a while, like an install.', run: () => new Promise<void>((done) => { finish = done; }) });
+  let idle = false;
+  await registry.idle().then(() => { idle = true; });
+  assert.ok(idle, 'with nothing running it is at once');
+  idle = false;
+  const one = registry.run('slow.thing', {}, { by: 'me' });
+  void registry.idle().then(() => { idle = true; });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual([idle, registry.running()], [false, 1]);
+  finish();
+  await one;
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual([idle, registry.running()], [true, 0]);
+});
+
+test('a decision the core was cut off in the middle of is said when it starts again', async () => {
+  const fx = await fixture({ code: false });
+  try {
+    await fx.host.run('concepts.create', { name: 'Willows' }, AGENT, 'r1');
+    await fx.host.run('concepts.create', { name: 'Alders' }, AGENT, 'r1');
+    await fx.host.run('concepts.create', { name: 'Birches' }, AGENT, 'r2');
+    await fx.host.run('proposals.decide', { round: 'r2', accept: false }, 'me');
+    // Marked, and then nothing: the core went down before it said so.
+    const [willows] = fx.host.proposals.decide('r1', 'accepted', [fx.host.proposals.list({ round: 'r1' })[0].id]);
+    const before = fx.host.events.last();
+    const again = await createHost({ project: fx.dir, code: null });
+    const said = again.events.since(before);
+    assert.deepEqual(said.map((e) => [e.type, e.by, e.round, e.status, e.ids, e.left]), [['proposal.decided', 'engine', 'r1', 'accepted', [willows.id], 1]], 'only what the log had not said');
+    assert.equal((await createHost({ project: fx.dir, code: null })).events.last(), again.events.last(), 'and it is said once');
+  } finally { fx.cleanup(); }
 });

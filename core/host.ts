@@ -90,6 +90,20 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   const registry = createRegistry();
   const events = createEventLog(join(dataDir, 'events.jsonl'));
   const proposals = createProposals(join(dataDir, 'proposals'));
+  // The core can be cut off in the middle of a decision (it crashed, the machine went down): the proposal is
+  // marked then, and the log never said so. It is said now, or its card would wait for ever.
+  {
+    const waits = new Map<string, string>();
+    for (const e of events.since(0)) {
+      if (e.type === 'proposal') waits.set(String(e.id), String(e.round));
+      else if (e.type === 'proposal.decided') for (const [id, round] of waits) if (Array.isArray(e.ids) ? e.ids.includes(id) : round === String(e.round)) waits.delete(id);
+    }
+    const cut = proposals.list().filter((p) => p.status !== 'pending' && waits.get(p.id) === p.round);
+    for (const round of new Set(cut.map((p) => p.round))) for (const status of ['accepted', 'rejected'] as const) {
+      const set = cut.filter((p) => p.round === round && p.status === status);
+      if (set.length) events.add({ type: 'proposal.decided', by: 'engine', round, status, count: set.length, ids: set.map((p) => p.id), left: proposals.list({ status: 'pending', round }).length, paths: set.map((p) => `${p.kind}:${p.path}`) });
+    }
+  }
   const concepts = createConcepts(project.dirs.concepts);
   const locks = createLocks(project.locksFile);
   const thoughts = createThoughts(join(project.dirs.tandem, 'thoughts.json'));
@@ -139,10 +153,25 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       throw new CommandError('permission', 'the world being played is only mirrored here and cannot be changed from outside. Make a sandbox with world.fork and name it as room');
   }
 
-  /** Start the core again, when something looks after it that will (core/start.ts): its game code is from when it started. */
+  /**
+   * Start the core again, when something looks after it that will (core/start.ts): its game code is from when it
+   * started. Never in the middle of a command: an accept that is still installing what the project needs is
+   * finished first, or it would be cut off half done (the commit made, nothing said about it, nothing installed).
+   */
+  let again: number | undefined;
   function restart(code = 75) {
     if (!process.env.TANDEM_SUPERVISED) return;
-    setTimeout(() => { for (const stop of onStop) stop(); process.exit(code); }, 600).unref?.();
+    const first = again === undefined;
+    // Asked for twice, the one that starts the project's page again too is the one that counts.
+    if (again !== SETUP) again = code;
+    if (!first) return;
+    // (A moment after the last command, so that whoever asked still gets its answer; a command that came in that moment is waited for too.)
+    const go = () => void registry.idle().then(() => setTimeout(() => {
+      if (registry.running()) return go();
+      for (const stop of onStop) stop();
+      process.exit(again);
+    }, 600));
+    go();
   }
 
   /**

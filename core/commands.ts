@@ -60,12 +60,18 @@ export interface Registry {
   /** Every command, for the list the UI is built from and the agent is told about. */
   list(): { name: string; about: string; kind: Kind; input: Record<string, string>; agent: string }[];
   run(name: string, input: Record<string, unknown> | undefined, ctx: Ctx): Promise<unknown>;
+  /** Resolves when no command is running: at once when none is. For what must not happen in the middle of one. */
+  idle(): Promise<void>;
+  /** How many commands are running now. */
+  running(): number;
   /** Called after every run, for the event log. */
   onRun?: (name: string, input: Record<string, unknown>, ctx: Ctx, ok: boolean) => void;
 }
 
 export function createRegistry(): Registry {
   const defs = new Map<string, CommandDef>();
+  let running = 0;
+  const waiting: (() => void)[] = [];
   const reg: Registry = {
     add(...list) {
       for (const def of list) {
@@ -76,6 +82,8 @@ export function createRegistry(): Registry {
       }
     },
     get: (name) => defs.get(name),
+    running: () => running,
+    idle: () => (running ? new Promise((done) => { waiting.push(done); }) : Promise.resolve()),
     list: () => [...defs.values()].map((d) => ({
       name: d.name, about: d.about, kind: d.kind, input: d.input ?? {},
       agent: d.kind !== 'write' ? 'yes' : d.agent === 'free' ? 'yes' : d.agent === 'proposes' ? 'as a proposal' : 'no',
@@ -87,11 +95,13 @@ export function createRegistry(): Registry {
       if (def.kind === 'write' && isAgent(ctx.by) && !def.agent)
         throw new CommandError('permission', `${name} is the person's to do, not the agent's`);
       let ok = false;
+      running++;
       try {
         const out = await def.run(ctx, input);
         ok = true;
         return out;
       } finally {
+        if (!--running) for (const done of waiting.splice(0)) done();
         reg.onRun?.(name, input, ctx, ok);
       }
     },

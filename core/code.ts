@@ -5,7 +5,7 @@
 // set, shown to the person as a proposal: they play the copy, and accepting it
 // merges it into the project. Rejecting throws the copy's changes away.
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, symlinkSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, isAbsolute, join } from 'node:path';
 
 export interface FileChange { path: string; added: number; removed: number; status: 'new' | 'changed' | 'gone' }
@@ -130,11 +130,20 @@ export function createCode(o: CodeOptions) {
     if (conflicts.length) throw new Error(`the working copy does not go into the project cleanly: the project changed ${conflicts.join(', ')} too. The agent has to bring its copy up to date first`);
     const what = changes();
     if (!what.length) return [];
+    // A file that is new in the copy and is in the project already, not committed but the very same (a lockfile
+    // that installing wrote in both), is not work of the person's that stands in the way: it makes way for the
+    // copy's, which is it. Put back if the copy does not go in after all.
+    const twice = what.filter((f) => f.status === 'new' && existsSync(join(o.root, f.path)) && existsSync(join(work, f.path))
+      && tryGit(o.root, 'status', '--porcelain', '--', f.path)?.startsWith('??')
+      && readFileSync(join(o.root, f.path)).equals(readFileSync(join(work, f.path))))
+      .map((f) => ({ file: join(o.root, f.path), bytes: readFileSync(join(o.root, f.path)) }));
+    for (const t of twice) rmSync(t.file);
     // Git refuses, and touches nothing, when the person has work of their own in a file the copy changed. Nothing
     // is forced or reset here: what the person has in their project is theirs.
     try {
       git(o.root, 'merge', '-q', '--squash', branch);
     } catch (e) {
+      for (const t of twice) writeFileSync(t.file, t.bytes);
       const said = e instanceof Error ? String((e as { stderr?: string }).stderr || e.message) : String(e);
       const theirs = [...said.matchAll(/^\t(.+)$/gm)].map((m) => m[1]);
       throw new Error(theirs.length

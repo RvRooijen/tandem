@@ -5,7 +5,8 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tools } from '../core/runner.ts';
@@ -41,7 +42,7 @@ test('asked to code, the agent works in its copy, and what the copy changed is a
   await idle();
   const said = String(answers()[0].text);
   assert.match(said, /Seasons added\. In the copy: true\. May edit: true;/, 'it stood in its working copy and could change the project\'s files');
-  assert.match(said, /may run: Bash\(gh:\*\) Bash\(ls:\*\) Bash\(grep:\*\) Bash\(cat:\*\) Bash\(head:\*\) Bash\(tail:\*\) Bash\(wc:\*\) Bash\(node --test:\*\) Bash\(node check\.mjs:\*\) Bash\(node build-art\.mjs:\*\)\./, 'it may use gh, look around, and run what the project says: its tests, its check, its build');
+  assert.match(said, /may run: Bash\(ls:\*\) Bash\(grep:\*\) Bash\(cat:\*\) Bash\(head:\*\) Bash\(tail:\*\) Bash\(wc:\*\) Bash\(node --test:\*\) Bash\(node check\.mjs:\*\) Bash\(node build-art\.mjs:\*\)\./, 'it may look around, and run what the project says: its tests, its check, its build');
   assert.match(said, /Kept off: Edit\(\.tandem\/\*\*\) Edit\(art\/\*\*\) Edit\(depth\/\*\*\)\. Note: none\./, 'but not tandem\'s own folder or the drawings');
   assert.ok(existsSync(join(copy, 'src/seasons.js')));
   assert.ok(!existsSync(join(dir, 'src/seasons.js')), 'the project does not have it');
@@ -191,10 +192,52 @@ test('a change set says which concepts it is for: on the card, in the commit, an
 
 test('the agent may run a script of its own from its scratchpad, and nothing typed straight into the command line', () => {
   const { allow, deny } = tools(host);
-  assert.ok(allow.includes('Bash(gh:*)'), 'GitHub\'s command line is the agent\'s in every project');
+  assert.ok(!allow.some((r) => /^Bash\((gh|git push)/.test(r)), 'pushing and the remote are not the agent\'s: tandem pushes, to where the person said');
   for (const rule of ['Write(.tandem-scratch/**)', 'Edit(.tandem-scratch/**)', 'Bash(node .tandem-scratch/:*)', 'Bash(node --test .tandem-scratch/:*)', 'Bash(python3 .tandem-scratch/:*)'])
     assert.ok(allow.includes(rule), rule);
   // An interpreter by itself is not allowed: only with a file from the scratchpad after it.
   assert.ok(!allow.some((r) => /^Bash\((python3?|node|sh|bash)(:\*)?\)$/.test(r)));
   assert.ok(deny.includes('Write(.tandem/**)'), 'tandem\'s own folder stays out of reach');
+});
+
+test('the person says where the project is pushed, and from then on every accept is', async () => {
+  const bare = mkdtempSync(join(tmpdir(), 'tandem-remote-'));
+  try {
+    execFileSync('git', ['init', '-q', '--bare', '-b', 'main', bare]);
+    const there = () => { try { return execFileSync('git', ['rev-parse', 'main'], { cwd: bare, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return ''; } };
+    assert.deepEqual(await me('project.remote'), { git: true, url: null });
+    await assert.rejects(host.run('project.setRemote', { url: bare }, 'agent:main', 'r1'), /the person's to do/);
+    await assert.rejects(me('project.setRemote', { url: '--upload-pack=x' }), /not the address of a repository/);
+
+    // Set, it is the project's origin, and what is there goes at once.
+    const before = host.events.last();
+    assert.deepEqual(await me('project.setRemote', { url: bare }), { url: bare, pushed: true });
+    assert.deepEqual(await me('project.remote'), { git: true, url: bare, remote: 'origin', branch: 'main' });
+    assert.equal(git('remote', 'get-url', 'origin'), bare);
+    assert.equal(there(), git('rev-parse', 'HEAD'));
+    assert.deepEqual(host.events.since(before).map((e) => [e.type, e.url ?? e.ok]), [['remote.changed', bare], ['project.pushed', true]]);
+
+    // An accepted concept is committed by the engine and pushed, without anybody asking.
+    await host.run('concepts.create', { name: 'Pushed along', text: 'It goes to the remote.' }, 'agent:main', 'r95');
+    await me('proposals.decide', { round: 'r95', accept: true });
+    assert.equal(git('status', '--porcelain'), '', 'what the engine wrote for it is committed');
+    assert.equal(there(), git('rev-parse', 'HEAD'), 'and the remote has it');
+    const pushed = host.events.since(before).filter((e) => e.type === 'project.pushed').at(-1)!;
+    assert.deepEqual([pushed.ok, pushed.remote, pushed.branch], [true, 'origin', 'main']);
+    // Refusing something pushes nothing.
+    const n = host.events.since(0).filter((e) => e.type === 'project.pushed').length;
+    await host.run('concepts.create', { name: 'Not this one' }, 'agent:main', 'r96');
+    await me('proposals.decide', { round: 'r96', accept: false });
+    assert.equal(host.events.since(0).filter((e) => e.type === 'project.pushed').length, n);
+
+    // A remote that is not there: the accept stands, and it is said that the push did not go.
+    await me('project.setRemote', { url: join(bare, 'nowhere') });
+    assert.equal(host.events.since(0).at(-1)!.ok, false);
+    await idle();
+    // Emptied, the project has no remote any more.
+    assert.deepEqual(await me('project.setRemote', { url: '' }), { url: null });
+    assert.deepEqual(await me('project.remote'), { git: true, url: null });
+    await me('concepts.remove', { id: 'pushed-along' });
+    await idle();
+  } finally { rmSync(bare, { recursive: true, force: true }); }
 });

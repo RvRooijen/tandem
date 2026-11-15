@@ -29,6 +29,8 @@ export interface ArtOptions {
   newLookFile(): { file: string; url: string };
   /** Drawings were taken into the project: somebody has to bring them into what the project runs on. Unset: they are built straight in. */
   accepted?(drawings: { name: string; w: number; h: number; looks: string[]; anims: Record<string, number>; isNew: boolean; depth: boolean }[]): void;
+  /** A worker's drawings were taken into the project by art.accept: whatever follows every accept (committing, pushing). */
+  taken?(by: string): Promise<void>;
 }
 
 export function createArt(o: ArtOptions) {
@@ -260,6 +262,7 @@ export function createArt(o: ArtOptions) {
         const set = o.proposals.decide(w.id, 'accepted');
         workers.close(w.id);
         o.events.add({ type: 'proposal.decided', by: c.by, round: w.id, status: 'accepted', count: set.length, ids: set.map((p) => p.id), left: 0, paths: set.map((p) => `${p.kind}:${p.path}`) });
+        await o.taken?.(c.by);
         return {
           accepted: pending.map((p) => p.path),
           says: o.accepted ? 'in the project\'s art files now. Tandem tells you in a moment, when they are in your working copy too: bring them into the project then, not in this turn' : 'in the project now, and built into it',

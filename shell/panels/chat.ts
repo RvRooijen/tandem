@@ -569,6 +569,10 @@ export function chatPanel(): Panel {
         return h('div.sys', {}, icon('page'), ev.by === 'me' ? ' you took the page back' : ` the page is yours again${ev.why ? `: ${ev.why}` : ''}`);
       case 'setup.changed':
         return h('div.sys', {}, icon('yes'), ` how tandem runs the project was changed (${(ev.fields as string[]).join(', ')})${ev.restarting ? '. Its page starts again with it' : ''}`);
+      case 'remote.changed':
+        return h('div.sys', {}, icon('yes'), ev.url ? ` the project is pushed to ${ev.url} from now on` : ' the project has no remote any more');
+      case 'project.pushed':
+        return h(`div.sys${ev.ok ? '' : '.fail'}`, {}, icon(ev.ok ? 'yes' : 'close'), ev.ok ? ` pushed to ${ev.remote} (${ev.branch})` : ` what was accepted is committed, but could not be pushed${ev.remote ? ` to ${ev.remote}` : ''}: ${String(ev.says ?? '')}`);
       case 'code.changed':
         return h('div.sys', {}, icon('yes'), ` the working copy is the project now: ${(ev.files as string[]).length} ${(ev.files as string[]).length === 1 ? 'file' : 'files'} changed${ev.installed === true ? ', and what it depends on was installed' : ''}. The core starts again with it${ev.restarting ? ', and the project\'s page too' : ''}${typeof ev.installed === 'string' ? `. What it depends on could not be installed (${ev.installed}): run npm install in the project` : ''}`);
       case 'art.changed':

@@ -216,3 +216,38 @@ test('a project that ignores tandem\'s folder keeps tandem out of its history', 
     rmSync(mine.work, { recursive: true, force: true });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('after an accept the project\'s branch goes to its remote, when it has one, and a push that does not go says why', async () => {
+  assert.equal(await code.push(), undefined, 'without a remote there is nowhere to push to');
+  const bare = mkdtempSync(join(tmpdir(), 'tandem-remote-'));
+  try {
+    execFileSync('git', ['init', '-q', '--bare', '-b', 'main', bare]);
+    git('remote', 'add', 'origin', bare);
+    assert.deepEqual(await code.push(), { ok: true, remote: 'origin', branch: 'main', says: '' });
+    const there = () => execFileSync('git', ['rev-parse', 'main'], { cwd: bare, encoding: 'utf8' }).trim();
+    assert.equal(there(), git('rev-parse', 'HEAD'));
+    assert.equal(await code.push(), undefined, 'the remote has it all: nothing to push');
+
+    // An accepted change set is one commit more, and that goes too.
+    code.sync();
+    put('games/g/src/pushed.ts', 'export const pushed = true;\n', code.work);
+    code.accept('Pushed');
+    assert.equal((await code.push())?.ok, true);
+    assert.equal(there(), git('rev-parse', 'HEAD'));
+
+    // The remote moved on without the project: nothing is forced, and it is said.
+    const other = mkdtempSync(join(tmpdir(), 'tandem-other-'));
+    execFileSync('git', ['clone', '-q', bare, other]);
+    writeFileSync(join(other, 'elsewhere.txt'), 'x\n');
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'add', '-A'], { cwd: other });
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'elsewhere'], { cwd: other });
+    execFileSync('git', ['push', '-q'], { cwd: other });
+    rmSync(other, { recursive: true, force: true });
+    put('.tandem/concepts/lilac.md', 'Lilac.\n');
+    code.commitProject('A concept');
+    const refused = await code.push();
+    assert.deepEqual([refused?.ok, refused?.remote], [false, 'origin']);
+    assert.match(refused!.says, /rejected|fetch first|failed to push/);
+    assert.notEqual(there(), git('rev-parse', 'HEAD'), 'the remote is as it was');
+  } finally { git('remote', 'remove', 'origin'); rmSync(bare, { recursive: true, force: true }); }
+});

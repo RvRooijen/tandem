@@ -307,6 +307,22 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     });
   }
 
+  /**
+   * Something was accepted: what the engine wrote in the project for it (a concept, a drawing, how it is run) is
+   * committed, and the project's branch goes to its remote when it has one. How a push went is said; one that
+   * does not go undoes nothing.
+   */
+  async function publish(by: By) {
+    if (!code) return;
+    try {
+      code.commitProject('What was changed and accepted in tandem');
+      const pushed = await code.push();
+      if (pushed) events.add({ type: 'project.pushed', by, ok: pushed.ok, remote: pushed.remote, branch: pushed.branch, ...(pushed.says && { says: pushed.says }) });
+    } catch (e) {
+      events.add({ type: 'project.pushed', by, ok: false, remote: '', branch: '', says: (e instanceof Error ? e.message : String(e)).split('\n')[0].slice(0, 300) });
+    }
+  }
+
   /** How the project is run, as tandem keeps it: in its own folder in the project, not among the project's files. */
   const SETUP_FIELDS = ['name', 'page', 'test', 'check', 'run', 'adapter', 'art', 'edit'] as const;
   function writeSetup(after: RecordValue) {
@@ -589,6 +605,28 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       },
     },
     {
+      name: 'project.remote', kind: 'read',
+      about: 'Where the project is pushed after every accept: the address of its remote and the branch that goes there, or no address when it has none. Setting it is the person\'s, under Projects.',
+      run: () => {
+        const to = code?.remote();
+        return { git: !!code, url: to?.url ?? null, ...(to && { remote: to.name, branch: to.branch }) };
+      },
+    },
+    {
+      name: 'project.setRemote', kind: 'write',
+      about: 'Say where the project is pushed: url is the address of a repository that is there already (made empty on GitHub, say). It is the project\'s origin from then on, what is there now is pushed at once, and after every accept what was accepted. An empty url takes the remote away. Only the person does this.',
+      input: { url: 'string' },
+      async run(c, i) {
+        if (!code) throw new CommandError('unsupported', 'the project is not in a git repository, so there is nothing to push');
+        try { code.setRemote(i.url); } catch (e) { throw new CommandError('input', e instanceof Error ? e.message.split('\n')[0] : String(e)); }
+        events.add({ type: 'remote.changed', by: c.by, url: i.url.trim() });
+        if (!i.url.trim()) return { url: null };
+        await publish(c.by);
+        const said = events.since(0).at(-1)!;
+        return { url: i.url.trim(), ...(said.type === 'project.pushed' && { pushed: !!said.ok, ...(typeof said.says === 'string' && { says: said.says }) }) };
+      },
+    },
+    {
       name: 'project.setup', kind: 'read',
       about: 'How tandem runs this project, as it is written down now: the fields of its tandem.json, the script that starts its page if there is one, and where they are kept.',
       run: () => ({ config: project.config, script: existsSync(project.pageScript) ? readFileSync(project.pageScript, 'utf8') : null, kept: { config: project.configFile, script: project.pageScript } }),
@@ -728,6 +766,8 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         // The agent hears what became of its concepts, and what the person made different in them.
         const made = set.filter((p) => p.kind === 'concept');
         if (i.accept && made.length) tellAccepted(i.round, made, left);
+        // (Before the core starts again, if it does: a restart waits for this command to be done.)
+        if (i.accept) await publish(c.by);
         return { decided: set.length, left };
       },
     },
@@ -1185,6 +1225,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   });
   const art = createArt({
     project, events, proposals, locks, newLookFile,
+    taken: (by) => publish(by),
     // With an agent that codes, a drawing taken into the project is news for it: it is the one who brings it in.
     accepted: code && ((drawings) => {
       const what = drawings.map((d) => `${d.name} (${d.isNew ? 'new' : 'changed'}; ${d.w}×${d.h}; looks: ${d.looks.join(', ')}; animations: ${Object.entries(d.anims).map(([a, n]) => `${a} ×${n}`).join(', ')}${d.depth ? '; with a depth map' : ''})`).join('; ');

@@ -4,7 +4,7 @@
 // build and run the tests. What its copy differs from the project is one change
 // set, shown to the person as a proposal: they play the copy, and accepting it
 // merges it into the project. Rejecting throws the copy's changes away.
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, isAbsolute, join } from 'node:path';
 
@@ -164,6 +164,49 @@ export function createCode(o: CodeOptions) {
     })).filter((c) => c.concepts.length);
   }
 
+  /** Where the project's branch is pushed: the remote its branch follows, else origin, else the only one there is. */
+  function remoteOf(): { name: string; url: string; branch: string } | undefined {
+    const branch = tryGit(o.root, 'rev-parse', '--abbrev-ref', 'HEAD');
+    const remotes = (tryGit(o.root, 'remote') ?? '').split('\n').filter(Boolean);
+    if (!branch || branch === 'HEAD' || !remotes.length) return undefined;
+    const set = tryGit(o.root, 'config', `branch.${branch}.remote`);
+    const name = set && remotes.includes(set) ? set : remotes.includes('origin') ? 'origin' : remotes[0];
+    return { name, url: tryGit(o.root, 'remote', 'get-url', name) ?? '', branch };
+  }
+
+  /** Say where the project is pushed: the address of a repository that is there already. It is the project's origin from then on; empty takes it away. */
+  function setRemote(url: string) {
+    const to = url.trim();
+    if (to && (/\s/.test(to) || to.startsWith('-'))) throw new Error('that is not the address of a repository');
+    const has = (tryGit(o.root, 'remote') ?? '').split('\n').includes('origin');
+    if (has && tryGit(o.root, 'remote', 'get-url', 'origin') === to) return;
+    // Another address is another repository: what was known of the old one (what it had of the branch) goes with it.
+    if (has) git(o.root, 'remote', 'remove', 'origin');
+    if (!to) return;
+    git(o.root, 'remote', 'add', 'origin', to);
+    // (From now on it is where the branch goes, whatever it followed before.)
+    const branch = tryGit(o.root, 'rev-parse', '--abbrev-ref', 'HEAD');
+    if (branch && branch !== 'HEAD') tryGit(o.root, 'config', `branch.${branch}.remote`, 'origin');
+  }
+
+  /**
+   * Push the project's branch to its remote, when it has one and the remote does not have what the branch has.
+   * Never forced, and never asking for a password: when it does not go, it says why and the commits stay where
+   * they are. Undefined when there was nothing to push or nowhere to push to.
+   */
+  function push(): Promise<{ ok: boolean; remote: string; branch: string; says: string } | undefined> {
+    const to = remoteOf();
+    if (!to) return Promise.resolve(undefined);
+    const { name: remote, branch } = to;
+    if (tryGit(o.root, 'rev-parse', '-q', '--verify', `refs/remotes/${remote}/${branch}`) === tryGit(o.root, 'rev-parse', 'HEAD')) return Promise.resolve(undefined);
+    return new Promise((done) => {
+      execFile('git', ['push', '-q', '-u', remote, branch], { cwd: o.root, timeout: 90_000, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } }, (err, _out, said) => {
+        const why = String(said || err?.message || '').trim().split('\n').filter((l) => !/^(hint|To |remote: *$)/.test(l)).slice(0, 3).join(' ').slice(0, 300);
+        done({ ok: !err, remote, branch, says: err ? why || 'git push failed' : '' });
+      });
+    });
+  }
+
   /** Throw the working copy's changes away: it is the project again. */
   function reject() {
     if (!existsSync(join(work, '.git'))) return;
@@ -172,7 +215,7 @@ export function createCode(o: CodeOptions) {
     deps();
   }
 
-  return { work, usable, sync, changes, diff, accept, reject, commitProject, history };
+  return { work, usable, sync, changes, diff, accept, reject, commitProject, history, push, remote: remoteOf, setRemote };
 }
 
 export type Code = ReturnType<typeof createCode>;

@@ -1272,6 +1272,32 @@ test('with the tools shut, tandem speaks in a bubble: what it says goes again, w
   host.events.add({ type: 'chat.new', by: 'me' });
 });
 
+test('projects: where the open project is pushed is set under its settings', async () => {
+  // (This fixture is not looked after as a repository; what the core would say of one that is, is said for it.)
+  canned.set('project.remote', { git: true, url: null });
+  click($('button[aria-label="Open another project"]'));
+  await until(() => $('.adder.remote input'), 'the setting');
+  assert.match($('#t-body').textContent!, /Settings.*A remote for this project: make an empty repository/);
+  const field = () => $('.adder.remote input') as HTMLInputElement;
+  assert.equal(field().value, '');
+  type(field(), 'https://example.com/me/fixture.git');
+  canned.set('project.setRemote', { url: 'https://example.com/me/fixture.git', pushed: true });
+  canned.set('project.remote', { git: true, url: 'https://example.com/me/fixture.git', remote: 'origin', branch: 'main' });
+  const before = ran.length;
+  click(button('Save', $('.adder.remote')));
+  await until(() => /It is set, and the project is pushed there/.test($('#t-toast').textContent!), 'it to say so');
+  assert.ok(ran.slice(before).includes('project.setRemote'));
+  await until(() => field()?.value === 'https://example.com/me/fixture.git' && /main is pushed there after every accept/.test($('#t-body').textContent!), 'the setting as it is now');
+  // That a push went, or did not, is a line in the conversation.
+  host.events.add({ type: 'project.pushed', by: 'me', ok: true, remote: 'origin', branch: 'main' });
+  host.events.add({ type: 'project.pushed', by: 'me', ok: false, remote: 'origin', branch: 'main', says: 'rejected (fetch first)' });
+  tab('Chat');
+  await until(() => all('.chat .sys.fail').some((x) => /committed, but could not be pushed to origin: rejected \(fetch first\)/.test(x.textContent!)), 'the push that did not go');
+  assert.ok(all('.chat .sys').some((x) => /pushed to origin \(main\)/.test(x.textContent!)));
+  canned.delete('project.remote');
+  canned.delete('project.setRemote');
+});
+
 test('projects: the folders that could be one are listed, and another is chosen from the page', async () => {
   // Next to the project there is another one, and a folder that is not a repository yet.
   const beside = join(dir, '..');

@@ -90,7 +90,25 @@ export function projectsPanel(): Panel {
       void reopen(ok.opening, doing);
     };
     fresh.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') void create(); });
+    // The open project: where it is pushed after every accept. The address of a repository that is there already.
+    const to = got.open ? await app.act<{ git: boolean; url: string | null; branch?: string }>('project.remote') : undefined;
+    if (!body) return;
+    const remote = h<'input'>('input', { placeholder: 'https://github.com/you/project.git', 'aria-label': 'Where the project is pushed', value: to?.url ?? '' });
+    const saveRemote = async () => {
+      const set = await app.act<{ url: string | null; pushed?: boolean; says?: string }>('project.setRemote', { url: remote.value.trim() });
+      if (!set) return;
+      app.toast(!set.url ? 'It has no remote any more.' : set.pushed === false ? `It is set, but pushing to it did not work: ${set.says ?? ''}` : set.pushed ? 'It is set, and the project is pushed there.' : 'It is set; there was nothing new to push.');
+      void paint();
+    };
+    remote.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') void saveRemote(); });
     clear(body,
+      to?.git && [
+        h('h3', {}, 'Settings'),
+        h('div.adder.remote', {}, remote, h<'button'>('button.primary', { onclick: () => void saveRemote() }, 'Save')),
+        h('p.t-hint', {}, to.url
+          ? `The remote of this project: ${to.branch ?? 'its branch'} is pushed there after every accept. Empty it to stop that.`
+          : 'A remote for this project: make an empty repository (on GitHub: New repository), and give its address. After every accept the project is pushed there.'),
+      ],
       h('h3', {}, 'A new project'),
       fresh, whereEl,
       h('div.t-row', {}, createBtn),

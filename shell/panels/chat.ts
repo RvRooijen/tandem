@@ -10,15 +10,17 @@ import { icon } from '../icons.ts';
 import { createTweaks, type Tweak, type Tweaks } from '../tweaks.ts';
 
 interface Change {
-  /** Who proposed it: the agent, or the person, who added a concept of their own to the round. */
+  /** Who proposed it: the agent, or the person, who added a concept of their own. */
   by?: string;
+  /** The round it was proposed in: what tells which pieces a decision from before there was one set was about. */
+  round?: string;
   id: string; kind: string; path: string; before?: Record<string, unknown>; after?: Record<string, unknown>; note: string;
   touches?: { id: string; name: string; stage: string }[];
   /** A drawing: what it looks like. */
   /** Code: the files the working copy changes. */
   files?: { path: string; added: number; removed: number; status: string }[];
   phase?: string; isNew?: boolean; pictures?: { before?: string; after?: string; looks?: { look: string; before?: string; after?: string }[] };
-  /** Decided on its own or with the rest of its round; not set while it waits. */
+  /** Decided with the rest, or withdrawn while the rest waits (a change set the agent undid); not set while it waits. */
   status?: 'accepted' | 'rejected';
   /** What the agent asks the person about it: each answered in a field on the card. */
   questions?: string[];
@@ -39,9 +41,12 @@ const FIELDS = ['name', 'stage', 'text', 'links', 'realised'] as const;
 /** Of a concept, or of what is proposed for one: the fields a concept has, where they are given. */
 const fieldsOf = (v: Record<string, unknown> | undefined) => Object.fromEntries(FIELDS.filter((k) => v?.[k] !== undefined).map((k) => [k, v![k]])) as Partial<ConceptDraft>;
 const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
-/** A round is 'decided' when its pieces went different ways: some taken, some refused. */
+/**
+ * What waits for the person is one set, on one card: concepts, how the project is run, the change to its code. It is
+ * decided as one. 'decided' is for a card from before that, whose pieces went different ways.
+ */
 interface Round {
-  round: string; by: string; changes: Change[]; status: 'pending' | 'accepted' | 'rejected' | 'decided'; el?: HTMLElement;
+  by: string; changes: Change[]; status: 'pending' | 'accepted' | 'rejected' | 'decided'; el?: HTMLElement;
   /** The files of a code change that were tapped open, with what changed in each. */
   read?: Map<string, string>;
   /** A code change: where its files are listed, and the values to turn under them. They stay when the card is drawn again. */
@@ -72,7 +77,10 @@ export function refChip(app: App, ref: string, onRemove?: () => void): HTMLEleme
 
 export function chatPanel(): Panel {
   let app!: App;
-  const rounds = new Map<string, Round>();
+  /** Every set there was, the last of them the one that waits, if one does. */
+  const sets: Round[] = [];
+  /** A concept of the person's own that they are adding to what waits: where it is kept while it is typed. */
+  const ADDING = 'new';
   /** Questions the agent asked, by what they came with (a proposal, or a card of their own): what was answered, and what is being typed. */
   const answered = new Map<string, { questions: string[]; answers: string[] }>();
   /** (By the question itself, not its place: the agent may change the questions while an answer is being typed.) */
@@ -80,18 +88,20 @@ export function chatPanel(): Panel {
   const asks = new Map<string, { questions: string[]; about?: string; el: HTMLElement }>();
   /**
    * Proposed concepts the person is changing on their card, by the proposal's id, and a concept of their own they
-   * are adding to a round, by `new:<round>`: what is typed, what it was when they started, and what it can be linked to.
+   * are adding to what waits, by `new`: what is typed, what it was when they started, and what it can be linked to.
    */
   const editing = new Map<string, { draft: ConceptDraft; base: ConceptDraft; others: { id: string; name: string }[]; el?: HTMLElement }>();
+  /** The proposed concepts whose links and files were tapped open, or shut: it stays so when the card is drawn again. */
+  const unfolded = new Map<string, boolean>();
   const list = h('div.chat');
   /**
-   * What is still to be decided stays in sight: a line at the top of the conversation for every round that waits,
+   * What is still to be decided stays in sight: a line at the top of the conversation for the set that waits,
    * while its card is scrolled out of view. Tapped, it goes to the card.
    */
   const pins = h('div.pins');
   function paintPins() {
     const view = body?.getBoundingClientRect();
-    clear(pins, [...rounds.values()].filter((r) => r.status === 'pending' && r.el?.isConnected).map((r) => {
+    clear(pins, sets.filter((r) => r.status === 'pending' && r.el?.isConnected).map((r) => {
       const at = r.el!.getBoundingClientRect();
       if (view && at.bottom > view.top + 24 && at.top < view.bottom - 24) return null;
       const code = r.changes.find((c) => c.kind === 'code');
@@ -319,22 +329,26 @@ export function chatPanel(): Panel {
   const LINKS: Record<string, string> = { 'part-of': 'part of', 'leads-to': 'leads to', 'clashes-with': 'clashes with' };
 
   /**
-   * A concept as it would be, to read: what it says in full, where it stands, what it belongs with and what makes
-   * it real. For a change to one that exists, what it says now is kept one tap away.
+   * A concept as it would be, to read: what it says in full and where it stands. What it belongs with and what
+   * makes it real are one tap away, so a card of many concepts reads as a list of them; for a change to a concept
+   * that exists they are what changes, and stand open. What it says now is kept one tap away too.
    */
   function conceptLines(c: Change): HTMLElement[] {
     const a = c.after ?? {}, b = c.before;
     const links = Array.isArray(a.links) ? a.links as { to: string; kind: string }[] : [];
     const real = Array.isArray(a.realised) ? (a.realised as unknown[]).map(String) : [];
+    const hasLinks = 'links' in a && (links.length > 0 || !!b), hasReal = 'realised' in a && (real.length > 0 || !!b);
     return [
       b && 'name' in a && h('div.cline', {}, h('span.k', {}, 'renamed'), h('span.was', {}, String(b.name ?? '')), h('span.arrow', {}, '→'), h('b', {}, String(a.name))),
       b && 'stage' in a && h('div.cline', {}, h('span.k', {}, 'stage'), h('span.t-chip.stage', { data: { stage: String(b.stage) } }, String(b.stage)), h('span.arrow', {}, '→'), h('span.t-chip.stage', { data: { stage: String(a.stage) } }, String(a.stage))),
       'text' in a && (String(a.text ?? '').trim() ? whole(a.text, 'ctext') : h('div.note', {}, b ? 'Its description would be taken away.' : 'No description yet.')),
       b && 'text' in a && String(b.text ?? '').trim() && h('details.cwas', {}, h('summary', {}, 'What it says now'), whole(b.text, 'ctext.old')),
-      'links' in a && (links.length > 0 || b) && h('div.cline', {}, h('span.k', {}, 'belongs with'),
-        links.length ? links.map((l) => h('span.t-chip.link', { onclick: () => app.open('concepts', l.to) }, `${LINKS[l.kind] ?? l.kind} ${l.to.replaceAll('-', ' ')}`)) : h('span.was.new', {}, 'nothing any more')),
-      'realised' in a && (real.length > 0 || b) && h('div.cline.real', {}, h('span.k', {}, 'made real by'),
-        real.length ? h('ul', {}, real.map((r) => h('li', {}, r))) : h('span.was.new', {}, 'nothing any more')),
+      (hasLinks || hasReal) && h<'details'>('details.cmore', { open: unfolded.get(c.id) ?? !!b, ontoggle: (e: Event) => { unfolded.set(c.id, (e.target as HTMLDetailsElement).open); } },
+        h('summary', {}, [hasLinks && (links.length ? `${links.length} ${links.length === 1 ? 'link' : 'links'}` : 'no links any more'), hasReal && (real.length ? `made real by ${real.length}` : 'made real by nothing any more')].filter(Boolean).join(' · ')),
+        hasLinks && h('div.cline', {}, h('span.k', {}, 'belongs with'),
+          links.length ? links.map((l) => h('span.t-chip.link', { onclick: () => app.open('concepts', l.to) }, `${LINKS[l.kind] ?? l.kind} ${l.to.replaceAll('-', ' ')}`)) : h('span.was.new', {}, 'nothing any more')),
+        hasReal && h('div.cline.real', {}, h('span.k', {}, 'made real by'),
+          real.length ? h('ul', {}, real.map((r) => h('li', {}, r))) : h('span.was.new', {}, 'nothing any more'))),
     ].filter(Boolean) as HTMLElement[];
   }
 
@@ -398,7 +412,7 @@ export function chatPanel(): Panel {
     return h('div.pictures', {}, pic(c.pictures?.before, 'as it is'), pic(c.pictures?.after, c.phase === 'silhouette' ? 'the silhouette' : c.isNew ? 'new' : 'as proposed'), !c.pictures?.after && h('div.note', {}, 'No picture could be made of it.'));
   }
 
-  /** A proposed concept is opened to be changed, or a new one is started in the round: with the fields a concept has. */
+  /** A proposed concept is opened to be changed, or a new one is started beside it: with the fields a concept has. */
   async function startEdit(r: Round, c?: Change) {
     const [now, there] = await Promise.all([
       c?.before ? app.act<Record<string, unknown>>('concepts.get', { id: c.path }) : undefined,
@@ -407,10 +421,10 @@ export function chatPanel(): Panel {
     if (c?.before && !now) return;
     // A change to a concept that is there names only what it changes: the rest is the concept as it is.
     const base: ConceptDraft = { name: '', stage: 'idea', text: '', links: [], realised: [], ...fieldsOf(now), ...fieldsOf(c?.after) };
-    // It can be linked to what is in the document, and to what else is new in this round.
+    // It can be linked to what is in the document, and to what else is new on the card.
     const coming = r.changes.filter((x) => x.kind === 'concept' && !x.before && x.status !== 'rejected').map((x) => ({ id: x.path, name: String(x.after?.name ?? x.path) }));
     const others = [...(there ?? []).map((x) => ({ id: x.id, name: x.name })), ...coming].filter((x, n, all) => x.id !== c?.path && all.findIndex((y) => y.id === x.id) === n);
-    editing.set(c ? c.id : `new:${r.round}`, { draft: copy(base), base, others });
+    editing.set(c ? c.id : ADDING, { draft: copy(base), base, others });
     roundCard(r);
   }
 
@@ -418,9 +432,9 @@ export function chatPanel(): Panel {
   async function keep(r: Round, key: string): Promise<boolean> {
     const e = editing.get(key);
     if (!e) return true;
-    if (key.startsWith('new:')) {
+    if (key === ADDING) {
       if (!e.draft.name.trim()) { app.toast('Name it first.'); return false; }
-      if ((await app.act('proposals.add', { round: r.round, ...e.draft })) === undefined) return false;
+      if ((await app.act('proposals.add', { ...e.draft })) === undefined) return false;
     } else {
       const input: Record<string, unknown> = {};
       for (const k of FIELDS) if (JSON.stringify(e.draft[k]) !== JSON.stringify(e.base[k])) input[k] = e.draft[k];
@@ -431,16 +445,15 @@ export function chatPanel(): Panel {
     return true;
   }
 
-  /** A round is decided, or one piece of it. What is still being typed in what is accepted is kept first: it is part of it. */
-  async function decide(r: Round, accept: boolean, only?: Change) {
-    const mine = [...editing.keys()].filter((key) => (key === `new:${r.round}` ? !only : r.changes.some((c) => c.id === key && (!only || only === c))));
-    for (const key of mine) {
+  /** What waits is decided, all of it. What is still being typed in it is kept first when it is accepted: it is part of it. */
+  async function decide(r: Round, accept: boolean) {
+    for (const key of [...editing.keys()]) {
       const e = editing.get(key)!;
       // (A concept that was started and left empty is nothing to add.)
-      if (!accept || (key.startsWith('new:') && !e.draft.name.trim() && !e.draft.text.trim())) editing.delete(key);
+      if (!accept || (key === ADDING && !e.draft.name.trim() && !e.draft.text.trim())) editing.delete(key);
       else if (!(await keep(r, key))) return;
     }
-    await app.act('proposals.decide', { round: r.round, accept, ...(only && { only: [only.id] }) });
+    await app.act('proposals.decide', { accept });
   }
 
   /** The fields of a concept on its card, to type in: kept in the proposal with Save, as it was with Cancel. */
@@ -452,7 +465,7 @@ export function chatPanel(): Panel {
     e.el = h('div.cedit', {}, form.fields,
       h('div.t-row', {},
         h<'button'>('button', { onclick: () => { editing.delete(key); roundCard(r); } }, 'Cancel'),
-        h<'button'>('button.primary', { onclick: () => void keep(r, key) }, key.startsWith('new:') ? 'Add to the proposal' : 'Save')));
+        h<'button'>('button.primary', { onclick: () => void keep(r, key) }, key === ADDING ? 'Add to the proposal' : 'Save')));
     return e.el;
   }
 
@@ -488,15 +501,13 @@ export function chatPanel(): Panel {
     const count = (st: string) => r.changes.filter((c) => c.status === st).length;
     const state = r.status === 'decided' ? `${count('accepted')} accepted · ${count('rejected')} rejected`
       : r.status === 'pending' && left < total ? `${left} of ${total} waiting` : r.status;
-    // A round of several is decided as one or piece by piece: each piece has its own yes and no.
-    const each = total > 1 && r.status === 'pending';
-    // A concept that still waits is the person's to change first, and they can add one of their own to the round.
+    // A concept that still waits is the person's to change first, and they can add one of their own beside it.
     const open = (c: Change) => r.status === 'pending' && !c.status && c.kind === 'concept';
-    const adding = `new:${r.round}`;
+    const adding = ADDING;
     // (What is being typed in stays the same field when the card is drawn again, and stays typed in.)
     const typing = el.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
     clear(el,
-      h('div.t-head', {}, h('b', {}, coded ? 'A change to the project' : total === 1 ? 'A proposal' : `A proposal, ${total} changes`), h('span.state', {}, state)),
+      h('div.t-head', {}, h('b', {}, total > 1 ? `A proposal, ${total} changes` : coded ? 'A change to the project' : 'A proposal'), h('span.state', {}, state)),
       r.changes.map((c) => h('div.change', { data: { status: c.status ?? 'pending' } },
         h('div.pathline', {},
           c.kind === 'concept'
@@ -507,10 +518,8 @@ export function chatPanel(): Panel {
               !c.before && h('span.was.new', {}, c.by === 'me' ? 'added by you' : 'new'))
             : h('div.path', { onclick: () => c.kind === 'drawing' && app.open('art', c.path) }, h('i', {}, c.kind), ' ', c.path),
           total > 1 && c.status && h('span.state', {}, c.status),
-          (open(c) || (each && !c.status)) && h('span.each', {},
-            open(c) && !editing.has(c.id) && h<'button'>('button.edit', { 'aria-label': `Edit ${c.path}`, onclick: () => void startEdit(r, c) }, icon('edit')),
-            each && !c.status && h<'button'>('button.yes', { 'aria-label': `Accept ${c.path}`, onclick: () => void decide(r, true, c) }, icon('yes')),
-            each && !c.status && h<'button'>('button.no', { 'aria-label': `Reject ${c.path}`, onclick: () => void decide(r, false, c) }, icon('close')))),
+          open(c) && !editing.has(c.id) && h('span.each', {},
+            h<'button'>('button.edit', { 'aria-label': `Edit ${c.path}`, onclick: () => void startEdit(r, c) }, icon('edit')))),
         c.kind === 'drawing' ? pictures(c) : c.kind === 'code' ? codeParts(c, r) : c.kind === 'setup' ? setupLines(c)
           : c.kind !== 'concept' ? fieldLines(c) : open(c) && editing.has(c.id) ? conceptEditor(r, c.id) : conceptLines(c),
         c.kind === 'concept' && c.edited?.length && h('div.note.yours', {}, `You changed its ${c.edited.join(', ')}.`),
@@ -737,14 +746,13 @@ export function chatPanel(): Panel {
     // What a drawing worker proposes is looked at and decided in the Art tab, where it can be watched.
     if (ev.type === 'art.status' || ev.type === 'art.draft' || (ev.type === 'proposal' && ev.worker)) return;
     if (ev.type === 'proposal') {
-      const key = String(ev.round);
-      let r = rounds.get(key);
+      let r = sets.at(-1);
       const stick = nearBottom();
-      // The working copy is one round that comes back: once decided, what it proposes next is a new card.
+      // What is proposed goes with what waits already; once that is decided, what comes next is a new card.
       if (r && r.status !== 'pending') r = undefined;
       if (!r) {
-        r = { round: key, by: String(ev.by), changes: [], status: 'pending' };
-        rounds.set(key, r);
+        r = { by: String(ev.by), changes: [], status: 'pending' };
+        sets.push(r);
         list.append(roundCard(r));
       }
       const change = ev as unknown as Change;
@@ -769,14 +777,19 @@ export function chatPanel(): Panel {
       return;
     }
     if (ev.type === 'proposal.decided') {
-      const r = rounds.get(String(ev.round));
+      const r = sets.at(-1);
       if (r && r.status === 'pending') {
-        // All that was waiting, or only the pieces named.
+        // The pieces named: all that waited, or the one that was withdrawn. (Said without names, as it once was: the pieces of that round.)
         const ids = ev.ids as string[] | undefined;
-        for (const c of r.changes) if (!c.status && (!ids || ids.includes(c.id))) { c.status = ev.status as Change['status']; editing.delete(c.id); }
+        const decided = r.changes.filter((c) => !c.status && (ids ? ids.includes(c.id) : c.round === ev.round));
+        // (A drawing worker's round is not on a card here.)
+        if (!decided.length) return;
+        for (const c of decided) { c.status = ev.status as Change['status']; editing.delete(c.id); }
         const ways = new Set(r.changes.map((c) => c.status ?? 'pending'));
         r.status = ways.has('pending') ? 'pending' : ways.size === 1 ? [...ways][0] as Round['status'] : 'decided';
-        if (r.status !== 'pending') editing.delete(`new:${r.round}`);
+        if (r.status !== 'pending') editing.delete(ADDING);
+        // What was withdrawn while the rest waits (a change set the agent undid) is not on the card any more.
+        else r.changes = r.changes.filter((c) => c.status !== 'rejected');
         roundCard(r);
       }
       return;
@@ -787,13 +800,13 @@ export function chatPanel(): Panel {
       // To the questions as they stood then: the ones asked with it, or (an answer from before that was kept) the
       // ones on the card at that moment. What was said earlier to a question that still stands is kept with it.
       const given = (ev.answers as unknown[]).map(String);
-      const onCard = asks.get(to)?.questions ?? [...rounds.values()].flatMap((r) => r.changes).find((c) => c.id === to)?.questions ?? [];
+      const onCard = asks.get(to)?.questions ?? sets.flatMap((r) => r.changes).find((c) => c.id === to)?.questions ?? [];
       const asked = Array.isArray(ev.questions) ? (ev.questions as unknown[]).map(String) : onCard;
       const before = answered.get(to);
       answered.set(to, { questions: asked, answers: asked.map((q, n) => given[n] || (before?.questions.includes(q) ? before.answers[before.questions.indexOf(q)] : '')) });
       drafts.delete(to);
       if (asks.has(to)) askCard(to);
-      for (const r of rounds.values()) if (r.changes.some((c) => c.id === to)) roundCard(r);
+      for (const r of sets) if (r.changes.some((c) => c.id === to)) roundCard(r);
       return;
     }
     if (ev.type === 'questions') {
@@ -821,7 +834,7 @@ export function chatPanel(): Panel {
       foot.append(status, usage, offerEl, sharedEl, refsEl, picker, h('div.composer', {}, newBtn, clip, input, sendBtn));
       paintShared();
       paintRefs(); paintStatus();
-      for (const r of rounds.values()) roundCard(r);
+      for (const r of sets) roundCard(r);
       requestAnimationFrame(toBottom);
     },
     hide() { if (body) body.onscroll = null; body = undefined; },
@@ -830,8 +843,8 @@ export function chatPanel(): Panel {
       if (ev.type === 'chat.new') {
         asked = false; welcomes.length = 0; acts = undefined; calls.clear();
         // A new conversation: everything said goes, what is still to be decided stays.
-        for (const [key, r] of rounds) if (r.status !== 'pending') rounds.delete(key);
-        list.replaceChildren(...[...rounds.values()].map((r) => r.el!).filter(Boolean));
+        sets.splice(0, sets.length, ...sets.filter((r) => r.status === 'pending'));
+        list.replaceChildren(...sets.map((r) => r.el!).filter(Boolean));
         if (!list.children.length) list.append(EMPTY());
         paintPins();
         return;

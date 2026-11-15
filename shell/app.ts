@@ -452,12 +452,14 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       bubbles.feed(ev, live);
       // The change set that waits, and what of it is the person's to turn: over the copy's page while that is shown.
       if (ev.type === 'proposal' && ev.kind === 'code') { turning = (ev.tweaks as Tweak[] | undefined) ?? []; toy = ev.example as Example | undefined; paintTray(); paintBanner(); }
-      if (ev.type === 'proposal.decided' && ev.round === 'code') { turning = []; toy = undefined; paintTray(); paintBanner(); }
+      // (The change set was decided, with what else waited, or withdrawn.)
+      const coded = ev.type === 'proposal.decided' && Array.isArray(ev.paths) && (ev.paths as string[]).some((p) => p.startsWith('code:'));
+      if (coded) { turning = []; toy = undefined; paintTray(); paintBanner(); }
       if (live) {
         // What the agent shows, it shows on the stage itself.
         if (ev.type === 'stage.point') app.point(Number(ev.x), Number(ev.y), String(ev.text ?? ''), typeof ev.at === 'string' ? ev.at : undefined);
         if (ev.type === 'stage.open') app.open(String(ev.tab), ev.id ? String(ev.id) : undefined);
-        if (ev.type === 'proposal.decided' && ev.round === 'code') app.playProject();
+        if (coded) app.playProject();
         // What was accepted is the project's code now: its page is loaded anew. A page served by something that
         // watches the files does that by itself; one served as plain files stays what it was until it is asked again.
         if (ev.type === 'code.changed' && !ev.restarting) stage.showProject(true);

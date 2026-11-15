@@ -283,7 +283,7 @@ export function createArt(o: ArtOptions) {
         const w = worker(i.worker);
         const dropped = o.proposals.decide(w.id, 'rejected');
         workers.close(w.id);
-        if (dropped.length) o.events.add({ type: 'proposal.decided', by: c.by, round: w.id, status: 'rejected', count: dropped.length, paths: dropped.map((p) => `${p.kind}:${p.path}`) });
+        if (dropped.length) o.events.add({ type: 'proposal.decided', by: c.by, round: w.id, status: 'rejected', count: dropped.length, ids: dropped.map((p) => p.id), left: 0, paths: dropped.map((p) => `${p.kind}:${p.path}`) });
         o.events.cast({ type: 'art.status', worker: w.id, name: w.names[0], state: 'closed', phase: w.phase, doing: '' });
         return { closed: true };
       },
@@ -303,15 +303,8 @@ export function createArt(o: ArtOptions) {
 
   return {
     commands, workers,
-    /**
-     * A round is being accepted: its drawings go into the project's art files.
-     */
+    /** What the person decides is being accepted: its drawings go into the project's art files. */
     accepting: (pending: Proposal[]) => take(pending.filter((p) => p.kind === 'drawing').map((p) => ({ name: p.path, value: p.after as { text?: string; depth?: string } })), 'me'),
-    /** A round was decided: the worker whose round it was is done. */
-    decided(round: string) {
-      if (workers.get(round)) workers.close(round);
-    },
-    acceptable,
   };
 }
 

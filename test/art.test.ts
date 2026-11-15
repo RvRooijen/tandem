@@ -90,7 +90,8 @@ test('a worker draws a new drawing: silhouette, approval, colour, and only then 
 
   // A silhouette is not a drawing: it cannot be accepted, only approved.
   await refused(agent('art.accept', { worker: w }), 'input');
-  await refused(me('proposals.decide', { round: w, accept: true }), 'input');
+  // (And it is not the person's to decide: what a worker proposed is not part of what waits for them.)
+  await refused(me('proposals.decide', { accept: true }), 'missing');
   assert.equal((await me('proposals.list', { status: 'pending' })).length, 1, 'and refusing that left the proposal as it was');
   await agent('art.approve', { worker: w });
   await until(() => rounds(w).length === 2, 'the colour round');
@@ -141,7 +142,7 @@ test('feedback on a drawing there is: a round, more feedback, and a rejection th
   const pending = await me('proposals.list', { status: 'pending' });
   assert.equal(pending.length, 1);
   assert.equal(pending[0].after.text.match(/@rect 0 0 1 1/g).length, 2, 'the second round built on the first');
-  await me('proposals.decide', { round: w, accept: false });
+  await agent('art.close', { worker: w });
   assert.equal((await me('art.get', { name: 'gnome' })).text, before);
   assert.deepEqual(await me('art.workers'), []);
 });
@@ -167,7 +168,7 @@ test('a drawing with looks is pictured look by look, so a change in one of them 
   await agent('art.set', { name: 'gnome', text: gnome.replace(line, `${line}\n@recolor frosty s=#ffffff`) }, 'r30');
   const again = host.events.since(0).at(-1)!.pictures as typeof pics;
   assert.deepEqual(again.looks.map((l) => [l.look, !!l.before, !!l.after]), [['cozy', true, true], ['odd', true, true], ['hollow', true, true], ['frosty', false, true]]);
-  await me('proposals.decide', { round: 'r30', accept: false });
+  await me('proposals.decide', { accept: false });
 });
 
 test('a worker that fails says so, and a worker can be stopped', async () => {

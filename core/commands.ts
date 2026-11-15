@@ -10,7 +10,7 @@ export type By = string;
 
 export interface Ctx {
   by: By;
-  /** The round of agent work this call belongs to: everything proposed in one round is one change set. */
+  /** The round of agent work this call belongs to: the turn in which the agent answers one message. */
   round?: string;
   /** Whatever the host of the registry provides: stores, worlds, the event log. */
   [service: string]: unknown;

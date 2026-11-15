@@ -132,8 +132,15 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     try { return !!code && !!preview && (!!project.pageCommand(0) || (existsSync(code.work) && !!project.at(code.work).pageCommand(0))); } catch { return false; }
   };
   if (preview) onStop.push(() => preview.stop());
-  /** The one round the working copy's change set is: there is one copy, so one change set at a time. */
-  const CODE = 'code';
+  /**
+   * The one round of everything the person decides: the concepts the agent proposed, how the project is run and
+   * the working copy's change set are one set, shown as one card and accepted or rejected as one.
+   */
+  const SET = 'open';
+  /** What waits for the person: all that is pending, but for what a drawing worker proposed, which is the agent's to take. */
+  const waiting = () => proposals.list({ status: 'pending' }).filter((p) => !art.workers.get(p.round));
+  /** The working copy's change set, when it waits: there is one copy, so one change set at a time. */
+  const waitingCode = () => proposals.list({ status: 'pending' }).find((p) => p.kind === 'code');
 
   // ------------------------------------------------------------ worlds
 
@@ -414,7 +421,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   const askedFile = join(dataDir, 'code-example-asked');
   function wantExample() {
     if (!code || !copyPage() || existsSync(askedFile) || example()) return;
-    if (!proposals.list({ status: 'pending', round: CODE }).some((p) => p.kind === 'code')) return;
+    if (!waitingCode()) return;
     const turn = tweaks();
     if (!turn.length) return;
     writeFileSync(askedFile, '');
@@ -483,7 +490,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   function proposeCode(by: By, said: string, how: { tweaked?: { file: string; name: string }; anew?: boolean } = {}) {
     if (!code) return;
     const files = code.changes();
-    const open = proposals.list({ status: 'pending', round: CODE });
+    const open = waitingCode();
     // What it said the change is (code.describe). Its answer is not repeated on the card: it is in the chat, right above.
     const note = about();
     if (!files.length) {
@@ -494,20 +501,23 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       rmSync(askedFile, { force: true });
       exposed(null);
       turned([]);
-      // The copy is the project again: whatever was proposed is no more.
-      if (open.length) { proposals.decide(CODE, 'rejected'); events.add({ type: 'proposal.decided', by, round: CODE, status: 'rejected', count: open.length, paths: ['code:working copy'] }); }
+      // The copy is the project again: the change set that was proposed is no more. What else waits, still waits.
+      if (open) {
+        proposals.decide(open.round, 'rejected', [open.id]);
+        events.add({ type: 'proposal.decided', by, round: open.round, status: 'rejected', count: 1, ids: [open.id], left: waiting().length, paths: ['code:working copy'] });
+      }
       return;
     }
     // (The first line of its answer is kept for the commit, for when it did not say what the change is.)
     const of = belongs().map((id) => concepts.get(id)!);
     const after = { files: files as never, said: said.split('\n')[0].slice(0, 120), ...(of.length && { concepts: of.map((c) => c.id) }) };
-    const p = proposals.add({ round: CODE, by, kind: 'code', path: 'working copy', after, note });
+    const p = proposals.add({ round: open?.round ?? SET, by, kind: 'code', path: 'working copy', after, note });
     // The whole list every time: a file the agent put back is not part of the change any more.
     p.after = after;
     const show = shown();
     const turn = tweaks();
     const toy = example();
-    events.add({ type: 'proposal', by, round: CODE, id: p.id, kind: 'code', path: 'working copy', files, note, ...(copyPage() && { plays: true }), ...(show && { show }), ...(toy && { example: toy }), ...(turn.length && { tweaks: turn }), ...how, ...(of.length && { touches: of.map((c) => ({ id: c.id, name: c.name, stage: c.stage })) }) });
+    events.add({ type: 'proposal', by, round: p.round, id: p.id, kind: 'code', path: 'working copy', files, note, ...(copyPage() && { plays: true }), ...(show && { show }), ...(toy && { example: toy }), ...(turn.length && { tweaks: turn }), ...how, ...(of.length && { touches: of.map((c) => ({ id: c.id, name: c.name, stage: c.stage })) }) });
   }
 
   // ------------------------------------------------------------ helpers
@@ -558,7 +568,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
 
   /** The change set that waits to be decided, with the concepts it is for. */
   function waitingFor() {
-    const p = proposals.list({ status: 'pending', round: CODE }).find((x) => x.kind === 'code');
+    const p = waitingCode();
     if (!p) return undefined;
     return { concepts: belongs(), says: p.note.split('\n')[0] || String(p.after.said ?? ''), files: Array.isArray(p.after.files) ? p.after.files.length : 0 };
   }
@@ -589,15 +599,15 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   }
 
   /**
-   * Concepts of a round were accepted: the agent is told which, and what the person made different on the card
+   * Concepts were accepted: the agent is told which, and what the person made different on the card
    * before accepting. What they changed or added goes along in full, so it works from their words and not its own.
    */
-  function tellAccepted(round: string, set: Proposal[], left: number) {
+  function tellAccepted(set: Proposal[]) {
     const say = (v: Json) => (typeof v === 'string' ? `"${v}"` : JSON.stringify(v));
     const theirs = set.filter((p) => !isAgent(p.by) || p.proposed);
     const lines = set.map((p) => {
       const name = `${String(p.after.name ?? concepts.get(p.path)?.name ?? p.path)} (${p.path})`;
-      if (!isAgent(p.by)) return `- ${name}: the person added it to the round themselves.`;
+      if (!isAgent(p.by)) return `- ${name}: the person added it to the proposal themselves.`;
       if (!p.proposed) return `- ${name}: as you proposed it.`;
       const how = Object.keys(p.proposed).map((k) => (k === 'name' || k === 'stage' ? `${k} ${p.proposed![k] === null ? '' : `${say(p.proposed![k])} → `}${say(p.after[k])}` : `its ${k}`));
       return `- ${name}: the person changed it before accepting: ${how.join(', ')}.`;
@@ -605,7 +615,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     events.add({
       type: 'message', by: 'engine', kind: 'accepted', concepts: set.map((p) => p.path), changed: theirs.length,
       ...(theirs.length && { refs: theirs.map((p) => `concept:${p.path}`) }),
-      text: `The person accepted ${set.length === 1 ? 'a concept' : `${set.length} concepts`} from your proposal of round ${round}${left ? ` (${left} of that round still ${left === 1 ? 'waits' : 'wait'})` : ''}:\n${lines.join('\n')}\n`
+      text: `The person accepted ${set.length === 1 ? 'a concept' : `${set.length} concepts`} from what you proposed:\n${lines.join('\n')}\n`
         + (theirs.length ? 'The document has them as the person made them, which is not everywhere what you proposed: go by what it says now, and do not propose your own version again. ' : '')
         + 'This is news, not a request: carry on with what was waiting for it, if anything was; otherwise a sentence that you have seen it is enough.',
     });
@@ -774,7 +784,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         for (const k of [...SETUP_FIELDS, 'script'] as const) if (i[k] !== undefined && !same(i[k], was[k] ?? '')) after[k] = i[k];
         if (!Object.keys(after).length) return { changed: false };
         if (isAgent(c.by)) {
-          const round = c.round ?? 'loose';
+          const round = SET;
           const before = Object.fromEntries(Object.keys(after).filter((k) => was[k] !== undefined).map((k) => [k, was[k]]));
           const p = proposals.add({ round, by: c.by, kind: 'setup', path: 'how it is run', ...(Object.keys(before).length && { before: before as RecordValue }), after: after as RecordValue, note: i.note ?? '' });
           events.add({ type: 'proposal', by: c.by, round, id: p.id, kind: 'setup', path: 'how it is run', before: p.before, after: p.after, note: p.note });
@@ -836,30 +846,27 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'proposals.add', kind: 'write',
-      about: 'Add a concept of the person\'s own to a round of proposed concepts that still waits: a name, and if they have them its text, stage, links and realised. It is decided with the rest of the round, and the agent is told of it when it is accepted. Only the person does this.',
-      input: { round: 'string', name: 'string', text: 'string?', stage: 'string?', links: 'json?', realised: 'json?' },
+      about: 'Add a concept of the person\'s own to the proposed concepts that wait: a name, and if they have them its text, stage, links and realised. It is decided with the rest of what waits, and the agent is told of it when it is accepted. Only the person does this.',
+      input: { name: 'string', text: 'string?', stage: 'string?', links: 'json?', realised: 'json?' },
       run(c, i) {
-        if (!proposals.list({ status: 'pending', round: i.round }).some((p) => p.kind === 'concept')) throw new CommandError('missing', `no concept is pending in round ${i.round}`);
+        if (!waiting().some((p) => p.kind === 'concept')) throw new CommandError('missing', 'no proposed concept is waiting');
         const fields = conceptFields(i);
         const cid = concepts.slug(i.name);
         if (concepts.get(cid) || proposals.list({ status: 'pending' }).some((p) => p.kind === 'concept' && p.path === cid)) throw new CommandError('exists', `there already is a concept ${cid}`);
-        const p = proposals.add({ round: i.round, by: c.by, kind: 'concept', path: cid, after: { stage: 'idea', links: [], realised: [], text: '', ...fields }, note: '' });
+        const p = proposals.add({ round: SET, by: c.by, kind: 'concept', path: cid, after: { stage: 'idea', links: [], realised: [], text: '', ...fields }, note: '' });
         showConcept(p);
-        return { proposed: p.id, id: cid, round: i.round };
+        return { proposed: p.id, id: cid };
       },
     },
     {
       name: 'proposals.decide', kind: 'write',
-      about: 'Accept or reject a round of proposals: all that is pending in it, or only some (only: the ids of the proposals). Accepting makes the changes real.',
-      input: { round: 'string', accept: 'boolean', only: 'json?' },
+      about: 'Accept or reject what is proposed: everything that waits for the person is one set (concepts, how the project is run, the working copy\'s change set), and it is decided as one. Accepting makes the changes real; rejecting also makes the working copy the project again. What a drawing worker proposed is not part of it.',
+      input: { accept: 'boolean' },
       async run(c, i) {
-        const only = Array.isArray(i.only) && i.only.length ? (i.only as unknown[]).map(String) : undefined;
-        const open = proposals.list({ status: 'pending', round: i.round });
-        const pending = only ? open.filter((p) => only.includes(p.id)) : open;
-        if (!pending.length) throw new CommandError('missing', only ? `none of those is pending in round ${i.round}` : `nothing is pending in round ${i.round}`);
+        const pending = waiting();
+        if (!pending.length) throw new CommandError('missing', 'nothing is waiting to be decided');
         let taken: FileChange[] = [];
         if (i.accept) {
-          if (pending.some((p) => p.kind === 'drawing')) art.acceptable(i.round);
           // The working copy goes into the project first: if it does not go in cleanly, nothing is accepted.
           if (code && pending.some((p) => p.kind === 'code')) {
             try {
@@ -877,7 +884,8 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         } else if (code && pending.some((p) => p.kind === 'code')) code.reject();
         // (What the person turned and then accepted is in the project: the agent still hears of it. Rejected, it is gone.)
         if (pending.some((p) => p.kind === 'code')) { about(''); belongs([]); shown(null); example(null); rmSync(askedFile, { force: true }); exposed(null); if (!i.accept) turned([]); }
-        const set = proposals.decide(i.round, i.accept ? 'accepted' : 'rejected', only);
+        // (What waited from before there was one set is still in the round it was proposed in.)
+        const set = [...new Set(pending.map((p) => p.round))].flatMap((round) => proposals.decide(round, i.accept ? 'accepted' : 'rejected', pending.map((p) => p.id)));
         if (i.accept) {
           for (const p of set) {
             if (p.kind === 'concept') {
@@ -888,9 +896,6 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
             if (p.kind === 'setup') writeSetup(p.after);
           }
         }
-        // What was not named is still waiting: the round is over when nothing of it is.
-        const left = open.length - set.length;
-        if (!left) art.decided(i.round);
         const setup = i.accept && set.some((p) => p.kind === 'setup');
         if (setup) events.add({ type: 'setup.changed', by: c.by, fields: set.filter((p) => p.kind === 'setup').flatMap((p) => Object.keys(p.after)), restarting: !!process.env.TANDEM_SUPERVISED });
         const installed = taken.length ? await install(taken) : undefined;
@@ -899,13 +904,13 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         // how the project is run was changed, the project's page is started again too.
         // (And after an install: a page that is running does not find what was not there when it started.)
         if (setup || installed === true) restart(SETUP); else if (taken.length) restart();
-        events.add({ type: 'proposal.decided', by: c.by, round: i.round, status: i.accept ? 'accepted' : 'rejected', count: set.length, ids: set.map((p) => p.id), left, paths: set.map((p) => `${p.kind}:${p.path}`) });
+        events.add({ type: 'proposal.decided', by: c.by, round: SET, status: i.accept ? 'accepted' : 'rejected', count: set.length, ids: set.map((p) => p.id), left: 0, paths: set.map((p) => `${p.kind}:${p.path}`) });
         // The agent hears what became of its concepts, and what the person made different in them.
         const made = set.filter((p) => p.kind === 'concept');
-        if (i.accept && made.length) tellAccepted(i.round, made, left);
+        if (i.accept && made.length) tellAccepted(made);
         // (Before the core starts again, if it does: a restart waits for this command to be done.)
         if (i.accept) await publish(c.by);
-        return { decided: set.length, left };
+        return { decided: set.length };
       },
     },
 
@@ -947,7 +952,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'concepts.create', kind: 'write', agent: 'proposes',
-      about: 'A new concept: a name and a description in plain words, and if known its stage, its links ([{to, kind}], kind is part-of, leads-to or clashes-with; to may be a concept proposed in the same round) and what makes it real (realised: paths, drawings, tests). questions is a list of what only the person can say about it: each gets a field on the card for their answer. It starts as an idea unless said otherwise. thought is the id of a loose thought of the person (thoughts.list) that this concept is made from: it stops being loose when the concept is there. The agent\'s becomes a proposal.',
+      about: 'A new concept: a name and a description in plain words, and if known its stage, its links ([{to, kind}], kind is part-of, leads-to or clashes-with; to may be a concept that is still a proposal) and what makes it real (realised: paths, drawings, tests). questions is a list of what only the person can say about it: each gets a field on the card for their answer. It starts as an idea unless said otherwise. thought is the id of a loose thought of the person (thoughts.list) that this concept is made from: it stops being loose when the concept is there. The agent\'s becomes a proposal.',
       input: { name: 'string', text: 'string?', stage: 'string?', links: 'json?', realised: 'json?', questions: 'json?', thought: 'string?' },
       run(c, i) {
         const questions = asQuestions(i.questions);
@@ -959,7 +964,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         const stage = STAGES.includes(i.stage) ? i.stage : 'idea';
         const fresh: Concept = { id: cid, name: i.name, stage, links: i.links ?? [], realised: i.realised ?? [], text: i.text ?? '' };
         if (isAgent(c.by)) {
-          const round = c.round ?? 'loose';
+          const round = SET;
           const { id: _id, ...after } = fresh;
           const p = proposals.add({ round, by: c.by, kind: 'concept', path: cid, after: after as unknown as RecordValue, note: 'a new concept', ...(questions && { questions }), ...(from && { thought: from.id }) });
           events.add({ type: 'proposal', by: c.by, round, id: p.id, kind: 'concept', path: cid, after: p.after, note: p.note, ...(p.questions?.length && { questions: p.questions }), ...(from && { thought: from.text }) });
@@ -1002,7 +1007,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
           if (i[k] !== undefined && !same(i[k], now[k])) after[k] = i[k];
         if (!Object.keys(after).length) return { changed: false };
         if (isAgent(c.by)) {
-          const round = c.round ?? 'loose';
+          const round = SET;
           const before = Object.fromEntries(Object.keys(after).map((k) => [k, now[k as keyof Concept]]));
           const p = proposals.add({ round, by: c.by, kind: 'concept', path: i.id, before: before as RecordValue, after: after as RecordValue, note: i.note ?? '', ...(questions && { questions }), ...(from && { thought: from.id }) });
           events.add({ type: 'proposal', by: c.by, round, id: p.id, kind: 'concept', path: i.id, before: p.before, after: p.after, note: p.note, ...(p.questions?.length && { questions: p.questions }), ...(from && { thought: from.text }), touches: [{ id: now.id, name: now.name, stage: now.stage }] });
@@ -1163,7 +1168,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         const was = about();
         about(i.text);
         // Said by hand while a proposal is open, the card says it at once; the agent's is shown when its reply is done.
-        if (proposals.list({ status: 'pending', round: CODE }).length) proposeCode(c.by, i.text);
+        if (waitingCode()) proposeCode(c.by, i.text);
         const files = code.changes().map((f) => f.path);
         return {
           said: i.text.trim(),
@@ -1194,7 +1199,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         if (!steps.length && !at) { shown(null); return { shown: false }; }
         const show: Show = { steps, ...(at && { at }), ...(i.text?.trim() && { text: i.text.trim() }) };
         shown(show);
-        if (proposals.list({ status: 'pending', round: CODE }).length) proposeCode(c.by, '');
+        if (waitingCode()) proposeCode(c.by, '');
         return { shown: true, says: 'when the person plays your copy they are taken there; you cannot try the steps on their screen unless they ask you to use the app, so take the words from the code' };
       },
     },
@@ -1213,7 +1218,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
           if (!made(path)) throw new CommandError('missing', `there is no file ${path.split(/[?#]/)[0].slice(1)} in your working copy: write the page first`);
           example({ path, ...(i.text?.trim() && { text: i.text.trim().slice(0, 140) }) });
         } else example(null);
-        if (proposals.list({ status: 'pending', round: CODE }).length) proposeCode(c.by, '');
+        if (waitingCode()) proposeCode(c.by, '');
         if (!asked) return { example: false };
         return { example: true, path: example()!.path, says: 'the person finds it on the card of your change set, beside playing your copy. A page you made is a guess until you have seen it: look at it yourself when you can (page.take, then page.go with this path and copy: true)' };
       },
@@ -1251,7 +1256,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         const twice = list.find((t, n) => list.findIndex((x) => x.file === t.file && x.name === t.name) !== n);
         if (twice) throw new CommandError('input', `${twice.name} in ${twice.file} is in the list twice`);
         exposed(list);
-        if (proposals.list({ status: 'pending', round: CODE }).length) proposeCode(c.by, '');
+        if (waitingCode()) proposeCode(c.by, '');
         if (!list.length) return { exposed: [] };
         return {
           exposed: tweaks().map((t) => ({ label: t.label, name: t.name, file: t.file, is: t.value, as: t.kind === 'number' ? (t.min !== undefined && t.max !== undefined ? 'a slider' : 'a number to fill in') : t.kind === 'boolean' ? 'a switch' : t.kind === 'colour' ? 'a colour to pick' : 'a text to fill in' })),
@@ -1267,7 +1272,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       input: { file: 'string', name: 'string', value: 'json' },
       run(_c, i) {
         if (!code) throw new CommandError('unsupported', 'there is no working copy here: the project is not in a repository');
-        const p = proposals.list({ status: 'pending', round: CODE }).find((x) => x.kind === 'code');
+        const p = waitingCode();
         const t = exposed().find((x) => x.file === i.file && x.name === i.name);
         if (!p || !t) throw new CommandError('missing', `${i.name} in ${i.file} is not a value of a change set that waits`);
         const at = standing(t);

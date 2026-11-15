@@ -42,12 +42,14 @@ const short = (s: string, max = 170) => { const t = s.replace(/\s+/g, ' ').trim(
 export function createBubbles(el: HTMLElement, app: BubbleHost) {
   const waiting = new Map<string, Waiting>();
   const said: { text: string; error: boolean; until: number }[] = [];
-  /** The proposals of each open round, to say what the round is about. */
-  const rounds = new Map<string, Map<string, Event>>();
+  /** What is proposed and waits for the person, by its id: one set, asked about once. */
+  const open = new Map<string, Event>();
+  /** The name the set waits under, and is put out of sight by. */
+  const SET = 'proposals';
   let shut = true, timer = 0;
-  /** While the agent is at work its proposals are not shown one by one as they come: the round is shown when it is done. */
+  /** While the agent is at work its proposals are not shown one by one as they come: they are asked about when it is done. */
   let busy = false;
-  const held = new Set<string>();
+  let held = false;
   /**
    * What the person put out of sight: it still waits in the chat, but not over the page. Kept on this device, per
    * project, until it is decided or something new comes with it.
@@ -93,30 +95,31 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
   }
 
   const conceptName = (ev: Event) => String((ev.after as { name?: string } | undefined)?.name ?? (ev.touches as { name: string }[] | undefined)?.[0]?.name ?? ev.path);
-  /** What a round of proposals is, in a line, and what the two answers do. */
-  function proposal(round: string) {
-    const changes = [...(rounds.get(round)?.values() ?? [])];
-    if (!changes.length) return void waiting.delete(round);
+  /** What waits is, in a line, and what the two answers do: they are about all of it. */
+  function proposal() {
+    const changes = [...open.values()];
+    if (!changes.length) return void waiting.delete(SET);
     // The agent is still at it: what it has proposed so far waits for the rest, and is asked about once.
-    if (busy && !waiting.has(round)) return void held.add(round);
+    if (busy && !waiting.has(SET)) return void (held = true);
     const first = changes[0];
-    const title = changes.some((c) => c.kind === 'code')
-      ? `A change to the project · ${(first.files as unknown[] | undefined)?.length ?? 0} ${(first.files as unknown[] | undefined)?.length === 1 ? 'file' : 'files'}`
+    // What the agent coded is there to play before it is answered: the copy itself, and its example of the change.
+    const code = changes.find((c) => c.kind === 'code');
+    const files = (code?.files as unknown[] | undefined)?.length ?? 0;
+    const title = code
+      ? `A change to the project · ${files} ${files === 1 ? 'file' : 'files'}${changes.length > 1 ? ` · ${changes.length - 1} more` : ''}`
       : changes.length > 1 ? `A proposal · ${changes.length} changes`
         : first.kind === 'setup' ? 'A proposal · how tandem runs the project'
         // A concept goes by its name, as the person knows it.
         : first.kind === 'concept' ? (first.before ? `A change to the concept ${conceptName(first)}` : `A new concept · ${conceptName(first)}`)
           : `A proposal · ${first.kind} ${first.path}${first.before ? '' : ', new'}`;
-    // What the agent coded is there to play before it is answered: the copy itself, and its example of the change.
-    const code = changes.find((c) => c.kind === 'code');
     const plays = !code || !(app.info?.page || code.plays) ? [] : [
       ...(app.playCopy ? [{ label: 'Play', run: () => void app.playCopy!(code.show as Show | undefined) }] : []),
       ...(app.playExample && code.example ? [{ label: 'Example', run: () => void app.playExample!(code.example as Example) }] : []),
     ];
-    waiting.set(round, {
-      title, text: short(String(changes.at(-1)!.note ?? '')), open: ['chat'], plays,
-      yes: { label: 'Approve', run: () => void app.act('proposals.decide', { round, accept: true }) },
-      no: { label: 'Decline', run: () => void app.act('proposals.decide', { round, accept: false }) },
+    waiting.set(SET, {
+      title, text: short(String((code ?? changes.at(-1)!).note ?? '')), open: ['chat'], plays,
+      yes: { label: 'Approve', run: () => void app.act('proposals.decide', { accept: true }) },
+      no: { label: 'Decline', run: () => void app.act('proposals.decide', { accept: false }) },
     });
   }
 
@@ -126,8 +129,8 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
       if (busy === now) return;
       busy = now;
       if (busy) return;
-      for (const round of held) proposal(round);
-      held.clear();
+      if (held) proposal();
+      held = false;
       paint();
     },
 
@@ -164,13 +167,11 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
         case 'proposal': {
           // A drawing worker's round is answered when its round is done (art.round), not as it is being drawn.
           if (ev.worker) break;
-          const round = String(ev.round);
-          if (!rounds.has(round)) rounds.set(round, new Map());
           // Put out of sight, it comes back when there is something new in it: another piece, or other files.
-          const was = rounds.get(round)!.get(String(ev.id));
-          if (live && (!was || JSON.stringify(was.files ?? was.after) !== JSON.stringify(ev.files ?? ev.after))) unhide(round);
-          rounds.get(round)!.set(String(ev.id), ev);
-          proposal(round);
+          const was = open.get(String(ev.id));
+          if (live && (!was || JSON.stringify(was.files ?? was.after) !== JSON.stringify(ev.files ?? ev.after))) unhide(SET);
+          open.set(String(ev.id), ev);
+          proposal();
           break;
         }
         case 'questions':
@@ -178,11 +179,12 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
           if (live && shut) said.push({ text: `The agent has ${(ev.questions as unknown[]).length === 1 ? 'a question' : 'questions'} for you: ${short(String((ev.questions as unknown[])[0]), 120)}`, error: false, until: Date.now() + 12000 });
           break;
         case 'proposal.decided': {
-          // Decided piece by piece, the round keeps waiting for what is left of it.
-          const round = String(ev.round), open = rounds.get(round);
-          for (const id of (ev.ids as string[] | undefined) ?? []) open?.delete(id);
-          if (open?.size && Number(ev.left) > 0) proposal(round);
-          else { rounds.delete(round); waiting.delete(round); unhide(round); }
+          // The pieces named: all that waited, or one that was withdrawn, and then the rest keeps waiting.
+          // (Said without names, as it once was: the pieces of that round.)
+          const ids = ev.ids as string[] | undefined;
+          for (const [id, p] of open) if (ids ? ids.includes(id) : p.round === ev.round) open.delete(id);
+          if (open.size) proposal();
+          else { waiting.delete(SET); unhide(SET); }
           break;
         }
         case 'art.round':

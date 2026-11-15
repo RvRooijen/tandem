@@ -66,42 +66,43 @@ test('the person changes a concept at once; the agent proposes, and the person d
   assert.deepEqual(ev.before, { text: 'A splash of colour.', stage: 'idea' });
   assert.deepEqual(ev.after, { text: 'They matter longer.', stage: 'design' });
 
-  // A second change to the same thing in the same round is the same proposal, moved on.
+  // A second change to the same thing is the same proposal, moved on.
   await agent('concepts.update', { id: 'tulips', text: 'They matter much longer.' });
   await agent('concepts.create', { name: 'Roses' });
   const pending = await me('proposals.list', { status: 'pending' });
   assert.equal(pending.length, 2);
   assert.deepEqual(pending.find((x: any) => x.path === 'tulips').after, { text: 'They matter much longer.', stage: 'design' });
 
-  await refused(agent('proposals.decide', { round: 'r1', accept: true }), 'permission');
-  assert.deepEqual(await me('proposals.decide', { round: 'r1', accept: true }), { decided: 2, left: 0 });
+  await refused(agent('proposals.decide', { accept: true }), 'permission');
+  assert.deepEqual(await me('proposals.decide', { accept: true }), { decided: 2 });
   assert.equal((await me('concepts.get', { id: 'tulips' })).text, 'They matter much longer.');
   assert.equal((await me('concepts.get', { id: 'roses' })).stage, 'idea');
-  await refused(me('proposals.decide', { round: 'r1', accept: true }), 'missing');
+  await refused(me('proposals.decide', { accept: true }), 'missing');
 
   await agent('concepts.update', { id: 'roses', text: 'Thorns.' }, 'r2');
-  await me('proposals.decide', { round: 'r2', accept: false });
-  assert.equal((await me('concepts.get', { id: 'roses' })).text, '', 'a rejected round changes nothing');
+  await me('proposals.decide', { accept: false });
+  assert.equal((await me('concepts.get', { id: 'roses' })).text, '', 'what is rejected changes nothing');
   assert.equal((await me('proposals.list', { status: 'pending' })).length, 0);
 
-  // A round is shown as one, but it can be decided piece by piece: one taken, one refused, the rest still waiting.
+  // What waits is one set, whichever turn of the agent it came from, and it is decided as one: no piece on its own.
   await agent('concepts.create', { name: 'Lilies' }, 'r3');
   await agent('concepts.create', { name: 'Daisies' }, 'r3');
-  await agent('concepts.update', { id: 'roses', text: 'Thorns, again.' }, 'r3');
+  await agent('concepts.update', { id: 'roses', text: 'Thorns, again.' }, 'r4');
+  // (A later change to the same concept is the same proposal, with what it was before for every field it touches.)
+  await agent('concepts.update', { id: 'roses', stage: 'design' }, 'r5');
   const three = await me('proposals.list', { status: 'pending' });
-  const idOf = (path: string) => three.find((x: any) => x.path === path).id as string;
-  assert.deepEqual(await me('proposals.decide', { round: 'r3', accept: true, only: [idOf('lilies')] }), { decided: 1, left: 2 });
+  assert.equal(three.length, 3);
+  assert.equal(new Set(three.map((x: any) => x.round)).size, 1, 'one set');
+  const roses = three.find((x: any) => x.path === 'roses');
+  assert.deepEqual([roses.before, roses.after], [{ text: '', stage: 'idea' }, { text: 'Thorns, again.', stage: 'design' }]);
+  await refused(me('proposals.decide', { accept: true, only: [roses.id] }), 'input');
+  assert.deepEqual(await me('proposals.decide', { accept: true }), { decided: 3 });
+  const decided = (await me('events.since', { n: 0 })).filter((e: any) => e.type === 'proposal.decided').at(-1);
+  assert.deepEqual([decided.status, [...decided.ids].sort(), decided.left], ['accepted', three.map((x: any) => x.id).sort(), 0]);
   assert.equal((await me('concepts.get', { id: 'lilies' })).name, 'Lilies');
-  await refused(me('concepts.get', { id: 'daisies' }), 'missing');
-  assert.deepEqual(await me('proposals.decide', { round: 'r3', accept: false, only: [idOf('daisies')] }), { decided: 1, left: 1 });
-  await refused(me('proposals.decide', { round: 'r3', accept: true, only: [idOf('lilies')] }), 'missing');
-  const decided = (await me('events.since', { n: 0 })).filter((e: any) => e.type === 'proposal.decided' && e.round === 'r3');
-  assert.deepEqual(decided.map((e: any) => [e.status, e.ids, e.left]), [['accepted', [idOf('lilies')], 2], ['rejected', [idOf('daisies')], 1]]);
-  // Without naming any, what is left of the round is decided.
-  assert.deepEqual(await me('proposals.decide', { round: 'r3', accept: true }), { decided: 1, left: 0 });
-  assert.equal((await me('concepts.get', { id: 'roses' })).text, 'Thorns, again.');
-  await refused(me('concepts.get', { id: 'daisies' }), 'missing');
+  assert.deepEqual([(await me('concepts.get', { id: 'roses' })).text, (await me('concepts.get', { id: 'roses' })).stage], ['Thorns, again.', 'design']);
   assert.equal((await me('proposals.list', { status: 'pending' })).length, 0);
+  await me('concepts.remove', { id: 'daisies' });
   await me('concepts.remove', { id: 'lilies' });
   await me('concepts.remove', { id: 'tulips' });
   await me('concepts.remove', { id: 'roses' });
@@ -114,20 +115,20 @@ test('a concept that is still a proposal is worked on further as that proposal: 
   await me('concepts.create', { name: 'Essay', text: long(200) });
   await assert.rejects(agent('concepts.update', { id: 'essay', text: long(201) }, 'r41'), /that is 201 words/);
   await agent('concepts.update', { id: 'essay', text: long(150) }, 'r41');
-  await me('proposals.decide', { round: 'r41', accept: false });
+  await me('proposals.decide', { accept: false });
   await me('concepts.remove', { id: 'essay' });
   const made = await agent('concepts.create', { name: 'Hedges', text: 'Hedges keep the wind out.', stage: 'playtest', realised: ['src/hedge.js'] }, 'r40');
   await agent('concepts.create', { name: 'Gates', links: [{ to: 'hedges', kind: 'part-of' }] }, 'r40');
-  // Later, even in another round, more is added to the one that is not accepted yet.
+  // Later, even in another turn, more is added to the one that is not accepted yet.
   const more = await agent('concepts.update', { id: 'hedges', links: [{ to: 'gates', kind: 'leads-to' }], text: 'Hedges keep the wind out, and the gnomes in.' }, 'r41');
-  assert.deepEqual([more.proposed, more.round], [made.proposed, 'r40'], 'the same proposal, in the round it was made in');
+  assert.equal(more.proposed, made.proposed, 'the same proposal');
   assert.deepEqual(await agent('concepts.update', { id: 'hedges', stage: 'playtest' }, 'r41'), { changed: false });
   const pending = await me('proposals.list', { status: 'pending' });
   assert.equal(pending.length, 2);
   assert.deepEqual(pending.find((p: any) => p.path === 'hedges').after,
     { name: 'Hedges', stage: 'playtest', links: [{ to: 'gates', kind: 'leads-to' }], realised: ['src/hedge.js'], text: 'Hedges keep the wind out, and the gnomes in.' });
   await refused(agent('concepts.update', { id: 'nothing-like-it', text: 'x' }, 'r41'), 'missing');
-  await me('proposals.decide', { round: 'r40', accept: true });
+  await me('proposals.decide', { accept: true });
   const hedges = await me('concepts.get', { id: 'hedges' });
   assert.deepEqual([hedges.stage, hedges.links, hedges.realised], ['playtest', [{ to: 'gates', kind: 'leads-to' }], ['src/hedge.js']]);
   assert.deepEqual((await me('concepts.get', { id: 'gates' })).links, [{ to: 'hedges', kind: 'part-of' }]);
@@ -156,7 +157,7 @@ test('the agent asks what only the person can say, and their answers come back a
   assert.deepEqual([again.id, again.questions, (again.after as any).text], [made.proposed, ['Is it deep?'], 'A pond in the corner, with three frogs.']);
   await agent('concepts.update', { id: 'ponds', questions: [] }, 'r46');
   assert.equal(host.events.since(0).filter((e) => e.type === 'proposal').at(-1)!.questions, undefined);
-  await me('proposals.decide', { round: 'r45', accept: false });
+  await me('proposals.decide', { accept: false });
 
   // And questions on their own, about something that is there.
   await refused(agent('chat.ask', { questions: [] }, 'r47'), 'input');
@@ -187,7 +188,7 @@ test('concepts: the person writes them, the agent proposes, and nothing in one i
   assert.ok(p.proposed);
   await refused(me('concepts.get', { id: 'blue-rose' }), 'missing');
   await agent('concepts.update', { id: made.id, text: 'Slower still.' }, 'r4');
-  await me('proposals.decide', { round: 'r4', accept: true });
+  await me('proposals.decide', { accept: true });
   assert.equal((await me('concepts.get', { id: 'blue-rose' })).stage, 'idea');
   assert.equal((await me('concepts.get', { id: made.id })).text, 'Slower still.');
   assert.equal((await me('concepts.get', { id: made.id })).stage, 'playtest', 'the rest of the concept is kept');
@@ -220,10 +221,10 @@ test('a loose thought is the person\'s, kept apart from the concepts until it is
   const card = host.events.since(0).filter((e) => e.type === 'proposal').at(-1)!;
   assert.equal(card.thought, 'An owl at night?', 'the card says which thought it takes in');
   assert.equal((await me('thoughts.list')).length, 2);
-  await me('proposals.decide', { round: 'r70', accept: false });
+  await me('proposals.decide', { accept: false });
   assert.equal((await me('thoughts.list')).length, 2, 'declined: still loose');
   await agent('concepts.create', { name: 'The gate bell', text: 'A bell by the gate.', links: [{ to: 'moss', kind: 'part-of' }], thought: bell.id }, 'r71');
-  await me('proposals.decide', { round: 'r71', accept: true });
+  await me('proposals.decide', { accept: true });
   assert.ok(host.concepts.get('the-gate-bell'));
   assert.deepEqual((await me('thoughts.list')).map((t: any) => t.id), [owl.id], 'accepted: it is in the document now');
 
@@ -256,12 +257,12 @@ test('a lock keeps the agent off a thing, even when it is asked to change it', a
 
   // What is next to it is not locked, and the person is never locked out.
   assert.ok((await agent('concepts.create', { name: 'Faster seasons' }, 'r7')).proposed);
-  await me('proposals.decide', { round: 'r7', accept: false });
+  await me('proposals.decide', { accept: false });
   await me('concepts.update', { id: 'the-slow-burn', stage: 'design' });
 
   await me('locks.set', { ref: 'concept:the-slow-burn', locked: false });
   assert.ok((await agent('concepts.update', { id: 'the-slow-burn', text: 'Faster.' }, 'r8')).proposed);
-  await me('proposals.decide', { round: 'r8', accept: false });
+  await me('proposals.decide', { accept: false });
   await me('locks.set', { ref: 'drawing:gnome', locked: false });
   assert.deepEqual(await me('locks.list'), []);
 });
@@ -298,13 +299,13 @@ test('art: a drawing is a thing of the engine: listed, read, looked at, changed 
   assert.match((ev.pictures as any).before, /^\/api\/file\/looks\//);
   assert.match((ev.pictures as any).after, /^\/api\/file\/looks\//);
   assert.equal((await agent('art.get', { name: 'gnome' })).text, src.text);
-  await me('proposals.decide', { round: 'r20', accept: false });
+  await me('proposals.decide', { accept: false });
   assert.equal((await agent('art.get', { name: 'gnome' })).text, src.text, 'rejected: still as it was');
 
   // Accepted, it is the drawing, and the game is built with it.
   await agent('art.set', { name: 'garden-sign', text: tiny, note: 'a sign for the gate' }, 'r21');
   assert.equal(host.events.since(0).at(-1)!.isNew, true);
-  await me('proposals.decide', { round: 'r21', accept: true });
+  await me('proposals.decide', { accept: true });
   assert.equal(readFileSync(join(dir, 'art/garden-sign.txt'), 'utf8'), tiny);
   assert.ok(JSON.parse(readFileSync(join(dir, 'built.json'), 'utf8')).includes('garden-sign'), 'the project\'s own build of its drawings was run');
   assert.equal((await agent('art.list')).length, 8);
@@ -370,7 +371,7 @@ test('how tandem runs the project is kept in tandem\'s own folder; the agent pro
   assert.ok(!existsSync(configFile) && !existsSync(pageScript), 'nothing is written until it is accepted');
   assert.equal(host.project.pageCommand(5210), undefined);
 
-  await me('proposals.decide', { round: 'r60', accept: true });
+  await me('proposals.decide', { accept: true });
   const kept = JSON.parse(readFileSync(configFile, 'utf8'));
   assert.deepEqual([kept.name, kept.test, kept.page, kept.run], ['Fixture', 'node --test', 'sh {tandem}/page.sh {port}', ['npm run build']], 'what it was run by before is kept with it');
   assert.equal(readFileSync(pageScript, 'utf8'), script);
@@ -497,7 +498,7 @@ test('the conversation and the stage are events like everything else', async () 
   assert.deepEqual((await me('chat.history')).map((m: any) => m.text), ['a clean start']);
 });
 
-test('a proposed concept is the person\'s to change before deciding, they add their own to the round, and the agent hears what was accepted', async () => {
+test('a proposed concept is the person\'s to change before deciding, they add their own to it, and the agent hears what was accepted', async () => {
   await agent('concepts.create', { name: 'Ferns', text: 'Ferns like shade.' }, 'r80');
   await agent('concepts.create', { name: 'Moss', text: 'Moss grows on the wall.' }, 'r80');
   const idOf = async (path: string) => (await me('proposals.list', { status: 'pending' })).find((x: any) => x.path === path).id as string;
@@ -505,7 +506,7 @@ test('a proposed concept is the person\'s to change before deciding, they add th
 
   // Only the person, only a concept that still waits, and only what a concept can be.
   await refused(agent('proposals.edit', { id: ferns, text: 'x' }), 'permission');
-  await refused(agent('proposals.add', { round: 'r80', name: 'Ivy' }), 'permission');
+  await refused(agent('proposals.add', { name: 'Ivy' }), 'permission');
   await refused(me('proposals.edit', { id: 'nothing', text: 'x' }), 'missing');
   await refused(me('proposals.edit', { id: ferns, name: ' ' }), 'input');
   await refused(me('proposals.edit', { id: ferns, stage: 'done' }), 'input');
@@ -522,28 +523,21 @@ test('a proposed concept is the person\'s to change before deciding, they add th
   await me('proposals.edit', { id: ferns, name: 'Ferns' });
   assert.deepEqual((await me('proposals.list', { status: 'pending' })).find((x: any) => x.id === ferns).proposed, { text: 'Ferns like shade.' });
 
-  // A concept of their own goes into the same round, once.
-  await refused(me('proposals.add', { round: 'r81', name: 'Ivy' }), 'missing');
-  await refused(me('proposals.add', { round: 'r80', name: 'Moss' }), 'exists');
-  const ivy = await me('proposals.add', { round: 'r80', name: 'Ivy', text: 'Ivy climbs.', links: [{ to: 'ferns', kind: 'leads-to' }] });
-  assert.deepEqual([ivy.id, ivy.round], ['ivy', 'r80']);
+  // A concept of their own goes with what waits, once.
+  await refused(me('proposals.add', { name: 'Moss' }), 'exists');
+  const ivy = await me('proposals.add', { name: 'Ivy', text: 'Ivy climbs.', links: [{ to: 'ferns', kind: 'leads-to' }] });
+  assert.equal(ivy.id, 'ivy');
   assert.equal(host.events.since(before).at(-1)!.by, 'me');
   await refused(me('concepts.get', { id: 'ivy' }), 'missing');
 
-  // One piece accepted as it was proposed: the agent is told so.
+  // Accepted as one: the concepts are as the person made them, and the agent hears which those are.
   const told = () => host.events.since(before).filter((e) => e.type === 'message' && e.by === 'engine' && e.kind === 'accepted');
-  await me('proposals.decide', { round: 'r80', accept: true, only: [await idOf('moss')] });
-  assert.equal(told().length, 1);
-  assert.match(String(told()[0].text), /accepted a concept from your proposal of round r80 \(2 of that round still wait\):\n- Moss \(moss\): as you proposed it\.\nThis is news/);
-  assert.equal(told()[0].refs, undefined);
-
-  // The rest as one: the concepts are as the person made them, and the agent hears which those are.
-  await me('proposals.decide', { round: 'r80', accept: true });
+  await me('proposals.decide', { accept: true });
   assert.deepEqual((({ name, text }) => [name, text])(await me('concepts.get', { id: 'ferns' })), ['Ferns', 'Tree ferns like deep shade.']);
   assert.deepEqual((({ text, stage, links }) => [text, stage, links])(await me('concepts.get', { id: 'ivy' })), ['Ivy climbs.', 'idea', [{ to: 'ferns', kind: 'leads-to' }]]);
-  assert.equal(told().length, 2);
-  const news = told()[1];
-  assert.match(String(news.text), /accepted 2 concepts from your proposal of round r80:\n- Ferns \(ferns\): the person changed it before accepting: its text\.\n- Ivy \(ivy\): the person added it to the round themselves\.\nThe document has them as the person made them/);
+  assert.equal(told().length, 1);
+  const news = told()[0];
+  assert.match(String(news.text), /accepted 3 concepts from what you proposed:\n- Ferns \(ferns\): the person changed it before accepting: its text\.\n- Moss \(moss\): as you proposed it\.\n- Ivy \(ivy\): the person added it to the proposal themselves\.\nThe document has them as the person made them/);
   assert.deepEqual(news.refs, ['concept:ferns', 'concept:ivy'], 'what they made of it goes along');
   assert.equal(news.changed, 2);
 
@@ -557,8 +551,9 @@ test('a proposed concept is the person\'s to change before deciding, they add th
   await agent('concepts.update', { id: 'moss', stage: 'build' }, 'r82');
   assert.equal((await me('proposals.list', { status: 'pending' })).find((x: any) => x.id === moss).proposed, undefined);
   // Nothing is told about what is refused.
-  await me('proposals.decide', { round: 'r82', accept: false });
-  assert.equal(told().length, 2);
+  await me('proposals.decide', { accept: false });
+  assert.equal(told().length, 1);
+  await refused(me('proposals.add', { name: 'Holly' }), 'missing');
   for (const id of ['ferns', 'moss', 'ivy']) await me('concepts.remove', { id });
 });
 
@@ -583,16 +578,17 @@ test('what must not happen in the middle of a command waits until none is runnin
 test('a decision the core was cut off in the middle of is said when it starts again', async () => {
   const fx = await fixture({ code: false });
   try {
-    await fx.host.run('concepts.create', { name: 'Willows' }, AGENT, 'r1');
-    await fx.host.run('concepts.create', { name: 'Alders' }, AGENT, 'r1');
-    await fx.host.run('concepts.create', { name: 'Birches' }, AGENT, 'r2');
-    await fx.host.run('proposals.decide', { round: 'r2', accept: false }, 'me');
+    await fx.host.run('concepts.create', { name: 'Birches' }, AGENT, 'r1');
+    await fx.host.run('proposals.decide', { accept: false }, 'me');
+    await fx.host.run('concepts.create', { name: 'Willows' }, AGENT, 'r2');
+    await fx.host.run('concepts.create', { name: 'Alders' }, AGENT, 'r2');
     // Marked, and then nothing: the core went down before it said so.
-    const [willows] = fx.host.proposals.decide('r1', 'accepted', [fx.host.proposals.list({ round: 'r1' })[0].id]);
+    const waits = fx.host.proposals.list({ status: 'pending' });
+    const [willows] = fx.host.proposals.decide(waits[0].round, 'accepted', [waits[0].id]);
     const before = fx.host.events.last();
     const again = await createHost({ project: fx.dir, code: null });
     const said = again.events.since(before);
-    assert.deepEqual(said.map((e) => [e.type, e.by, e.round, e.status, e.ids, e.left]), [['proposal.decided', 'engine', 'r1', 'accepted', [willows.id], 1]], 'only what the log had not said');
+    assert.deepEqual(said.map((e) => [e.type, e.by, e.round, e.status, e.ids, e.left]), [['proposal.decided', 'engine', willows.round, 'accepted', [willows.id], 1]], 'only what the log had not said');
     assert.equal((await createHost({ project: fx.dir, code: null })).events.last(), again.events.last(), 'and it is said once');
   } finally { fx.cleanup(); }
 });

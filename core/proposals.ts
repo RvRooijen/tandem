@@ -1,6 +1,8 @@
 // Proposals: what the agent wants to change, kept apart until the person
-// decides. One round of agent work is one change set, shown as one; it is decided
-// as one, or piece by piece. Each proposal keeps the thing as it was, so the card can show before and after.
+// decides. Everything that waits for the person is one set, shown as one card and
+// decided as one: concepts, how the project is run, and the working copy's code.
+// (A drawing worker's round is its own: the agent decides it.) Each proposal keeps
+// the thing as it was, so the card can show before and after.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -42,7 +44,7 @@ export interface Proposals {
    * the thing as it is, for a change to something that exists: a field the proposal did not touch yet gets its before from it.
    */
   edit(id: string, fields: RecordValue, was?: RecordValue): Proposal | undefined;
-  /** Mark the pending proposals of a round: all of them, or only the ones named. Returns the ones it decided. */
+  /** Mark the pending proposals of a round: all of them, or only the ones named (one that is withdrawn while the rest waits). Returns the ones it decided. */
   decide(round: string, status: 'accepted' | 'rejected', only?: string[]): Proposal[];
 }
 
@@ -54,10 +56,12 @@ export function createProposals(dir: string): Proposals {
   const write = (p: Proposal) => writeFileSync(join(dir, p.id + '.json'), JSON.stringify(p, null, 2) + '\n');
   return {
     add(p) {
-      // A second change to the same thing in the same round replaces the first: the set says where it ends up.
+      // A second change to the same thing that still waits replaces the first: the set says where it ends up.
       const earlier = all.find((x) => x.status === 'pending' && x.round === p.round && x.kind === p.kind && x.path === p.path);
       if (earlier) {
         earlier.after = { ...earlier.after, ...p.after };
+        // (A field it did not touch before has its before from now.)
+        if (p.before) earlier.before = { ...p.before, ...earlier.before };
         // What is proposed anew for a field is what stands there: it is no longer the person's version of it.
         for (const k in p.after) delete earlier.proposed?.[k];
         if (earlier.proposed && !Object.keys(earlier.proposed).length) delete earlier.proposed;

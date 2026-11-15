@@ -42,7 +42,7 @@ test('commands over HTTP: the list, a run, who is asking, what goes wrong', asyn
   assert.deepEqual(await post('concepts.get', { id: 'orchids' }), { status: 404, ok: false, code: 'missing', error: 'there is no concept orchids; see concepts.list' });
   assert.equal((await post('nope.nothing')).status, 404);
   assert.equal((await post('concepts.get', {})).code, 'input');
-  const denied = await post('proposals.decide', { round: 'x', accept: true }, { 'x-tandem-by': 'agent:main' });
+  const denied = await post('proposals.decide', { accept: true }, { 'x-tandem-by': 'agent:main' });
   assert.equal(denied.status, 400);
   assert.equal(denied.code, 'permission');
   const bad = await fetch(`${base}/run/concepts.get`, { method: 'POST', body: '{nope' });
@@ -89,7 +89,6 @@ test('a message from the person is answered by the agent, whose only hands are c
   const evs = host.events.since(before);
   const proposal = evs.find((e) => e.type === 'proposal')!;
   assert.equal(proposal.by, 'agent:main');
-  assert.equal(proposal.round, round, 'what it proposes belongs to the round of the message it answers');
   assert.deepEqual([proposal.kind, proposal.path, (proposal.after as { text: string }).text], ['concept', `tulips-${round}`, 'Tulips are worth a bit more.']);
   const reply = evs.find((e) => e.type === 'message' && e.by === 'agent')!;
   assert.match(String(reply.text), /I proposed it \(ok\)/);

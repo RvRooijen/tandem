@@ -25,9 +25,13 @@ export interface Stage {
   loads: number;
   /** What the page in the frame can do, as far as it has said. */
   can: { snapshot: boolean; point: boolean; find: boolean };
-  /** Show the agent's working copy, started from the world the person is in; or the project again. */
+  /**
+   * Show the agent's working copy, started from the world the person is in; or the project again. With `anew` the
+   * project's page is loaded again when it is the one shown already: its code changed, and not every page a project
+   * is served with loads itself again for that.
+   */
   showCopy(url: string): void;
-  showProject(): void;
+  showProject(anew?: boolean): void;
   /** Where a point of the project's world is on this screen; null when the page does not say. */
   where(x: number, y: number): Promise<{ x: number; y: number } | null>;
   /**
@@ -95,8 +99,8 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
       void show(url, 'the working copy');
       on.changed();
     },
-    showProject() {
-      if (stage.showing === 'project') return;
+    showProject(anew = false) {
+      if (stage.showing === 'project' && !anew) return;
       stage.showing = 'project';
       stage.can = { snapshot: false, point: false, find: false };
       if (info.page) void show(info.page, info.name);

@@ -415,6 +415,9 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
         if (ev.type === 'stage.point') app.point(Number(ev.x), Number(ev.y), String(ev.text ?? ''), typeof ev.at === 'string' ? ev.at : undefined);
         if (ev.type === 'stage.open') app.open(String(ev.tab), ev.id ? String(ev.id) : undefined);
         if (ev.type === 'proposal.decided' && ev.round === 'code') app.playProject();
+        // What was accepted is the project's code now: its page is loaded anew. A page served by something that
+        // watches the files does that by itself; one served as plain files stays what it was until it is asked again.
+        if (ev.type === 'code.changed' && !ev.restarting) stage.showProject(true);
         // How the project is run was changed: the core and the project's page start again, and this page with them.
         if (ev.type === 'setup.changed' && ev.restarting) void again();
         // The same when what the project depends on was installed with an accepted change.

@@ -42,7 +42,7 @@ test('asked to code, the agent works in its copy, and what the copy changed is a
   await idle();
   const said = String(answers()[0].text);
   assert.match(said, /Seasons added\. In the copy: true\. May edit: true;/, 'it stood in its working copy and could change the project\'s files');
-  assert.match(said, /may run: Bash\(ls:\*\) Bash\(grep:\*\) Bash\(cat:\*\) Bash\(head:\*\) Bash\(tail:\*\) Bash\(wc:\*\) Bash\(node --test:\*\) Bash\(node check\.mjs:\*\) Bash\(node build-art\.mjs:\*\)\./, 'it may look around, and run what the project says: its tests, its check, its build');
+  assert.match(said, /may run: Bash\(ls:\*\) Bash\(grep:\*\) Bash\(cat:\*\) Bash\(head:\*\) Bash\(tail:\*\) Bash\(wc:\*\) Bash\(node --test:\*\) Bash\(node check\.mjs:\*\) Bash\(node build-art\.mjs:\*\) Bash\(npm install\) Bash\(npm ci\)\./, 'it may look around, run what the project says (its tests, its check, its build), and install what it depends on');
   assert.match(said, /Kept off: Edit\(\.tandem\/\*\*\) Edit\(art\/\*\*\) Edit\(depth\/\*\*\)\. Note: none\./, 'but not tandem\'s own folder or the drawings');
   assert.ok(existsSync(join(copy, 'src/seasons.js')));
   assert.ok(!existsSync(join(dir, 'src/seasons.js')), 'the project does not have it');
@@ -198,6 +198,8 @@ test('the agent may run a script of its own from its scratchpad, and nothing typ
   // An interpreter by itself is not allowed: only with a file from the scratchpad after it.
   assert.ok(!allow.some((r) => /^Bash\((python3?|node|sh|bash)(:\*)?\)$/.test(r)));
   assert.ok(deny.includes('Write(.tandem/**)'), 'tandem\'s own folder stays out of reach');
+  // What a project depends on it may install, also in the turn in which it writes the package.json: exactly that, nothing after it.
+  for (const rule of ['Bash(npm install)', 'Bash(npm ci)']) assert.ok(allow.includes(rule), rule);
 });
 
 test('the person says where the project is pushed, and from then on every accept is', async () => {

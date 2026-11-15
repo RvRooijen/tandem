@@ -1041,6 +1041,25 @@ test('a change to the project is a card: which files, the copy played in the fra
   await until(() => all('.card.prop').filter((c) => /A change to the project/.test(c.textContent!)).at(-1)!.dataset.status === 'rejected', 'the rejection');
 });
 
+test('an accepted change loads the project\'s page anew, also when the project was what the frame showed', async () => {
+  app.playProject();
+  await until(() => frame.src === 'http://localhost:5210/' && !frame.hidden, 'the frame to show the project');
+  // (Pointing the frame at a page starts with asking whether that page answers: that is what is counted.)
+  let asked = 0;
+  const before = globalThis.fetch;
+  globalThis.fetch = ((url: string, init?: RequestInit) => { if (String(url) === 'http://localhost:5210/') asked++; return before(url, init); }) as typeof fetch;
+  try {
+    // Rejected, nothing changed in the project: the page stays as it is.
+    host.events.add({ type: 'proposal.decided', by: 'me', round: 'code', status: 'rejected', count: 1, paths: ['code:working copy'] });
+    await new Promise((r) => setTimeout(r, 200));
+    assert.equal(asked, 0);
+    host.events.add({ type: 'code.changed', by: 'me', files: ['src/seasons.js'] });
+    await until(() => asked === 1 && !frame.hidden, 'the project\'s page to be loaded again');
+    assert.equal(frame.src, 'http://localhost:5210/');
+    assert.equal(app.stage.showing, 'project');
+  } finally { globalThis.fetch = before; }
+});
+
 test('playing the copy starts it from what the browser keeps of the project, goes to where the change is and marks it', async () => {
   tab('Chat');
   app.playProject();

@@ -39,8 +39,8 @@ const LOOKING = ['ls', 'grep', 'cat', 'head', 'tail', 'wc'];
  */
 export const SCRIPTS = ['node', 'node --test', 'python3'];
 
-/** Whether what the project depends on is installed with npm: then the agent may install it in its working copy. */
-const installs = (project: Host['project']) => existsSync(join(project.root, 'package.json'));
+/** Whether what the project depends on is installed with npm, in the project or (new there) in the agent's working copy. */
+const installs = (host: Host) => [host.project.root, host.code?.work].some((dir) => !!dir && existsSync(join(dir, 'package.json')));
 
 export function tools(host: Host): { allow: string[]; deny: string[] } {
   const { project } = host;
@@ -53,7 +53,8 @@ export function tools(host: Host): { allow: string[]; deny: string[] } {
     // Its scratchpad: what it writes there is its own to run, and never part of the change set.
     allow.push(`Edit(${SCRATCH}/**)`, `Write(${SCRATCH}/**)`, ...SCRIPTS.map((c) => `Bash(${c} ${SCRATCH}/:*)`));
     // Exactly this, with nothing after it: a dependency is added in package.json, which is in the change set.
-    if (installs(project)) allow.push('Bash(npm install)', 'Bash(npm ci)');
+    // (Also where there is no package.json yet: a project that is new gets one in the turn that installs it.)
+    allow.push('Bash(npm install)', 'Bash(npm ci)');
     // Tandem's own build of the drawings: it writes sprite sheets in a folder of the copy, from the drawings as they are.
     allow.push('Bash(tandem export:*)');
     allow.push('Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)');
@@ -188,7 +189,7 @@ export function createRunner(host: Host) {
       project.config.art?.build && `The build of its drawings: \`${project.config.art.build}\`.`,
       ...(project.config.run ?? []).map((c) => `Also: \`${c}\`.`),
       ...runnable(project).filter((c) => ![project.config.test, project.config.check, project.config.art?.build, ...(project.config.run ?? [])].includes(c)).map((c) => `Its tests also as \`${c}\`.`),
-      host.code && installs(project) && 'What it depends on: `npm install`, just so (a new dependency is written in package.json first); your copy then has a node_modules of its own.',
+      host.code && installs(host) && 'What it depends on: `npm install`, just so (a new dependency is written in package.json first); your copy then has a node_modules of its own.',
     ].filter(Boolean).join(' ');
     const about = [
       `${project.name}, in ${project.root}.`,

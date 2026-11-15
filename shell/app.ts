@@ -9,6 +9,7 @@ import { createBubbles } from './bubbles.ts';
 import { clear, h } from './dom.ts';
 import { icon } from './icons.ts';
 import type { Picked, Stage } from './stage.ts';
+import { createTweaks, type Tweak } from './tweaks.ts';
 
 /** A file the core keeps with the conversation (chat.attach). */
 export interface Kept { name: string; label: string; url: string; image: boolean }
@@ -31,6 +32,9 @@ export interface Panel {
 }
 
 /** Where a change shows: the way there, as a person would go, and the thing itself. */
+/** An example of a change set: a page of the working copy made to show it, and a few words on what it shows. */
+export interface Example { path: string; text?: string }
+
 export interface Show { steps: ({ go: string } | { tap: string } | { fill: string; text: string })[]; at?: string; text?: string }
 
 export interface App {
@@ -59,6 +63,8 @@ export interface App {
   /** Show the agent's working copy in the frame instead of the project, and back. */
   /** Show the working copy, started from what the browser keeps of the project; with `show`, go to where the change is and mark it. */
   playCopy(show?: Show): Promise<void>;
+  /** Show the example the agent made of its change set: a page of the working copy, as that page serves it. */
+  playExample(example: Example): Promise<void>;
   playProject(): void;
   zoom(url: string): void;
   toast(text: string): void;
@@ -81,7 +87,17 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       h<'button'>('button.icon', { 'aria-label': 'Close', onclick: () => app.close() }, icon('close'))),
     body, foot);
   const ring = h('div#t-ring', { hidden: true }, h('i'), h('span'));
-  const banner = h('div#t-copy', { hidden: true }, h('span', { title: 'What the agent made, not yet the project' }, 'The working copy'), h<'button'>('button', { onclick: () => app.playProject() }, 'Back to the project'));
+  // (With an example of the change set there are two ways to see the copy: from one to the other, right here.)
+  let toy: Example | undefined;
+  const bannerSays = h('span', { title: 'What the agent made, not yet the project' }, 'The working copy');
+  const bannerSwap = h<'button'>('button.swap', { hidden: true, onclick: () => { if (stage.example) void app.playCopy(); else if (toy) void app.playExample(toy); } });
+  const banner = h('div#t-copy', { hidden: true }, bannerSays, bannerSwap, h<'button'>('button', { onclick: () => app.playProject() }, 'Back to the project'));
+  const paintBanner = () => {
+    banner.hidden = stage.showing !== 'copy';
+    bannerSays.textContent = stage.example ? 'An example' : 'The working copy';
+    bannerSwap.hidden = !toy;
+    bannerSwap.textContent = stage.example ? 'The copy itself' : 'The example';
+  };
   // The agent asks for the page, and has it: asked and said over the page, where the person is looking.
   const takeWhy = h('p');
   const takeEl = h('div#t-take', { hidden: true, role: 'dialog', 'aria-label': 'The agent asks to use the page' },
@@ -91,6 +107,22 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       h<'button'>('button', { onclick: () => void answerTake(false) }, 'Not now')));
   const heldEl = h('div#t-held', { hidden: true }, h('span', { title: 'It taps and looks itself, to try what it made; you can watch' }, 'The agent is using the page'), h<'button'>('button', { onclick: () => void app.act('page.release') }, 'Take it back'));
   const marks = h('div#t-marks', {}, banner, heldEl);
+  // The values of the change set that are the person's to turn, over the copy's page while it is the one shown:
+  // there they see it change as they turn. Folded away, it is one small button.
+  let turning: Tweak[] = [], folded = false;
+  const trayRows = h('div.tweaks');
+  const trayFold = h<'button'>('button.fold', { onclick: () => { folded = !folded; paintTray(); } });
+  const tray = h('div#t-tweaks', { hidden: true }, trayFold, trayRows);
+  const trayTweaks = createTweaks((name, input) => app.act(name, input));
+  const paintTray = () => {
+    tray.hidden = stage.showing !== 'copy' || !turning.length;
+    if (tray.hidden) return;
+    tray.classList.toggle('folded', folded);
+    trayFold.textContent = folded ? `Turn · ${turning.length}` : 'Yours to turn';
+    trayFold.setAttribute('aria-expanded', String(!folded));
+    trayTweaks.into(trayRows, turning);
+    trayRows.hidden = folded;
+  };
   const takes = new Map<string, string>();
   let held = false;
   const answerTake = async (allow: boolean) => {
@@ -111,7 +143,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
   const toastEl = h('div#t-toast', { hidden: true });
   const zoomEl = h('div#t-zoom', { hidden: true, onclick: () => { zoomEl.hidden = true; } }, h<'img'>('img'));
   const bubbleEl = h('div#t-bubbles', { hidden: true });
-  root.append(fab, bubbleEl, marks, takeEl, ring, sheet, toastEl, zoomEl);
+  root.append(fab, bubbleEl, marks, tray, takeEl, ring, sheet, toastEl, zoomEl);
 
   let shown: string | null = null, last = 'chat';
   // A wide screen has room for the tools beside the page. The stylesheet goes by these two classes on the body.
@@ -331,12 +363,20 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       if (show.at) app.point(0, 0, show.text ?? 'this is what changed', show.at);
     },
 
+    async playExample(example) {
+      const got = await app.act<{ url: string }>('code.play');
+      if (!got) return;
+      stage.showCopy(new URL(example.path, got.url).href, true);
+      app.reveal();
+    },
+
     playProject() { stage.showProject(); },
 
     /** The frame shows something else now: say so over it. */
     stageChanged() {
-      banner.hidden = stage.showing !== 'copy';
+      paintBanner();
       document.body.classList.toggle('t-copy', stage.showing === 'copy');
+      paintTray();
     },
 
     zoom(url) {
@@ -410,6 +450,9 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       if (ev.type === 'page.taken') { takes.delete(String(ev.id)); if (ev.allow) held = true; paintTake(); }
       if (ev.type === 'page.released') { held = false; paintTake(); }
       bubbles.feed(ev, live);
+      // The change set that waits, and what of it is the person's to turn: over the copy's page while that is shown.
+      if (ev.type === 'proposal' && ev.kind === 'code') { turning = (ev.tweaks as Tweak[] | undefined) ?? []; toy = ev.example as Example | undefined; paintTray(); paintBanner(); }
+      if (ev.type === 'proposal.decided' && ev.round === 'code') { turning = []; toy = undefined; paintTray(); paintBanner(); }
       if (live) {
         // What the agent shows, it shows on the stage itself.
         if (ev.type === 'stage.point') app.point(Number(ev.x), Number(ev.y), String(ev.text ?? ''), typeof ev.at === 'string' ? ev.at : undefined);
@@ -423,7 +466,10 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
         // The same when what the project depends on was installed with an accepted change.
         if (ev.type === 'code.changed' && ev.restarting) void again();
         if (ev.by !== 'me' && ['message', 'look', 'playtest', 'welcome'].includes(ev.type)) app.badge('chat', true);
-        if (ev.type === 'proposal' && !ev.worker) app.badge('chat', true);
+        // A value was turned in the copy, and its page does not follow its own files: it is loaded anew to show it.
+        if (ev.type === 'proposal' && ev.tweaked && ev.anew && stage.showing === 'copy') stage.again();
+        // (What the person turned themselves is not news to them.)
+        if (ev.type === 'proposal' && !ev.worker && !ev.tweaked) app.badge('chat', true);
         // A worker's round is ready: that is news in the Art tab.
         if (ev.type === 'art.round') app.badge('art', true);
       }

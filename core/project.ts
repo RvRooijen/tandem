@@ -89,7 +89,9 @@ export function loadProject(dir: string, opts: { data?: string; tandem?: string;
   const ours = opts.as?.dirs.tandem ?? tandem;
   const home = opts.as?.root ?? root;
   // (Asked each time: how the project is run can be changed while tandem is on it.)
-  const page = () => config.page ?? guessPage(home);
+  // A working copy of a project that has no page yet is started by what the copy itself brings (the first change
+  // set of a new project is the one that gives it a page): so it can be played before it is accepted.
+  const page = () => config.page ?? guessPage(home) ?? (root !== home ? guessPage(root) : undefined);
   const art = config.art?.dir ?? 'art', depth = config.art?.depth ?? 'depth';
   const project: Project = {
     root,

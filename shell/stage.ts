@@ -21,6 +21,8 @@ export interface Picked {
 export interface Stage {
   /** What the frame shows now. */
   showing: 'project' | 'copy';
+  /** The copy is shown by an example of its change set (a page made to show it), not from where the app opens. */
+  example: boolean;
   /** How many times a page in the frame has said it is there: one more each time a page is loaded in it. */
   loads: number;
   /** What the page in the frame can do, as far as it has said. */
@@ -30,8 +32,10 @@ export interface Stage {
    * project's page is loaded again when it is the one shown already: its code changed, and not every page a project
    * is served with loads itself again for that.
    */
-  showCopy(url: string): void;
+  showCopy(url: string, example?: boolean): void;
   showProject(anew?: boolean): void;
+  /** Load the page that is shown anew, where it is: a file of it changed, and it does not follow its files itself. */
+  again(): void;
   /** Where a point of the project's world is on this screen; null when the page does not say. */
   where(x: number, y: number): Promise<{ x: number; y: number } | null>;
   /**
@@ -72,11 +76,19 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
     none.hidden = true;
   }
 
+  /** A project without a page: this space says so. (Also when the copy's page was shown and they go back.) */
+  const nothing = () => {
+    wanted = '';
+    frame.hidden = true;
+    frame.removeAttribute('src');
+    none.hidden = false;
+    clear(none,
+      h('b', {}, `${info.name} has no page here.`),
+      h('p', {}, 'Tandem shows a project\'s own page in this space. Ask the agent to set tandem up for it, or say how it is started in .tandem/tandem.json: "page": "npm run dev -- --port {port}".'),
+      h('p', {}, 'The tools work without it: open them with the round button.'));
+  };
   if (info.page) void show(info.page, `${info.name}`);
-  else if (info.project) clear(none,
-    h('b', {}, `${info.name} has no page here.`),
-    h('p', {}, 'Tandem shows a project\'s own page in this space. Ask the agent to set tandem up for it, or say how it is started in .tandem/tandem.json: "page": "npm run dev -- --port {port}".'),
-    h('p', {}, 'The tools work without it: open them with the round button.'));
+  else if (info.project) nothing();
   // No project at all: the page is there to choose one.
   else clear(none, h('b', {}, 'Which project?'), h('p', {}, 'Tandem works on a project: a folder with a git repository in it. Choose one from the list.'));
 
@@ -91,10 +103,12 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
 
   const stage: Stage = {
     showing: 'project',
+    example: false,
     loads: 0,
     can: { snapshot: false, point: false, find: false },
-    showCopy(url) {
+    showCopy(url, example = false) {
       stage.showing = 'copy';
+      stage.example = example;
       stage.can = { snapshot: false, point: false, find: false };
       void show(url, 'the working copy');
       on.changed();
@@ -102,9 +116,14 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
     showProject(anew = false) {
       if (stage.showing === 'project' && !anew) return;
       stage.showing = 'project';
+      stage.example = false;
       stage.can = { snapshot: false, point: false, find: false };
-      if (info.page) void show(info.page, info.name);
+      if (info.page) void show(info.page, info.name); else if (info.project) nothing();
       on.changed();
+    },
+    again() {
+      // (Not through show(): the page is up, and the frame is not hidden while it comes back.)
+      if (!frame.hidden && frame.src) frame.src = wanted;
     },
     where(x, y) {
       if (!stage.can.point) return Promise.resolve(null);

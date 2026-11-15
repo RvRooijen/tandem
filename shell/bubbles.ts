@@ -5,6 +5,7 @@
 // answers on it, until it is answered. Opening the tools puts the bubbles away:
 // everything in them is in the chat.
 import type { Event } from '../core/events.ts';
+import type { Example, Show } from './app.ts';
 import { clear, h } from './dom.ts';
 import { icon } from './icons.ts';
 
@@ -16,12 +17,16 @@ interface Waiting {
   open: [tab: string, id?: string];
   yes: { label: string; run(): void };
   no: { label: string; run(): void };
+  /** Ways to see it before answering: a change to the project is played, as the copy has it or in the agent's example of it. */
+  plays?: { label: string; run(): void }[];
 }
 
 export interface BubbleHost {
   act<T>(name: string, input?: Record<string, unknown>): Promise<T | undefined>;
   open(tab: string, id?: string): void;
-  info?: { project: string | null };
+  info?: { project: string | null; page?: string | null };
+  playCopy?(show?: Show): Promise<void>;
+  playExample?(example: Example): Promise<void>;
 }
 
 /** Whether the offer to read a project was put off, here on this device. */
@@ -63,7 +68,7 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
     el.hidden = !shut || (!list.length && !said.length);
     if (el.hidden) { showing = ''; return void clear(el); }
     if (said.length) timer = window.setTimeout(paint, Math.max(200, said[0].until - now));
-    const now_ = JSON.stringify([list.map(([key, w]) => [key, w.title, w.text, w.yes.label]), said.slice(-2).map((x) => x.text)]);
+    const now_ = JSON.stringify([list.map(([key, w]) => [key, w.title, w.text, w.yes.label, w.plays?.map((p) => p.label)]), said.slice(-2).map((x) => x.text)]);
     if (now_ === showing) return;
     showing = now_;
     clear(el,
@@ -72,6 +77,7 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
       list.length === 1 && list.map(([key, w]) => h('div.bubble.waits', { data: { key } },
         h<'button'>('button.hide', { 'aria-label': 'Hide', title: 'Hide: it stays in the chat', onclick: () => hide([key]) }, icon('close')),
         h('div.say', { onclick: () => app.open(...w.open) }, h('b', {}, w.title), w.text && h('p', {}, w.text)),
+        w.plays?.length && h('div.plays', {}, w.plays.map((p) => h<'button'>('button', { onclick: () => p.run() }, p.label))),
         h('div.answers', {},
           h<'button'>('button.primary', { onclick: () => w.yes.run() }, w.yes.label),
           h<'button'>('button', { onclick: () => w.no.run() }, w.no.label)))),
@@ -101,8 +107,14 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
         // A concept goes by its name, as the person knows it.
         : first.kind === 'concept' ? (first.before ? `A change to the concept ${conceptName(first)}` : `A new concept · ${conceptName(first)}`)
           : `A proposal · ${first.kind} ${first.path}${first.before ? '' : ', new'}`;
+    // What the agent coded is there to play before it is answered: the copy itself, and its example of the change.
+    const code = changes.find((c) => c.kind === 'code');
+    const plays = !code || !(app.info?.page || code.plays) ? [] : [
+      ...(app.playCopy ? [{ label: 'Play', run: () => void app.playCopy!(code.show as Show | undefined) }] : []),
+      ...(app.playExample && code.example ? [{ label: 'Example', run: () => void app.playExample!(code.example as Example) }] : []),
+    ];
     waiting.set(round, {
-      title, text: short(String(changes.at(-1)!.note ?? '')), open: ['chat'],
+      title, text: short(String(changes.at(-1)!.note ?? '')), open: ['chat'], plays,
       yes: { label: 'Approve', run: () => void app.act('proposals.decide', { round, accept: true }) },
       no: { label: 'Decline', run: () => void app.act('proposals.decide', { round, accept: false }) },
     });

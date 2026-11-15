@@ -5,7 +5,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -75,6 +75,8 @@ test('when the copy is the project again, the proposal is gone; rejected, the co
   await idle();
   // What the change does, in the agent's plain words, is what the proposal says from then on, and the commit.
   await refused(me('code.describe', { text: ' ' }), 'input');
+  // One sentence, from the agent: a list of everything in it is refused.
+  await assert.rejects(host.run('code.describe', { text: Array.from({ length: 31 }, () => 'word').join(' ') }, 'agent:main'), /that is 31 words/);
   const first = await host.run('code.describe', { text: 'Seasons.' }, 'agent:main') as any;
   assert.deepEqual([first.replaces, first.covers], [undefined, ['src/seasons.js']]);
   // Said again, it is told what it replaces and what the change set holds: the description is of all of it.
@@ -97,6 +99,153 @@ test('when the copy is the project again, the proposal is gone; rejected, the co
   assert.deepEqual(host.events.since(0).filter((e) => e.type === 'code.changed').at(-1)!.files, ['src/seasons.js']);
   assert.deepEqual((await me('code.changes')).files, []);
   assert.equal(git('status', '--porcelain'), '');
+});
+
+test('values the agent exposes with its change set are the person\'s to turn: written in the copy at once, and the agent hears of it', async () => {
+  const file = 'src/seasons.js';
+  const agent = (name: string, input?: Record<string, unknown>) => host.run(name, input, 'agent:main') as Promise<any>;
+  const card = () => host.events.since(0).filter((e) => e.type === 'proposal').at(-1)! as any;
+  writeFileSync(join(copy, file), [
+    'export const SEASONS = 4;', 'export const DAYS = 30; // in a season', 'export const NAME = \'Autumn\';', 'export const SNOW = false;',
+    'export const YEAR = 4 * 30;', 'export const tint = { leaf: "#c84", bark: 2 };', 'export const other = { bark: 3 };', '',
+  ].join('\n'));
+  host.proposeCode('agent:main', 'Seasons have days.');
+  // Only a value that is written out, once, in a file the agent may change.
+  const one = (v: Record<string, unknown>) => agent('code.expose', { values: [{ label: 'It', file, ...v }] });
+  await refused(one({ file: '../elsewhere.js', name: 'DAYS' }), 'input');
+  await refused(one({ file: '.tandem/tandem.json', name: 'name' }), 'input');
+  await refused(one({ file: 'src/none.js', name: 'DAYS' }), 'missing');
+  await assert.rejects(one({ name: 'YEAR' }), /not given a value that is written out/, 'a sum is not a value to turn');
+  await assert.rejects(one({ name: 'bark' }), /2 times/);
+  await refused(one({ name: 'NAME', min: 0, max: 3 }), 'input');
+  await assert.rejects(one({ name: 'DAYS', min: 40, max: 90 }), /is 30 now, and it goes no lower than 40/);
+  assert.equal(card().tweaks, undefined);
+
+  const got = await agent('code.expose', { values: [
+    { label: 'Days in a season', file, name: 'DAYS', min: 10, max: 90 }, { label: 'The first season', file: `./${file}`, name: 'NAME' },
+    { label: 'Snow', file, name: 'SNOW' }, { label: 'Leaves', file, name: 'leaf' },
+  ] });
+  assert.deepEqual(got.exposed.map((t: any) => [t.name, t.is, t.as]), [['DAYS', 30, 'a slider'], ['NAME', 'Autumn', 'a text to fill in'], ['SNOW', false, 'a switch'], ['leaf', '#c84', 'a colour to pick']]);
+  // They are on the card, each as it stands in the copy.
+  assert.deepEqual(card().tweaks[0], { label: 'Days in a season', file, name: 'DAYS', min: 10, max: 90, kind: 'number', value: 30, step: 1 });
+  assert.deepEqual(card().tweaks.map((t: any) => t.kind), ['number', 'text', 'boolean', 'colour']);
+
+  // Turning one is the person's, within what the value can be.
+  await refused(agent('code.tweak', { file, name: 'DAYS', value: 45 }), 'permission');
+  await refused(me('code.tweak', { file, name: 'DAYS', value: 95 }), 'input');
+  await refused(me('code.tweak', { file, name: 'DAYS', value: '45' }), 'input');
+  await refused(me('code.tweak', { file, name: 'leaf', value: 'green' }), 'input');
+  await refused(me('code.tweak', { file, name: 'NAME', value: 'Win\'ter' }), 'input');
+  await refused(me('code.tweak', { file, name: 'SEASONS', value: 5 }), 'missing');
+  assert.deepEqual(await me('code.tweak', { file, name: 'DAYS', value: 45 }), { value: 45, changed: true });
+  assert.deepEqual(await me('code.tweak', { file, name: 'DAYS', value: 45 }), { value: 45, changed: false });
+  // It is written where it stood, and nothing around it is touched.
+  assert.match(readFileSync(join(copy, file), 'utf8'), /^export const DAYS = 45; \/\/ in a season$/m);
+  assert.deepEqual([card().tweaks[0].value, card().tweaks[0].was, card().tweaked], [45, 30, { file, name: 'DAYS' }]);
+  await me('code.tweak', { file, name: 'NAME', value: 'Winter' });
+  await me('code.tweak', { file, name: 'SNOW', value: true });
+  await me('code.tweak', { file, name: 'leaf', value: '#ffffff' });
+  assert.equal(readFileSync(join(copy, file), 'utf8').split('\n').slice(2, 6).join('|'), 'export const NAME = \'Winter\';|export const SNOW = true;|export const YEAR = 4 * 30;|export const tint = { leaf: "#ffffff", bark: 2 };');
+  assert.equal((await me('proposals.list', { status: 'pending' })).length, 1, 'still the one change set');
+  assert.equal(card().note, '', 'and what it says is as it was');
+
+  // The agent hears what was turned, once; turned back to what it knew, there is nothing to tell.
+  const told = host.tweaked();
+  assert.match(told, /the person turned values you exposed: Days in a season \(DAYS in src\/seasons\.js\) from 30 to 45; The first season \(NAME in src\/seasons\.js\) from "Autumn" to "Winter"; Snow .* from false to true; Leaves .* from "#c84" to "#ffffff"\./);
+  assert.equal(host.tweaked(), '');
+  await me('code.tweak', { file, name: 'DAYS', value: 60 });
+  await me('code.tweak', { file, name: 'DAYS', value: 45 });
+  assert.equal(host.tweaked(), '');
+  // Exposed again, what the agent had set is still what the card says it was; a value the agent set anew is its own.
+  await agent('code.expose', { values: [{ label: 'Days', file, name: 'DAYS', min: 10, max: 90, step: 5 }, { label: 'Snow', file, name: 'SNOW' }] });
+  assert.deepEqual(card().tweaks, [{ label: 'Days', file, name: 'DAYS', min: 10, max: 90, step: 5, kind: 'number', value: 45, was: 30 }, { label: 'Snow', file, name: 'SNOW', kind: 'boolean', value: true, was: false }]);
+  writeFileSync(join(copy, file), readFileSync(join(copy, file), 'utf8').replace('DAYS = 45', 'DAYS = 20'));
+  await agent('code.expose', { values: [{ label: 'Days', file, name: 'DAYS', min: 10, max: 90 }] });
+  assert.deepEqual(card().tweaks, [{ label: 'Days', file, name: 'DAYS', min: 10, max: 90, kind: 'number', value: 20, step: 1 }]);
+  // A value that is no longer written out is no longer on the card.
+  writeFileSync(join(copy, file), readFileSync(join(copy, file), 'utf8').replace('DAYS = 20', 'DAYS = 4 * 5'));
+  host.proposeCode('agent:main', '');
+  assert.equal(card().tweaks, undefined);
+  await refused(me('code.tweak', { file, name: 'DAYS', value: 30 }), 'missing');
+  writeFileSync(join(copy, file), readFileSync(join(copy, file), 'utf8').replace('DAYS = 4 * 5', 'DAYS = 20'));
+
+  // Accepted, the project has what the person set, the agent still hears of it, and the values go with the set.
+  await me('code.tweak', { file, name: 'DAYS', value: 25 });
+  await me('proposals.decide', { round: 'code', accept: true });
+  assert.match(readFileSync(join(dir, file), 'utf8'), /DAYS = 25;.*\n.*'Winter';\n.*SNOW = true;/);
+  assert.equal(git('log', '-1', '--format=%B').trim(), 'Accepted from the working copy\n\nSet by the person before accepting:\n- Days: 25, where the agent had 20 (DAYS in src/seasons.js)', 'and the commit says what they set');
+  assert.ok(!existsSync(join(host.dirs.data, 'code-tweaks.json')));
+  assert.match(host.tweaked(), /turned a value you exposed: Days \(DAYS in src\/seasons\.js\) from 20 to 25\. Your working copy has it so\./);
+  await refused(me('code.tweak', { file, name: 'DAYS', value: 30 }), 'missing');
+  // Rejected, what was turned is gone with the rest, and there is nothing to hear.
+  writeFileSync(join(copy, file), readFileSync(join(copy, file), 'utf8').replace('DAYS = 25', 'DAYS = 26'));
+  host.proposeCode('agent:main', 'A day more.');
+  await agent('code.expose', { values: [{ label: 'Days', file, name: 'DAYS' }] });
+  await me('code.tweak', { file, name: 'DAYS', value: 28.5 });
+  await me('proposals.decide', { round: 'code', accept: false });
+  assert.match(readFileSync(join(copy, file), 'utf8'), /DAYS = 25;/);
+  assert.equal(host.tweaked(), '');
+  assert.ok(!existsSync(join(host.dirs.data, 'code-tweaks.json')));
+  assert.equal(git('status', '--porcelain'), '');
+});
+
+test('the agent gives the person an example of its change set to play: a page made in its scratchpad, beside the copy itself', async () => {
+  // Where the project has no page there is nowhere to show one.
+  await refused(host.run('code.example', { path: '/.tandem-scratch/example.html' }, 'agent:main'), 'unsupported');
+  const fx = await fixture({ page: true });
+  try {
+    const work = fx.host.code!.work;
+    const agent = (name: string, input?: Record<string, unknown>) => fx.host.run(name, input, 'agent:main') as Promise<any>;
+    const card = () => fx.host.events.since(0).filter((e) => e.type === 'proposal').at(-1)! as any;
+    const page = join(work, '.tandem-scratch/example.html');
+    fx.host.code!.sync();
+    writeFileSync(join(work, 'src/rules.js'), `${readFileSync(join(work, 'src/rules.js'), 'utf8')}\nexport const LATE = 1;\n`);
+    fx.host.proposeCode('agent:main', 'A rule for late in the year.');
+    // A page of the copy's own, and one that is there.
+    await refused(agent('code.example', { path: '//elsewhere.example/' }), 'input');
+    await refused(agent('code.example', { path: '/.tandem-scratch/../../outside.html' }), 'input');
+    await refused(agent('code.example', { path: '/.tandem-scratch/example.html' }), 'missing');
+    mkdirSync(join(work, '.tandem-scratch'), { recursive: true });
+    writeFileSync(page, '<script type="module">import { LATE } from "/src/rules.js"; document.body.append(String(LATE));</script>\n');
+    const got = await agent('code.example', { path: '.tandem-scratch/example.html?case=late', text: ' the new rule, late in the year ' });
+    assert.equal(got.path, '/.tandem-scratch/example.html?case=late', 'named as the file is, it is the page the copy serves');
+    assert.deepEqual(card().example, { path: '/.tandem-scratch/example.html?case=late', text: 'the new rule, late in the year' });
+    // It is not part of the change set: the scratchpad never is.
+    assert.deepEqual(((await fx.host.run('code.changes', {}, 'me')) as any).files.map((f: any) => f.path), ['src/rules.js']);
+    // A page that is gone is not offered; back, it is again. A path the project has for it is taken as it is.
+    rmSync(page);
+    fx.host.proposeCode('agent:main', '');
+    assert.equal(card().example, undefined);
+    writeFileSync(page, '<p>late</p>\n');
+    fx.host.proposeCode('agent:main', '');
+    assert.equal(card().example.path, '/.tandem-scratch/example.html?case=late');
+    await agent('code.example', { path: '/?debug=late' });
+    assert.deepEqual(card().example, { path: '/?debug=late' });
+    // A turn that ends with values to turn and no example to judge them on: the agent is asked for one, once.
+    await agent('code.example', {});
+    const asked = () => fx.host.events.since(0).filter((e) => e.type === 'message' && e.by === 'engine' && e.kind === 'example');
+    fx.host.turnOver();
+    assert.equal(asked().length, 0, 'nothing to turn, nothing to ask');
+    const exposed = await agent('code.expose', { values: [{ label: 'How late', file: 'src/rules.js', name: 'LATE', min: 0, max: 9 }] });
+    assert.match(exposed.next, /before you answer, make the example/);
+    await refused(agent('code.expose', { values: [{ label: 'x'.repeat(81), file: 'src/rules.js', name: 'LATE' }] }), 'input');
+    fx.host.turnOver();
+    assert.equal(asked().length, 1);
+    assert.match(String(asked()[0].text), /gives the person a value to turn \(How late\), but no example to judge it on.*code\.example/s);
+    fx.host.turnOver();
+    assert.equal(asked().length, 1, 'once for a change set');
+    assert.equal((await agent('code.expose', { values: [{ label: 'How late', file: 'src/rules.js', name: 'LATE' }] })).next !== undefined, true);
+    await agent('code.example', { path: '/?debug=late' });
+    assert.equal((await agent('code.expose', { values: [{ label: 'How late', file: 'src/rules.js', name: 'LATE' }] })).next, undefined, 'with an example there is nothing left to do');
+    // Taken away, and gone with the change set.
+    assert.deepEqual(await agent('code.example', {}), { example: false });
+    assert.equal(card().example, undefined);
+    await agent('code.example', { path: '/.tandem-scratch/example.html' });
+    assert.ok(existsSync(join(fx.host.dirs.data, 'code-example.json')));
+    await fx.host.run('proposals.decide', { round: 'code', accept: false }, 'me');
+    assert.ok(!existsSync(join(fx.host.dirs.data, 'code-example.json')));
+    assert.ok(!existsSync(join(fx.host.dirs.data, 'code-example-asked')), 'the next change set is asked about anew');
+  } finally { for (const stop of fx.host.onStop) stop(); fx.cleanup(); }
 });
 
 test('the engine tells the agent when art was accepted; the drawing reaches its copy, and is not built for it', async () => {
@@ -130,6 +279,28 @@ test('an accepted change to what the project depends on is installed in the proj
     await me('proposals.decide', { round: 'code', accept: true });
     assert.equal(readFileSync(ran, 'utf8').trim(), `${dir}: install`, 'in the project, not in the copy');
     assert.equal(host.events.since(0).filter((e) => e.type === 'code.changed').at(-1)!.installed, true);
+    assert.equal(git('status', '--porcelain'), '');
+    // Installing writes a lockfile in the project. That is the engine's own writing, so it commits it: left there
+    // it would look like the person's work, and stand in the way of a change set that brings a lockfile of its own.
+    writeFileSync(npm, `#!/bin/sh\necho '{ "lock": "of the project" }' > package-lock.json\n`, { mode: 0o755 });
+    writeFileSync(join(copy, 'package.json'), '{"name":"fixture","dependencies":{"left-pad":"1.3.1"}}\n');
+    host.proposeCode('agent:main', 'A newer left-pad.');
+    await me('proposals.decide', { round: 'code', accept: true });
+    assert.equal(git('status', '--porcelain'), '', 'the lockfile is not left lying there');
+    assert.match(git('log', '--oneline', '-1'), /What installing what the project depends on wrote/);
+    writeFileSync(join(copy, 'package.json'), '{"name":"fixture","dependencies":{"left-pad":"1.3.2"}}\n');
+    writeFileSync(join(copy, 'package-lock.json'), '{ "lock": "of the copy" }\n');
+    writeFileSync(npm, '#!/bin/sh\n', { mode: 0o755 });
+    host.proposeCode('agent:main', 'A newer one still, installed in the copy.');
+    await me('proposals.decide', { round: 'code', accept: true });
+    assert.equal(readFileSync(join(dir, 'package-lock.json'), 'utf8'), '{ "lock": "of the copy" }\n', 'so the copy\'s lockfile goes in');
+    // A lockfile the person is changing themselves is theirs: installing does not commit it for them.
+    writeFileSync(join(dir, 'package-lock.json'), '{ "lock": "mine, by hand" }\n');
+    writeFileSync(join(copy, 'package.json'), '{"name":"fixture","dependencies":{"left-pad":"1.3.0"}}\n');
+    host.proposeCode('agent:main', 'Back to the first left-pad.');
+    await me('proposals.decide', { round: 'code', accept: true });
+    assert.equal(git('status', '--porcelain').trim(), 'M package-lock.json', 'theirs is left as it is');
+    git('checkout', '--', 'package-lock.json');
     // A change set that leaves package.json alone installs nothing; and when it fails, the accept stands and it is said.
     rmSync(ran);
     writeFileSync(npm, '#!/bin/sh\necho "npm ERR! no such package" >&2\nexit 1\n', { mode: 0o755 });
@@ -193,7 +364,7 @@ test('a change set says which concepts it is for: on the card, in the commit, an
 test('the agent may run a script of its own from its scratchpad, and nothing typed straight into the command line', () => {
   const { allow, deny } = tools(host);
   assert.ok(!allow.some((r) => /^Bash\((gh|git push)/.test(r)), 'pushing and the remote are not the agent\'s: tandem pushes, to where the person said');
-  for (const rule of ['Write(.tandem-scratch/**)', 'Edit(.tandem-scratch/**)', 'Bash(node .tandem-scratch/:*)', 'Bash(node --test .tandem-scratch/:*)', 'Bash(python3 .tandem-scratch/:*)'])
+  for (const rule of ['Write(.tandem-scratch/**)', 'Edit(.tandem-scratch/**)', 'Bash(node .tandem-scratch/*)', 'Bash(node --test .tandem-scratch/*)', 'Bash(python3 .tandem-scratch/*)'])
     assert.ok(allow.includes(rule), rule);
   // An interpreter by itself is not allowed: only with a file from the scratchpad after it.
   assert.ok(!allow.some((r) => /^Bash\((python3?|node|sh|bash)(:\*)?\)$/.test(r)));
@@ -242,4 +413,20 @@ test('the person says where the project is pushed, and from then on every accept
     await me('concepts.remove', { id: 'pushed-along' });
     await idle();
   } finally { rmSync(bare, { recursive: true, force: true }); }
+});
+
+test('a project that has no page yet is played from the copy, once its change set brings one', async () => {
+  const card = () => host.events.since(0).filter((e) => e.type === 'proposal').at(-1)! as any;
+  writeFileSync(join(copy, 'index.html'), '<h1>Fixture</h1>\n');
+  host.proposeCode('agent:main', 'A page.');
+  assert.equal(card().plays, undefined, 'nothing starts a page yet');
+  await refused(me('code.play'), 'unsupported');
+  // The change set brings what tandem starts by itself: its copy has a page, the project still has none.
+  writeFileSync(join(copy, 'package.json'), JSON.stringify({ name: 'fixture', scripts: { dev: 'vite' }, devDependencies: { vite: '^6.0.0' } }));
+  host.proposeCode('agent:main', 'A page.');
+  assert.equal(card().plays, true);
+  assert.equal(host.project.pageCommand(5000), undefined);
+  assert.equal(host.project.at(copy).pageCommand(5000), 'npm run dev -- --port 5000 --strictPort --host 127.0.0.1');
+  await me('proposals.decide', { round: 'code', accept: false });
+  assert.ok(!existsSync(join(copy, 'index.html')), 'rejected, the copy is the project again');
 });

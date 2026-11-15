@@ -96,12 +96,14 @@ listen();
 const fromFrame = (data: Record<string, unknown>) => { listen(); w.dispatchEvent(new w.MessageEvent('message', { data: { tandem: 1, ...data }, source: frame.contentWindow })); };
 /** Every command the page ran, by name: to see what it asks of the core. */
 const ran: string[] = [];
+/** And what each was given, for the ones a test wants to read. */
+const gave: [name: string, input: any][] = [];
 const fetchNow = globalThis.fetch;
 /** Answers given here instead of by the core, for what this fixture does not have (a working copy). */
 const canned = new Map<string, unknown>();
 globalThis.fetch = ((url: string, init?: RequestInit) => {
   const m = String(url).match(/\/api\/run\/([\w.]+)/);
-  if (m) ran.push(m[1]);
+  if (m) { ran.push(m[1]); try { gave.push([m[1], JSON.parse(String(init?.body ?? '{}'))]); } catch { /* not ours to read */ } }
   if (m && canned.has(m[1])) return Promise.resolve(new Response(JSON.stringify({ ok: true, result: canned.get(m[1]) }), { headers: { 'content-type': 'application/json' } }));
   return fetchNow(url, init);
 }) as typeof fetch;
@@ -335,6 +337,21 @@ test('chat: what the agent asks has a field for the answer, on the concept it is
   assert.match(String(sent.text), /about the concept Wells:\n- Is there water in it\?\n  Yes, cold and clear\.$/);
   await until(() => !app.agent.busy && host.events.since(before).some((e) => e.type === 'message' && e.by === 'agent'), 'the agent to have heard it');
   await until(() => !app.agent.busy, 'the agent to be done');
+  // The agent changes a question after that: it is asked anew, with a field, and what was said to the one that
+  // still reads the same stays said. Only the new answer is sent.
+  await host.run('concepts.update', { id: 'wells', questions: ['Is there water in it?', 'Who dug it, and when?'] }, AGENT, 'r960');
+  await until(() => all('.questions .qtext', card).some((q) => q.textContent === 'Who dug it, and when?'), 'the changed question');
+  assert.equal($('.questions.done', card), null);
+  assert.deepEqual(all('.questions .q', card).map((q) => [$('.qtext', q).textContent, $('.qanswer', q)?.textContent ?? null, all('textarea', q).length]),
+    [['Is there water in it?', 'Yes, cold and clear.', 0], ['Who dug it, and when?', null, 1]]);
+  type(fields()[0], 'The first gnomes, long ago.');
+  const again = host.events.last();
+  click(button('Send answer', card));
+  await until(() => $('.questions.done', card), 'both to stand answered');
+  assert.deepEqual(all('.questions .qanswer', card).map((x) => x.textContent), ['Yes, cold and clear.', 'The first gnomes, long ago.']);
+  assert.match(String(host.events.since(again).find((e) => e.type === 'message' && e.by === 'me')!.text), /Wells:\n- Who dug it, and when\?\n  The first gnomes, long ago\.$/);
+  await until(() => !app.agent.busy && host.events.since(again).some((e) => e.type === 'message' && e.by === 'agent'), 'the agent to have heard it');
+  await until(() => !app.agent.busy, 'the agent to be done');
   click(button('Reject', card));
   await until(() => card.dataset.status === 'rejected', 'the round to be put away');
   assert.equal($('.questions', card), null, 'what was asked about a thing that was refused goes with it');
@@ -515,7 +532,7 @@ test('a concept shows what was changed in the project for it, and what waits for
 });
 
 test('the concepts read as one document, and above it a thought is typed as it comes', async () => {
-  // A chapter is a concept that is part of nothing; what is part of it stands under it, folded away.
+  // A chapter is a concept that is part of nothing; what is part of it stands under it. All of it is open to read.
   await host.run('concepts.create', { name: 'The garden at night', text: 'After dark the garden is another place.\n\nThings open that were shut.' }, 'me');
   await host.run('concepts.update', { id: 'night-roses', links: [{ to: 'the-garden-at-night', kind: 'part-of' }] }, 'me');
   click($('#t-body .bar button.link'));
@@ -523,17 +540,24 @@ test('the concepts read as one document, and above it a thought is typed as it c
   const chapter = () => $('#t-body .piece.chapter');
   assert.equal($('.doc-head h3').textContent, 'The document');
   assert.equal($('.head b', chapter()).textContent, 'The garden at night');
-  assert.equal($('.head p.core', chapter()).textContent, 'After dark the garden is another place.', 'what it is, in a sentence');
+  // A piece is read where it stands: all of its words, and from there it is worked on or talked about.
+  assert.equal(chapter().dataset.open, 'true');
+  assert.match($('.read .prose', chapter()).textContent!, /another place\.Things open that were shut\.$/);
+  assert.deepEqual(all('.read button', chapter()).slice(0, 2).map((b) => b.textContent), ['Edit', 'Talk about this']);
+  // And its parts stand under it, open too.
+  assert.equal($('.fold', chapter()).textContent, '1 part');
+  assert.deepEqual(all('.piece.part').map((p) => [$('.head b', p).textContent, p.dataset.open]), [['Night roses', 'true']]);
+  // Tapped, a piece folds to the one sentence that says what it is, and a chapter's parts are put away; tapped again, they are back.
+  click($(':scope > .head', chapter()));
+  assert.equal(chapter().dataset.open, 'false');
+  assert.equal($(':scope > .head p.core', chapter()).textContent, 'After dark the garden is another place.', 'what it is, in a sentence');
+  click($('.fold', chapter()));
   assert.equal($('.fold', chapter()).textContent, '1 partNight roses');
   assert.equal(all('.piece.part').length, 0);
   click($('.fold', chapter()));
-  assert.deepEqual(all('.piece.part .head b').map((b) => b.textContent), ['Night roses']);
-  // Tapped, a piece is read where it stands: all of its words, and from there it is worked on or talked about.
-  click($('.head', chapter()));
-  await until(() => chapter().dataset.open === 'true', 'the chapter to open');
-  assert.match($('.read .prose', chapter()).textContent!, /another place\.Things open that were shut\.$/);
-  assert.deepEqual(all('.read button', chapter()).slice(0, 2).map((b) => b.textContent), ['Edit', 'Talk about this']);
-  click($('.head', chapter()));
+  click($(':scope > .head', chapter()));
+  await until(() => chapter().dataset.open === 'true' && all('.piece.part').length === 1, 'the chapter and its part, open again');
+  click($(':scope > .head', chapter()));
   assert.equal(chapter().dataset.open, 'false');
 
   // A loose thought: no name, no place. It is kept as it was typed, above the document.
@@ -1104,6 +1128,139 @@ test('playing the copy starts it from what the browser keeps of the project, goe
   app.playProject();
 });
 
+test('values the agent exposed are turned on the card, and over the copy\'s page while it is shown; the card is not drawn again for it', async () => {
+  tab('Chat');
+  app.playProject();
+  const file = 'src/shop.js';
+  const files = [{ path: file, added: 2, removed: 1, status: 'changed' }];
+  const tweaks = [
+    { label: 'Lamp glow', file, name: 'GLOW', kind: 'number', value: 4, min: 0, max: 10, step: 1 },
+    { label: 'Price', file, name: 'PRICE', kind: 'number', value: 2.5 },
+    { label: 'Flicker', file, name: 'FLICKER', kind: 'boolean', value: false },
+    { label: 'Light', file, name: 'LIGHT', kind: 'colour', value: '#fc8' },
+    { label: 'Name', file, name: 'NAME', kind: 'text', value: 'Lamplight' },
+  ];
+  const propose = (more: Record<string, unknown> = {}, list: Record<string, unknown>[] = tweaks) => host.events.add({ type: 'proposal', by: 'agent:main', round: 'code', id: 'pc8', kind: 'code', path: 'working copy', files, note: 'The lamp glows.', tweaks: list, ...more });
+  propose();
+  await until(() => all('.card.prop').some((c) => c.dataset.status === 'pending' && /The lamp glows/.test(c.textContent!)), 'the card');
+  const card = all('.card.prop').find((c) => c.dataset.status === 'pending' && /The lamp glows/.test(c.textContent!))!;
+  const rows = (root: ParentNode = card) => all('.tweak', root);
+  const field = (label: string, sel = 'input', root: ParentNode = card) => rows(root).find((r) => $('.tlabel', r).textContent === label)!.querySelector(sel) as HTMLInputElement;
+  // Each is what its value asks for: a slider with a number, a number, a switch, a colour, a text.
+  assert.deepEqual(rows().map((r) => [r.dataset.kind, $('.tlabel', r).textContent, all('input', r).map((i) => (i as HTMLInputElement).type).join('+')]),
+    [['number', 'Lamp glow', 'number+range'], ['number', 'Price', 'number'], ['boolean', 'Flicker', 'checkbox'], ['colour', 'Light', 'color'], ['text', 'Name', 'text']]);
+  assert.deepEqual([field('Lamp glow', '.slide').value, field('Lamp glow', '.slide').max, field('Price').value, field('Flicker').checked, field('Light').value, field('Name').value], ['4', '10', '2.5', false, '#ffcc88', 'Lamplight']);
+  assert.ok(rows().every((r) => $('.back', r).hidden), 'nothing was turned yet');
+  assert.ok($('#t-tweaks').hidden, 'over the page they are only while the copy is shown');
+
+  // Turning one sends it at once; what is set while that is on its way is sent after it, the last only.
+  canned.set('code.tweak', { changed: true });
+  gave.length = 0;
+  const slide = field('Lamp glow', '.slide');
+  for (const v of ['5', '6', '7']) type(slide, v);
+  assert.equal(field('Lamp glow', '.n').value, '7', 'the number beside the slider follows it');
+  const sent = () => gave.filter(([name]) => name === 'code.tweak').map(([, input]) => input);
+  await until(() => sent().length === 2, 'the first and the last to be sent');
+  assert.deepEqual(sent(), [{ file, name: 'GLOW', value: 5 }, { file, name: 'GLOW', value: 7 }]);
+  // The core says what it is now: the same card, the same slider, and the way back to what the agent had.
+  propose({ tweaked: { file, name: 'GLOW' } }, tweaks.map((t) => (t.name === 'GLOW' ? { ...t, value: 7, was: 4 } : t)));
+  await until(() => !$('.back', rows()[0]).hidden, 'the way back');
+  assert.equal(field('Lamp glow', '.slide'), slide, 'the slider is the one that was turned');
+  assert.ok(all('.card.prop').includes(card) && slide.isConnected);
+  assert.equal($('.back', rows()[0]).textContent, '↺ 4');
+  gave.length = 0;
+  click($('.back', rows()[0]));
+  await until(() => sent().length === 1, 'the way back to be gone');
+  assert.deepEqual([sent()[0], slide.value], [{ file, name: 'GLOW', value: 4 }, '4']);
+  // A number out of its range, or half typed, is not sent; a switch, a colour and a text are.
+  gave.length = 0;
+  type(field('Lamp glow', '.n'), '11');
+  type(field('Price'), '');
+  type(field('Price'), '3.25');
+  field('Flicker').checked = true;
+  field('Flicker').dispatchEvent(new w.Event('change', { bubbles: true }));
+  type(field('Light'), '#112233');
+  field('Name').value = 'Glowworm';
+  field('Name').dispatchEvent(new w.Event('change', { bubbles: true }));
+  await until(() => sent().length === 4, 'the four to be sent');
+  assert.deepEqual(sent().map((i) => [i.name, i.value]), [['PRICE', 3.25], ['FLICKER', true], ['LIGHT', '#112233'], ['NAME', 'Glowworm']]);
+
+  // With the copy shown they are over its page too, where it is seen to change; folded, it is one small button.
+  await new Promise((r) => setTimeout(r, 150));
+  canned.set('code.play', { url: 'http://localhost:5211/' });
+  click(button('Play the copy', card));
+  await until(() => frame.src === 'http://localhost:5211/', 'the frame to show the copy');
+  await until(() => !$('#t-tweaks').hidden, 'the values over the page');
+  assert.deepEqual(rows($('#t-tweaks')).map((r) => $('.tlabel', r).textContent), ['Lamp glow', 'Price', 'Flicker', 'Light', 'Name']);
+  gave.length = 0;
+  type(field('Lamp glow', '.slide', $('#t-tweaks')), '9');
+  await until(() => sent().length === 1, 'it to be sent from there');
+  assert.deepEqual(sent()[0], { file, name: 'GLOW', value: 9 });
+  // What was turned there is on the card as well, and a page that does not follow its files is loaded anew.
+  let loads = 0;
+  const src = Object.getOwnPropertyDescriptor(w.HTMLIFrameElement.prototype, 'src')!;
+  Object.defineProperty(frame, 'src', { configurable: true, get: () => src.get!.call(frame), set: (v) => { loads++; src.set!.call(frame, v); } });
+  try {
+    propose({ tweaked: { file, name: 'GLOW' } }, tweaks.map((t) => (t.name === 'GLOW' ? { ...t, value: 9, was: 4 } : t)));
+    await until(() => field('Lamp glow', '.slide').value === '9', 'the card to follow');
+    assert.equal(loads, 0, 'a page that follows its files is left to it');
+    propose({ tweaked: { file, name: 'GLOW' }, anew: true }, tweaks.map((t) => (t.name === 'GLOW' ? { ...t, value: 8, was: 4 } : t)));
+    await until(() => loads === 1, 'the copy\'s page to be loaded anew');
+    assert.equal(frame.src, 'http://localhost:5211/');
+  } finally { delete (frame as unknown as { src?: string }).src; }
+  click($('#t-tweaks .fold'));
+  assert.deepEqual([$('#t-tweaks .fold').textContent, $('#t-tweaks .tweaks').hidden], ['Turn · 5', true]);
+  click($('#t-tweaks .fold'));
+  assert.equal($('#t-tweaks .tweaks').hidden, false);
+  // A value that is no longer there to turn is gone from both; back at the project, nothing is over the page.
+  propose({}, [{ ...tweaks[0], value: 8, was: 4 }]);
+  await until(() => rows().length === 1 && rows($('#t-tweaks')).length === 1, 'the one that is left');
+  app.playProject();
+  assert.ok($('#t-tweaks').hidden);
+  // Decided, there is nothing to turn any more.
+  host.events.add({ type: 'proposal.decided', by: 'me', round: 'code', status: 'accepted', count: 1, paths: ['code:working copy'] });
+  await until(() => card.dataset.status === 'accepted', 'the card to be put away');
+  assert.equal(rows().length, 0);
+  assert.equal($('.note.yours', card).textContent, 'You set Lamp glow to 8; the agent had 4.', 'accepted, the card says what they had set themselves');
+  canned.delete('code.tweak'); canned.delete('code.play');
+});
+
+test('an example the agent made of its change is played from the card, beside the copy itself, and from one to the other over the page', async () => {
+  tab('Chat');
+  app.playProject();
+  const example = { path: '/.tandem-scratch/example.html?case=late', text: 'the lamp at dusk' };
+  const propose = (more: Record<string, unknown>) => host.events.add({ type: 'proposal', by: 'agent:main', round: 'code', id: 'pc9', kind: 'code', path: 'working copy', files: [{ path: 'src/shop.js', added: 1, removed: 1, status: 'changed' }], note: 'Dusk comes earlier.', ...more });
+  propose({});
+  await until(() => all('.card.prop').some((c) => c.dataset.status === 'pending' && /Dusk comes earlier/.test(c.textContent!)), 'the card');
+  const card = all('.card.prop').find((c) => c.dataset.status === 'pending' && /Dusk comes earlier/.test(c.textContent!))!;
+  assert.deepEqual(all('.t-row button', card).map((b) => b.textContent), ['Play the copy', 'Accept', 'Reject'], 'without an example there is only the copy');
+  propose({ example });
+  await until(() => all('.t-row button', card).length === 4, 'the example to be offered');
+  assert.deepEqual(all('.t-row button', card).map((b) => b.textContent), ['Play the copy', 'Play the example', 'Accept', 'Reject']);
+  assert.equal($('.note.example', card).textContent, 'An example to play: the lamp at dusk');
+  canned.set('code.play', { url: 'http://localhost:5211/' });
+  try {
+    // The example is a page of the copy: shown in the frame, with the tools out of the way, and said to be one.
+    click(button('Play the example', card));
+    await until(() => frame.src === 'http://localhost:5211/.tandem-scratch/example.html?case=late', 'the frame to show the example');
+    assert.ok($('#t-sheet').classList.contains('shut'));
+    assert.deepEqual([$('#t-copy').hidden, $('#t-copy span').textContent, $('#t-copy .swap').textContent], [false, 'An example', 'The copy itself']);
+    // From there to the copy itself and back, without opening the tools.
+    click($('#t-copy .swap'));
+    await until(() => frame.src === 'http://localhost:5211/', 'the frame to show the copy itself');
+    assert.deepEqual([$('#t-copy span').textContent, $('#t-copy .swap').textContent], ['The working copy', 'The example']);
+    click($('#t-copy .swap'));
+    await until(() => frame.src === 'http://localhost:5211/.tandem-scratch/example.html?case=late', 'the example again');
+    // Decided, there is no example to go to any more.
+    app.stage.showCopy('http://localhost:5211/');
+    host.events.add({ type: 'proposal.decided', by: 'me', round: 'code', status: 'rejected', count: 1, paths: ['code:working copy'] });
+    await until(() => card.dataset.status === 'rejected', 'the card to be put away');
+    assert.ok($('#t-copy .swap').hidden || $('#t-copy').hidden);
+  } finally { canned.delete('code.play'); app.playProject(); }
+  // (The project's page is back before the next test starts talking to the frame.)
+  await until(() => frame.src === 'http://localhost:5210/' && !frame.hidden, 'the frame to show the project again');
+});
+
 test('on a wide screen the tools are a panel beside the page: it stays in view, so pointing does not wait and nothing has to be shut', async () => {
   (w as unknown as { matchMedia: unknown }).matchMedia = () => ({ matches: true });
   try {
@@ -1265,6 +1422,20 @@ test('with the tools shut, tandem speaks in a bubble: what it says goes again, w
   // A change to the project says how many files; a drawing worker's round says what it waits for.
   host.events.add({ type: 'proposal', by: 'agent:main', round: 'code', id: 'pc9', kind: 'code', path: 'working copy', files: [{ path: 'a.ts' }, { path: 'b.ts' }], note: 'Seasons.' });
   await until(() => /A change to the project · 2 files/.test($('.bubble.waits b')?.textContent ?? ''), 'the change');
+  // What the agent made is played from the bubble too, before it is answered: the copy, and its example when it made one.
+  const labels = () => all('.bubble.waits button').map((x) => x.getAttribute('aria-label') ?? x.textContent);
+  assert.deepEqual(labels(), ['Hide', 'Play', 'Approve', 'Decline']);
+  host.events.add({ type: 'proposal', by: 'agent:main', round: 'code', id: 'pc9', kind: 'code', path: 'working copy', files: [{ path: 'a.ts' }, { path: 'b.ts' }], note: 'Seasons.', example: { path: '/.tandem-scratch/example.html' } });
+  await until(() => labels().length === 5, 'the example to be offered');
+  assert.deepEqual(labels(), ['Hide', 'Play', 'Example', 'Approve', 'Decline']);
+  canned.set('code.play', { url: 'http://localhost:5211/' });
+  click(button('Example', $('.bubble.waits')));
+  await until(() => frame.src === 'http://localhost:5211/.tandem-scratch/example.html', 'the frame to show the example');
+  click(button('Play', $('.bubble.waits')));
+  await until(() => frame.src === 'http://localhost:5211/', 'the frame to show the copy itself');
+  assert.ok($('.bubble.waits'), 'and it still waits for its answer');
+  canned.delete('code.play');
+  app.playProject();
   // Two things waiting are one bubble, a line each with its own two answers; not two bubbles over each other.
   await host.run('concepts.create', { name: 'Ivy' }, AGENT, 'r973');
   await until(() => $('.bubble.waits.many'), 'the one bubble for both');

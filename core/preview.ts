@@ -19,6 +19,8 @@ export function createPreview(copy: () => Project, log?: string) {
   let proc: ChildProcess | undefined;
   // Like the project's own page, the copy's runs on an inner port and is shown through tandem.
   let through: Promise<Server> | undefined;
+  // Whether the page that runs now follows its own files (it opened what a live reload listens on).
+  let live = false;
   const up = async () => {
     try { return (await fetch(`http://127.0.0.1:${COPY_PORT}/`, { signal: AbortSignal.timeout(1500) })).status < 500; } catch { return false; }
   };
@@ -28,7 +30,8 @@ export function createPreview(copy: () => Project, log?: string) {
       if (!(await up())) {
         stopTree(proc);
         const at = copy();
-        through ??= startThrough({ port: COPY_PORT, to: innerPort(COPY_PORT, true) });
+        live = false;
+        through ??= startThrough({ port: COPY_PORT, to: innerPort(COPY_PORT, true), live: () => { live = true; } });
         try { await through; } catch (e) { through = undefined; throw e; }
         const command = at.pageCommand(innerPort(COPY_PORT, true));
         if (!command) throw new Error('the project has no page to start');
@@ -40,6 +43,8 @@ export function createPreview(copy: () => Project, log?: string) {
       }
       return `http://localhost:${COPY_PORT}/`;
     },
+    /** Whether the copy's page shows a changed file by itself. One that does not is loaded anew by whoever shows it. */
+    follows: () => live,
     stop() { stopTree(proc); proc = undefined; void through?.then((s) => s.close(), () => {}); through = undefined; },
   };
 }

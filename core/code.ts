@@ -65,8 +65,8 @@ export function createCode(o: CodeOptions) {
   }
 
   /** What the person and the engine changed in the project's game is committed, so it is part of the project's history. */
-  function commitProject(message: string) {
-    const paths = o.paths.filter((p) => existsSync(join(o.root, p)));
+  function commitProject(message: string, written = o.paths) {
+    const paths = written.filter((p) => existsSync(join(o.root, p)));
     if (!paths.length) return false;
     // The files themselves, one by one: a folder with nothing in it yet is not something git can be asked about.
     const changed = git(o.root, 'status', '--porcelain', '-uall', '--', ...paths).split('\n').filter(Boolean)
@@ -77,6 +77,9 @@ export function createCode(o: CodeOptions) {
     git(o.root, 'commit', '-q', '-m', message, '--', ...changed);
     return true;
   }
+
+  /** Is this file of the project as its history has it: not there, or committed and not changed since? Then nothing of the person's is in it. */
+  const settled = (path: string) => tryGit(o.root, 'status', '--porcelain', '--', path) === '';
 
   /** The working copy exists and has everything the project has. Says which files clash if it cannot take the project's changes in. */
   function sync(): { conflicts: string[] } {
@@ -215,7 +218,7 @@ export function createCode(o: CodeOptions) {
     deps();
   }
 
-  return { work, usable, sync, changes, diff, accept, reject, commitProject, history, push, remote: remoteOf, setRemote };
+  return { work, usable, sync, changes, diff, accept, reject, commitProject, settled, history, push, remote: remoteOf, setRemote };
 }
 
 export type Code = ReturnType<typeof createCode>;

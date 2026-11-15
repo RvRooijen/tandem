@@ -108,6 +108,14 @@ test('the person changes a concept at once; the agent proposes, and the person d
 });
 
 test('a concept that is still a proposal is worked on further as that proposal: its links do not wait for the person', async () => {
+  // What the agent writes for a concept is short: a paper is refused, and so is growing one that is there.
+  const long = (n: number) => Array.from({ length: n }, (_x, k) => `word${k}`).join(' ');
+  await assert.rejects(agent('concepts.create', { name: 'Hedges', text: long(41) }, 'r40'), /that is 41 words, and a concept is one sentence, two at most.*a concept of its own under this one/);
+  await me('concepts.create', { name: 'Essay', text: long(200) });
+  await assert.rejects(agent('concepts.update', { id: 'essay', text: long(201) }, 'r41'), /that is 201 words/);
+  await agent('concepts.update', { id: 'essay', text: long(150) }, 'r41');
+  await me('proposals.decide', { round: 'r41', accept: false });
+  await me('concepts.remove', { id: 'essay' });
   const made = await agent('concepts.create', { name: 'Hedges', text: 'Hedges keep the wind out.', stage: 'playtest', realised: ['src/hedge.js'] }, 'r40');
   await agent('concepts.create', { name: 'Gates', links: [{ to: 'hedges', kind: 'part-of' }] }, 'r40');
   // Later, even in another round, more is added to the one that is not accepted yet.

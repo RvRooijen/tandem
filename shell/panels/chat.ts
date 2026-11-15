@@ -3,10 +3,11 @@
 // a small table. All of it is the event log, drawn.
 import type { Event } from '../../core/events.ts';
 import { run } from '../api.ts';
-import type { App, Panel, Show } from '../app.ts';
+import type { App, Example, Panel, Show } from '../app.ts';
 import { conceptForm, type ConceptDraft } from '../conceptform.ts';
 import { ago, clear, h, mins, prose, short } from '../dom.ts';
 import { icon } from '../icons.ts';
+import { createTweaks, type Tweak, type Tweaks } from '../tweaks.ts';
 
 interface Change {
   /** Who proposed it: the agent, or the person, who added a concept of their own to the round. */
@@ -23,6 +24,12 @@ interface Change {
   questions?: string[];
   /** Code: where the change can be seen, when the agent said so. */
   show?: Show;
+  /** Code: the working copy has a page to play (the project's own, or one this change set brings). */
+  plays?: boolean;
+  /** Code: an example of the change the agent made to play, beside the copy itself. */
+  example?: Example;
+  /** Code: the values the agent gave the person to turn, as they stand in the working copy. */
+  tweaks?: Tweak[];
   /** A concept: the loose thought of the person it takes in, in their words. */
   thought?: string;
   /** A concept: the fields the person changed on the card, when they did. */
@@ -37,6 +44,8 @@ interface Round {
   round: string; by: string; changes: Change[]; status: 'pending' | 'accepted' | 'rejected' | 'decided'; el?: HTMLElement;
   /** The files of a code change that were tapped open, with what changed in each. */
   read?: Map<string, string>;
+  /** A code change: where its files are listed, and the values to turn under them. They stay when the card is drawn again. */
+  filesEl?: HTMLElement; turnBox?: HTMLElement; turnEl?: HTMLElement; turn?: Tweaks;
 }
 
 export function refChip(app: App, ref: string, onRemove?: () => void): HTMLElement {
@@ -65,8 +74,9 @@ export function chatPanel(): Panel {
   let app!: App;
   const rounds = new Map<string, Round>();
   /** Questions the agent asked, by what they came with (a proposal, or a card of their own): what was answered, and what is being typed. */
-  const answered = new Map<string, string[]>();
-  const drafts = new Map<string, string[]>();
+  const answered = new Map<string, { questions: string[]; answers: string[] }>();
+  /** (By the question itself, not its place: the agent may change the questions while an answer is being typed.) */
+  const drafts = new Map<string, Map<string, string>>();
   const asks = new Map<string, { questions: string[]; about?: string; el: HTMLElement }>();
   /**
    * Proposed concepts the person is changing on their card, by the proposal's id, and a concept of their own they
@@ -89,7 +99,7 @@ export function chatPanel(): Panel {
       const what = code ? String(code.note ?? '').split('\n')[0] || 'what the working copy changed' : r.changes.filter((c) => !c.status).map((c) => String(c.after?.name ?? c.path)).join(', ');
       return h('div.pin', { onclick: () => r.el?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }) },
         h('div.what', {}, h('b', {}, code ? 'A change to the project waits' : left === 1 ? 'A proposal waits' : `${left} proposals wait`), h('span', {}, what)),
-        code && app.info.page && h<'button'>('button', { onclick: (e: MouseEvent) => { e.stopPropagation(); void app.playCopy(code.show); } }, 'Play'),
+        code && (app.info.page || code.plays) && h<'button'>('button', { onclick: (e: MouseEvent) => { e.stopPropagation(); void app.playCopy(code.show); } }, 'Play'),
         h<'button'>('button.primary', { onclick: (e: MouseEvent) => { e.stopPropagation(); void decide(r, true); } }, left === 1 ? 'Accept' : 'Accept all'));
     }));
   }
@@ -271,20 +281,27 @@ export function chatPanel(): Panel {
   /** The agent's questions, each with a field for the answer; once answered, with what was said. */
   function questionFields(to: string, questions: string[]): HTMLElement {
     const done = answered.get(to);
-    if (done) return h('div.questions.done', {}, questions.map((q, n) => h('div.q', {}, h('p.qtext', {}, q), h('p.qanswer', {}, done[n] || '(not answered)'))));
-    const draft = drafts.get(to) ?? questions.map(() => '');
+    // Answered as they stand: what was said to each. Questions the agent changed or added since are asked anew,
+    // with a field; what was said to the ones that still read the same stays said.
+    if (done && done.questions.length === questions.length && done.questions.every((q, n) => q === questions[n]))
+      return h('div.questions.done', {}, questions.map((q, n) => h('div.q', {}, h('p.qtext', {}, q), h('p.qanswer', {}, done.answers[n] || '(not answered)'))));
+    const said = (q: string) => (done && done.questions.includes(q) ? done.answers[done.questions.indexOf(q)] : '');
+    const draft = drafts.get(to) ?? new Map<string, string>();
     drafts.set(to, draft);
+    const open = questions.filter((q) => !said(q));
     const send = async () => {
-      if (!draft.some((d) => d.trim())) return app.toast('Answer at least one.');
-      await app.act('chat.answer', { to, answers: draft });
+      const answers = questions.map((q) => (said(q) ? '' : draft.get(q)?.trim() ?? ''));
+      if (!answers.some(Boolean)) return app.toast('Answer at least one.');
+      await app.act('chat.answer', { to, answers });
     };
     return h('div.questions', {},
-      questions.map((q, n) => {
-        const area = h<'textarea'>('textarea', { rows: 2, placeholder: 'Your answer', 'aria-label': `Answer: ${q}`, oninput: () => { draft[n] = area.value; } });
-        area.value = draft[n] ?? '';
+      questions.map((q) => {
+        if (said(q)) return h('div.q.said', {}, h('p.qtext', {}, q), h('p.qanswer', {}, said(q)));
+        const area = h<'textarea'>('textarea', { rows: 2, placeholder: 'Your answer', 'aria-label': `Answer: ${q}`, oninput: () => { draft.set(q, area.value); } });
+        area.value = draft.get(q) ?? '';
         return h('div.q', {}, h('p.qtext', {}, q), area);
       }),
-      h('div.t-row', {}, h<'button'>('button.primary', { onclick: () => void send() }, questions.length === 1 ? 'Send answer' : 'Send answers')));
+      h('div.t-row', {}, h<'button'>('button.primary', { onclick: () => void send() }, open.length === 1 ? 'Send answer' : 'Send answers')));
   }
 
   /** Questions that came on their own: a card of their own in the conversation. */
@@ -439,6 +456,24 @@ export function chatPanel(): Panel {
     return e.el;
   }
 
+  /**
+   * A code change on its card: its files, and under them the values the agent gave the person to turn. Both are
+   * brought up to date where they are when a value is turned: the card around them is not drawn again for that.
+   */
+  function codeParts(c: Change, r: Round): HTMLElement[] {
+    r.filesEl ??= h('div.files');
+    clear(r.filesEl, codeFiles(c, r));
+    r.turnEl ??= h('div.tweaks');
+    r.turnBox ??= h('div.turn', {}, h('div.t-hint', {}, app.info.page || c.plays ? 'Yours to turn: the working copy has it at once. Play the copy to see it change.' : 'Yours to turn: the working copy has it at once.'), r.turnEl);
+    // On a wide screen the page is beside the card: turning something brings the copy in view there.
+    r.turn ??= createTweaks((name, input) => app.act(name, input), () => { if (app.beside() && (app.info.page || c.plays) && app.stage.showing !== 'copy') void app.playCopy(); });
+    r.turn.into(r.turnEl, r.status === 'pending' && !c.status ? c.tweaks ?? [] : []);
+    r.turnBox.hidden = r.turnEl.hidden;
+    // Accepted, the card says what the person had set themselves: what the agent says above is about its own values.
+    const mine = r.status === 'accepted' || c.status === 'accepted' ? (c.tweaks ?? []).filter((t) => t.was !== undefined) : [];
+    return [r.filesEl, r.turnBox, ...mine.map((t) => h('div.note.yours', {}, `You set ${t.label} to ${t.value}; the agent had ${t.was}.`))];
+  }
+
   function roundCard(r: Round): HTMLElement {
     const el = r.el ?? h('div.card.prop');
     r.el = el;
@@ -446,6 +481,8 @@ export function chatPanel(): Panel {
     const touched = new Map<string, { name: string; stage: string }>();
     for (const c of r.changes) for (const t of c.touches ?? []) touched.set(t.id, t);
     const coded = r.changes.some((c) => c.kind === 'code');
+    // (A project that has no page yet gets one with its first change set: that one is played from the copy.)
+    const playable = !!app.info.page || r.changes.some((c) => c.plays);
     const total = r.changes.length;
     const left = r.changes.filter((c) => !c.status).length;
     const count = (st: string) => r.changes.filter((c) => c.status === st).length;
@@ -474,11 +511,12 @@ export function chatPanel(): Panel {
             open(c) && !editing.has(c.id) && h<'button'>('button.edit', { 'aria-label': `Edit ${c.path}`, onclick: () => void startEdit(r, c) }, icon('edit')),
             each && !c.status && h<'button'>('button.yes', { 'aria-label': `Accept ${c.path}`, onclick: () => void decide(r, true, c) }, icon('yes')),
             each && !c.status && h<'button'>('button.no', { 'aria-label': `Reject ${c.path}`, onclick: () => void decide(r, false, c) }, icon('close')))),
-        c.kind === 'drawing' ? pictures(c) : c.kind === 'code' ? codeFiles(c, r) : c.kind === 'setup' ? setupLines(c)
+        c.kind === 'drawing' ? pictures(c) : c.kind === 'code' ? codeParts(c, r) : c.kind === 'setup' ? setupLines(c)
           : c.kind !== 'concept' ? fieldLines(c) : open(c) && editing.has(c.id) ? conceptEditor(r, c.id) : conceptLines(c),
         c.kind === 'concept' && c.edited?.length && h('div.note.yours', {}, `You changed its ${c.edited.join(', ')}.`),
         c.thought && h('div.note.from', {}, 'From your thought: ', h('i', {}, c.thought.length > 160 ? `${c.thought.slice(0, 159)}…` : c.thought)),
         c.note && c.note !== 'a new concept' && h('div.note', {}, c.note),
+        c.kind === 'code' && c.example?.text && r.status === 'pending' && h('div.note.example', {}, 'An example to play: ', h('i', {}, c.example.text)),
         // What the agent needs to hear about this piece is asked with it, while it is still to be decided or was taken.
         c.questions?.length && c.status !== 'rejected' ? questionFields(c.id, c.questions) : null)),
       r.status === 'pending' && editing.has(adding) && h('div.change.adding', {},
@@ -487,7 +525,9 @@ export function chatPanel(): Panel {
       touched.size > 0 && h('div.touches', {}, 'touches ', [...touched].map(([id, t]) => h('span.t-chip.stage', { data: { stage: t.stage }, onclick: () => app.open('concepts', id) }, `${t.name} · ${t.stage}`))),
       r.status === 'pending' && h('div.t-row', {},
         // With the way to the change, playing the copy goes there and marks it.
-        coded && app.info.page && h<'button'>('button', { onclick: () => void app.playCopy(r.changes.find((c) => c.kind === 'code')?.show) }, r.changes.some((c) => c.show) ? 'Show me in the copy' : 'Play the copy'),
+        coded && playable && h<'button'>('button', { onclick: () => void app.playCopy(r.changes.find((c) => c.kind === 'code')?.show) }, r.changes.some((c) => c.show) ? 'Show me in the copy' : 'Play the copy'),
+        // And the example the agent made of it, when it made one: the change in exactly the case it is about.
+        coded && playable && r.changes.some((c) => c.example) && h<'button'>('button', { onclick: () => void app.playExample(r.changes.find((c) => c.example)!.example!) }, 'Play the example'),
         r.changes.some((c) => c.kind === 'concept') && !editing.has(adding) && h<'button'>('button', { onclick: () => void startEdit(r) }, 'Add a concept'),
         h<'button'>('button.primary', { onclick: () => void decide(r, true) }, total === 1 ? 'Accept' : left < total ? 'Accept the rest' : 'Accept all'),
         h<'button'>('button.danger', { onclick: () => void decide(r, false) }, total === 1 ? 'Reject' : left < total ? 'Reject the rest' : 'Reject all')));
@@ -537,6 +577,7 @@ export function chatPanel(): Panel {
         if (ev.by === 'engine' && ev.kind === 'resume') return h('div.sys.engine', {}, icon('engine'), ' Tandem was started again while the agent was at work: it carries on where it was.');
         // (That a worker's round ended is said by the line of the round itself, right above.)
         if (ev.by === 'engine' && ev.kind === 'art') return null;
+        if (ev.by === 'engine' && ev.kind === 'example') return h('div.sys.engine', {}, icon('engine'), ' The agent was asked for an example to judge the values on.');
         if (ev.by === 'engine' && ev.kind === 'accepted') return h('div.sys.engine', {}, icon('engine'), ` The agent was told what you accepted${ev.changed ? ', and what you made different in it' : ''}.`);
         if (ev.by === 'engine') return h('div.sys.engine', {}, icon('engine'), ev.kind === 'init' ? ' The agent was asked to read this project and set tandem up for it: its concepts, and how it is run.' : ` to the agent: ${String(ev.text ?? '')}`);
         return h(`div.msg.${ev.by === 'me' ? 'me' : 'agent'}${ev.error ? '.error' : ''}`, {},
@@ -708,6 +749,20 @@ export function chatPanel(): Panel {
       }
       const change = ev as unknown as Change;
       const at = r.changes.findIndex((c) => c.id === change.id);
+      // A value was turned: the card stays as it is (drawn again, a slider would be taken from under the finger),
+      // and its files and values are brought up to date. A file that is open to read is read again.
+      const tweaked = ev.tweaked as { file: string } | undefined;
+      if (tweaked && at >= 0 && r.filesEl?.isConnected) {
+        r.changes[at] = change;
+        codeParts(change, r);
+        const round = r;
+        if (round.read?.has(tweaked.file)) void app.act<{ diff: string }>('code.changes', { path: tweaked.file }).then((got) => {
+          if (!got || !round.read?.has(tweaked.file)) return;
+          round.read.set(tweaked.file, got.diff);
+          codeParts(round.changes.find((c) => c.id === change.id) ?? change, round);
+        });
+        return;
+      }
       if (at >= 0) r.changes[at] = change; else r.changes.push(change);
       roundCard(r);
       if (stick) toBottom();
@@ -729,7 +784,13 @@ export function chatPanel(): Panel {
     if (ev.type === 'answered') {
       // What was typed is what was said now: the fields make way for it, wherever the questions stand.
       const to = String(ev.to);
-      answered.set(to, (ev.answers as unknown[]).map(String));
+      // To the questions as they stood then: the ones asked with it, or (an answer from before that was kept) the
+      // ones on the card at that moment. What was said earlier to a question that still stands is kept with it.
+      const given = (ev.answers as unknown[]).map(String);
+      const onCard = asks.get(to)?.questions ?? [...rounds.values()].flatMap((r) => r.changes).find((c) => c.id === to)?.questions ?? [];
+      const asked = Array.isArray(ev.questions) ? (ev.questions as unknown[]).map(String) : onCard;
+      const before = answered.get(to);
+      answered.set(to, { questions: asked, answers: asked.map((q, n) => given[n] || (before?.questions.includes(q) ? before.answers[before.questions.indexOf(q)] : '')) });
       drafts.delete(to);
       if (asks.has(to)) askCard(to);
       for (const r of rounds.values()) if (r.changes.some((c) => c.id === to)) roundCard(r);

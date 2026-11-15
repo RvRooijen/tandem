@@ -51,7 +51,8 @@ export function tools(host: Host): { allow: string[]; deny: string[] } {
     allow.push(...project.editable.flatMap((p) => [`Edit(${p})`, `Write(${p})`]));
     for (const cmd of runnable(project)) allow.push(`Bash(${cmd}:*)`);
     // Its scratchpad: what it writes there is its own to run, and never part of the change set.
-    allow.push(`Edit(${SCRATCH}/**)`, `Write(${SCRATCH}/**)`, ...SCRIPTS.map((c) => `Bash(${c} ${SCRATCH}/:*)`));
+    // (Not `:*` after the slash: that asks for a space there, and no file's name starts with one.)
+    allow.push(`Edit(${SCRATCH}/**)`, `Write(${SCRATCH}/**)`, ...SCRIPTS.map((c) => `Bash(${c} ${SCRATCH}/*)`));
     // Exactly this, with nothing after it: a dependency is added in package.json, which is in the change set.
     // (Also where there is no package.json yet: a project that is new gets one in the turn that installs it.)
     allow.push('Bash(npm install)', 'Bash(npm ci)');
@@ -194,7 +195,7 @@ export function createRunner(host: Host) {
     const about = [
       `${project.name}, in ${project.root}.`,
       host.game ? 'It offers a way to see inside it: the game.*, world.*, ecs.* and playtest.* commands.' : 'It does not offer a way to see inside it while it runs: there are no game.*, ecs.* or playtest.* commands here. You read its code, run its tests, and the person plays it.',
-      project.pageCommand(0) ? 'It has a page the person plays in tandem; they can switch it to your working copy.' : 'It has no page set up in tandem (project.configure: page).',
+      project.pageCommand(0) ? 'It has a page the person plays in tandem; they can switch it to your working copy.' : 'It has no page yet. When your change set gives it one that tandem starts by itself (Vite, see below), the person can play your copy before they accept it; a page that is started some other way is said with project.configure (page).',
       host.code ? `In your working copy you may run: ${can || 'nothing but the tandem commands; tandem was not told how its tests are run (project.configure: test, check, run)'}` : '',
       host.code ? `And a script of your own from your scratchpad: ${SCRIPTS.map((c) => `\`${c} ${SCRATCH}/<file>\``).join(', ')}.` : '',
       `From the command line you can look around with ${LOOKING.join(', ')}, also strung together; anything else there is refused, so do not try it.`,
@@ -250,6 +251,7 @@ export function createRunner(host: Host) {
     return out.length ? `\n\n[The message is about:]\n${out.join('\n\n')}` : '';
   }
 
+  let heard = '';
   function run(ev: Event, retry = false) {
     busy = true; doing = 'starting'; text = '';
     cast(true);
@@ -264,13 +266,15 @@ export function createRunner(host: Host) {
         if (conflicts.length) copy = ` The project changed ${conflicts.join(', ')}, which your working copy changed too, so your copy could not take the project's version in: look at both (git diff) and bring yours up to date before anything else.`;
       } catch (e) { copy = ` Your working copy could not be brought up to date (${e instanceof Error ? e.message.split('\n')[0] : e}); say so, and do not change code this round.`; }
     }
+    // What the person turned on the card since it last heard is said once (and again when the turn is started over).
+    const turned = retry ? heard : (heard = host.tweaked());
     const from = ev.by === 'engine' ? '[From the engine, not the person:] ' : '';
     const where = host.game ? ` Where the person is: ${firstLine()}` : '';
     // What the person shared with the message is on disk: the agent reads it, a picture like any picture.
     const shared = Array.isArray(ev.files) && ev.files.length
       ? `\n\n[The person shared ${ev.files.length === 1 ? 'a file' : 'files'} with this message; Read ${ev.files.length === 1 ? 'it' : 'them'} before you answer:]\n${(ev.files as { path: string; label: string; image: boolean }[]).map((f) => `- ${f.path} (${f.image ? 'a picture' : 'a file'}, "${f.label}")`).join('\n')}`
       : '';
-    const prompt = `${from}${ev.text}${expand(ev.refs)}${shared}\n\n[This is round ${round}.${where}${copy}${gained()}]`;
+    const prompt = `${from}${ev.text}${expand(ev.refs)}${shared}\n\n[This is round ${round}.${where}${copy}${turned}${gained()}]`;
     const may = tools(host);
     const args = [
       '-p', prompt, '--append-system-prompt', intro(),

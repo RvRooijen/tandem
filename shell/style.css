@@ -84,6 +84,8 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 .bubble.waits .say { cursor: pointer; }
 .bubble.waits b { display: block; margin-bottom: 2px; }
 .bubble.waits p { color: var(--t-soft); font-size: 13px; }
+.bubble .plays { display: flex; gap: 8px; margin: 9px -22px 0 0; }
+#tandem .bubble .plays button { flex: 1; min-height: 38px; border-radius: 10px; border: 1px dashed var(--t-line); background: none; font-weight: 600; }
 .bubble .answers { display: flex; gap: 8px; margin-top: 9px; }
 .bubble .answers button { flex: 1; min-height: 40px; border-radius: 10px; border: 1px solid var(--t-line); background: var(--t-raise); font-weight: 600; }
 .bubble.many { width: 100%; }
@@ -511,6 +513,29 @@ body.t-held #root::after { border-color: #7ad08a; }
 #tandem #t-take .answers button { flex: 1; min-height: 40px; border-radius: 10px; border: 1px solid var(--t-line); background: var(--t-raise); color: var(--t-ink); font-weight: 600; cursor: pointer; }
 #tandem #t-take .answers button.yes { background: var(--t-good); border-color: var(--t-good); color: #0c1f10; }
 
+/* ---- the values of a change set that are the person's to turn: on its card, and over the copy's page while that
+   is the one shown, where they see it change as they turn. */
+#tandem .turn { margin: 8px 0 2px; padding-top: 4px; border-top: 1px dashed var(--t-line); }
+#tandem .tweaks { display: flex; flex-direction: column; gap: 9px; }
+#tandem .tweaks[hidden], #tandem .turn[hidden] { display: none; }
+.tweak { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 8px; font-size: 14px; }
+.tweak[data-kind=text] { grid-template-columns: 1fr; }
+.tweak .thead { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.tweak .tlabel { overflow-wrap: anywhere; }
+#tandem .tweak .back { border: 0; background: none; color: var(--t-soft); font-size: 12px; padding: 4px 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#tandem .tweak input.n { width: 78px; min-height: 36px; padding: 6px 8px; text-align: right; }
+#tandem .tweak input.slide { grid-column: 1 / -1; min-height: 32px; padding: 0; border: 0; background: none; accent-color: var(--t-accent); touch-action: pan-y; }
+#tandem .tweak input.switch { -webkit-appearance: none; appearance: none; position: relative; width: 46px; height: 26px; min-height: 0; padding: 0; border-radius: 13px; cursor: pointer; }
+.tweak input.switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: var(--t-soft); transition: transform 0.12s; }
+#tandem .tweak input.switch:checked { background: var(--t-accent); border-color: var(--t-accent); }
+.tweak input.switch:checked::after { transform: translateX(20px); background: var(--t-accent-ink); }
+#tandem .tweak input.pick { width: 52px; height: 36px; min-height: 0; padding: 2px; cursor: pointer; }
+#tandem .tweak input.text { min-height: 38px; padding: 7px 9px; }
+#t-tweaks { position: fixed; z-index: 21; left: max(8px, calc(50vw - 252px)); bottom: calc(10px + env(safe-area-inset-bottom)); width: min(74vw, 290px); max-height: 46dvh; overflow-y: auto; background: color-mix(in srgb, var(--t-bg) 88%, transparent); color: var(--t-ink); border: 1px solid var(--t-accent); border-radius: 14px; padding: 4px 11px 10px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
+#t-tweaks.folded { width: auto; padding: 0; border-radius: 9px; }
+#tandem #t-tweaks .fold { display: block; width: 100%; border: 0; background: none; color: var(--t-soft); font-size: 12px; font-weight: 600; text-align: left; padding: 6px 0; }
+#tandem #t-tweaks.folded .fold { color: var(--t-ink); padding: 6px 10px; }
+
 /* ---- a wide screen (body.t-wide, set in app.ts): the tools are a panel on the right, and while it is open
    (body.t-open) the project's page has the rest of the screen. The page keeps its left edge, so a place on it is
    the same place on the screen either way. */
@@ -523,6 +548,7 @@ body.t-wide #t-fab { right: 16px; top: 16px; }
 body.t-wide #t-fab.open { display: grid; }
 body.t-wide.t-open #t-fab { right: calc(var(--t-panel) + 16px); }
 body.t-wide #t-bubbles { right: 16px; top: 70px; }
+body.t-wide #t-tweaks { left: 16px; }
 body.t-wide.t-open #t-toast { left: calc((100vw - var(--t-panel)) / 2); }
 body.t-wide.t-open #t-marks, body.t-wide.t-open #t-take { left: calc((100vw - var(--t-panel)) / 2); }
 body.t-wide #tandem button:hover:not(:disabled) { filter: brightness(1.15); }

@@ -3,9 +3,9 @@
 // here knows about pages or agents beyond who is asking (`by`).
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createCode, forConcepts, type Code, type FileChange } from './code.ts';
+import { SCRATCH, createCode, forConcepts, type Code, type FileChange } from './code.ts';
 import { CommandError, createRegistry, isAgent, type By, type CommandDef, type Registry } from './commands.ts';
 import { STAGES, createConcepts, type Concept, type Concepts } from './concepts.ts';
 import { createEventLog, type EventLog } from './events.ts';
@@ -13,6 +13,7 @@ import type { GameModule, World } from './game.ts';
 import { runJob, type JobSpec } from './jobs.ts';
 import { createLocks, type Locks } from './locks.ts';
 import { createThoughts, type Thoughts } from './thoughts.ts';
+import { find, put, unfit, type Tweak, type TweakValue } from './tweaks.ts';
 import { COPY_PORT, createPreview, type Preview } from './preview.ts';
 import { innerPort } from './through.ts';
 import { encodePng } from './png.ts';
@@ -46,7 +47,12 @@ export interface Host {
   preview?: Preview;
   /** After the agent worked: what its copy differs from the project becomes (or stops being) a proposal. */
   proposeCode(by: By, note: string): void;
-  /** The agent's turn is over: if it had the project's page (page.take), the person has it again. */
+  /** What the person turned of the values the agent exposed, since the agent last heard: said once, at its next turn. */
+  tweaked(): string;
+  /**
+   * The agent's turn is over: if it had the project's page (page.take), the person has it again. And if it left
+   * values to turn without an example to judge them on, it is asked for one.
+   */
   turnOver(): void;
   /** Things to stop before the core does. */
   onStop: (() => void)[];
@@ -71,6 +77,9 @@ export interface HostOptions {
 }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/** What npm writes beside a package.json when it installs. */
+const LOCKFILE = 'package-lock.json';
 
 export async function createHost(opts: HostOptions = {}): Promise<Host> {
   const project = loadProject(opts.project ?? process.env.TANDEM_PROJECT ?? process.cwd(), { data: opts.dataDir, tandem: opts.tandemDir });
@@ -116,7 +125,12 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   const candidate = opts.code === undefined && process.env.TANDEM_CODE !== 'off'
     ? createCode({ root: project.root, paths: ['.tandem/concepts', '.tandem/thoughts.json', '.tandem/locks.json', '.tandem/.gitignore', '.tandem/tandem.json', '.tandem/page.sh', 'art', 'depth'] }) : undefined;
   const code = opts.code ?? (candidate?.usable() ? candidate : undefined);
-  const preview = code && project.pageCommand(0) ? createPreview(() => project.at(code.work), join(dataDir, 'copy-page.log')) : undefined;
+  // (Also for a project that has no page yet: the change set that gives it one is played from the copy.)
+  const preview = code ? createPreview(() => project.at(code.work), join(dataDir, 'copy-page.log')) : undefined;
+  /** Whether the working copy has a page to play: the project's own, or one its change set brings. */
+  const copyPage = () => {
+    try { return !!code && !!preview && (!!project.pageCommand(0) || (existsSync(code.work) && !!project.at(code.work).pageCommand(0))); } catch { return false; }
+  };
   if (preview) onStop.push(() => preview.stop());
   /** The one round the working copy's change set is: there is one copy, so one change set at a time. */
   const CODE = 'code';
@@ -254,7 +268,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
    */
   const visitors = new Map<string, Map<string, string>>();
   async function request(by: By, i: { method?: string; path: string; body?: unknown; headers?: unknown; as?: string; copy?: boolean }) {
-    if (!project.pageCommand(0)) throw new CommandError('unsupported', 'this project has no page set up in tandem (project.configure: page)');
+    if (!(i.copy ? copyPage() : project.pageCommand(0))) throw new CommandError('unsupported', 'this project has no page set up in tandem (project.configure: page)');
     const method = (i.method ?? (i.body === undefined ? 'GET' : 'POST')).toUpperCase();
     if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'].includes(method)) throw new CommandError('input', 'method is GET, POST, PUT, PATCH, DELETE or HEAD');
     if (!i.path.startsWith('/') || i.path.startsWith('//')) throw new CommandError('input', 'path starts with /: only the project\'s own server is called, at the address its page is served from');
@@ -297,11 +311,17 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   /**
    * An accepted change set that changed what the project depends on (its package.json): the agent's copy had that
    * installed, the project has not, so it is installed there too. How that went is said; it does not undo the accept.
+   * The lockfile that installing writes there is the engine's own writing, so the engine commits it: left as it is,
+   * it would look like work of the person's, and stand in the way of the next change set that has a lockfile.
+   * (One the person was in the middle of changing themselves is theirs, and is left alone.)
    */
   function install(taken: FileChange[]): Promise<true | string | undefined> {
     if (!taken.some((f) => f.path === 'package.json') || !existsSync(join(project.root, 'package.json'))) return Promise.resolve(undefined);
+    const ours = !!code?.settled(LOCKFILE);
     return new Promise((resolve) => {
       execFile(process.env.TANDEM_NPM ?? 'npm', ['install'], { cwd: project.root, timeout: 5 * 60_000 }, (err, _out, said) => {
+        // (And the copy takes it in at once: a lockfile the agent then writes there changes this one, instead of clashing with it.)
+        if (ours) try { if (code!.commitProject('What installing what the project depends on wrote', [LOCKFILE])) code!.sync(); } catch { /* it stays as it is, and is said when it stands in the way */ }
         resolve(err ? (String(said).trim().split('\n').filter((l) => /\berr\b/i.test(l)).slice(0, 2).join(' ') || err.message.split('\n')[0]).slice(0, 300) : true);
       });
     });
@@ -370,7 +390,97 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     return now ?? undefined;
   };
 
-  function proposeCode(by: By, said: string) {
+  /**
+   * An example of the change set: a page of the working copy that shows it in exactly the case it is about (a toy
+   * scene the agent made in its scratchpad, or a page the project has for it). The card offers it beside playing
+   * the copy. Gone with the set, and not said while a page from the scratchpad is not there.
+   */
+  interface Example { path: string; text?: string }
+  const exampleFile = join(dataDir, 'code-example.json');
+  const example = (now?: Example | null): Example | undefined => {
+    if (now === undefined) {
+      try {
+        const kept = existsSync(exampleFile) ? JSON.parse(readFileSync(exampleFile, 'utf8')) as Example : undefined;
+        return kept && made(kept.path) ? kept : undefined;
+      } catch { return undefined; }
+    }
+    if (now) writeFileSync(exampleFile, JSON.stringify(now, null, 2) + '\n'); else rmSync(exampleFile, { force: true });
+    return now ?? undefined;
+  };
+  /**
+   * The agent's turn ended with values for the person to turn and nothing to judge them on: it is asked for the
+   * example, once for a change set. What it then does is its own: make one, or say why there is none.
+   */
+  const askedFile = join(dataDir, 'code-example-asked');
+  function wantExample() {
+    if (!code || !copyPage() || existsSync(askedFile) || example()) return;
+    if (!proposals.list({ status: 'pending', round: CODE }).some((p) => p.kind === 'code')) return;
+    const turn = tweaks();
+    if (!turn.length) return;
+    writeFileSync(askedFile, '');
+    events.add({
+      type: 'message', by: 'engine', kind: 'example',
+      text: `Your change set gives the person ${turn.length === 1 ? 'a value' : 'values'} to turn (${turn.map((t) => t.label).join('; ')}), but no example to judge ${turn.length === 1 ? 'it' : 'them'} on: where the app opens, what ${turn.length === 1 ? 'it changes' : 'they change'} may be small, one among many, or not there yet. `
+        + `Make the example now: a page in your scratchpad (${SCRATCH}/example.html) that loads the project's own code from your copy and shows the thing ${turn.length === 1 ? 'that value is' : 'those values are'} about large and by itself, then \`tandem run code.example '{"path":"/${SCRATCH}/example.html","text":"what it shows"}'\`. How an example is made is in your notes on code. `
+        + 'Try what you can of it without the page (the pieces it uses, run with node from your scratchpad), and say what is unseen. Leave the change set itself as it is. If no such page can be made here, say why in a sentence and make none.',
+    });
+  }
+
+  /** Whether the page of an example is there, as far as tandem can tell: one from the scratchpad is a file of the copy. */
+  const made = (path: string) => !path.startsWith(`/${SCRATCH}/`) || (!!code && existsSync(join(code.work, decodeURIComponent(path.split(/[?#]/)[0]))));
+
+  /**
+   * The values of the change set that the person may turn themselves, as the agent exposed them (code.expose): on
+   * the card each has a slider or a field, and turning one writes it in the working copy, where the copy's page
+   * shows it. Only where each is, is kept: what it is now is read from the copy. Gone with the set.
+   */
+  const tweaksFile = join(dataDir, 'code-tweaks.json');
+  const exposed = (now?: Tweak[] | null): Tweak[] => {
+    if (now === undefined) { try { return existsSync(tweaksFile) ? JSON.parse(readFileSync(tweaksFile, 'utf8')) as Tweak[] : []; } catch { return []; } }
+    if (now?.length) writeFileSync(tweaksFile, JSON.stringify(now, null, 2) + '\n'); else rmSync(tweaksFile, { force: true });
+    return now ?? [];
+  };
+  /** An exposed value where it stands in the working copy; undefined when it is not written out there (any more). */
+  const standing = (t: Pick<Tweak, 'file' | 'name'>) => {
+    try {
+      const source = readFileSync(join(code!.work, t.file), 'utf8');
+      const found = find(source, t.name);
+      return found.length === 1 ? { source, found: found[0], times: 1 } : { times: found.length };
+    } catch { return undefined; }
+  };
+  /** The exposed values as the card shows them: what each is now, and what the agent had set when the person turned it. */
+  const tweaks = () => exposed().flatMap((t) => {
+    const at = standing(t);
+    if (!at?.found) return [];
+    const { was, set: _set, ...rest } = t;
+    return [{ ...rest, kind: at.found.kind, value: at.found.value, ...(at.found.whole && t.step === undefined && { step: 1 }), ...(was !== at.found.value && { was }) }];
+  });
+  /** What the person turned, for the agent to hear at its next turn: from what it knew to what it is now. */
+  interface Turned { label: string; file: string; name: string; from: TweakValue; to: TweakValue }
+  const turnedFile = join(dataDir, 'code-tweaked.json');
+  const turned = (now?: Turned[]): Turned[] => {
+    if (now === undefined) { try { return existsSync(turnedFile) ? JSON.parse(readFileSync(turnedFile, 'utf8')) as Turned[] : []; } catch { return []; } }
+    if (now.length) writeFileSync(turnedFile, JSON.stringify(now, null, 2) + '\n'); else rmSync(turnedFile, { force: true });
+    return now;
+  };
+  function tweaked(): string {
+    const list = turned();
+    if (!list.length) return '';
+    turned([]);
+    const say = (v: TweakValue) => (typeof v === 'string' ? `"${v}"` : String(v));
+    return ` On the card of your change set the person turned ${list.length === 1 ? 'a value' : 'values'} you exposed: ${list.map((t) => `${t.label} (${t.name} in ${t.file}) from ${say(t.from)} to ${say(t.to)}`).join('; ')}. Your working copy has ${list.length === 1 ? 'it' : 'them'} so. That is the person's choice: leave ${list.length === 1 ? 'it' : 'them'} as ${list.length === 1 ? 'it is' : 'they are'} unless they ask for something else.`;
+  }
+  /** Whether a file of the working copy is one the agent may change, and so one whose values can be exposed. */
+  const editable = (file: string) => {
+    const parts = file.split('/');
+    if (!file || file.startsWith('/') || file.includes('\\') || parts.some((part) => !part || part === '.' || part === '..')) return false;
+    const closed = ['.git', '.tandem', 'node_modules', SCRATCH, relative(project.root, project.dirs.art), relative(project.root, project.dirs.depth)];
+    if (closed.some((dir) => file === dir || file.startsWith(`${dir}/`))) return false;
+    const pattern = (glob: string) => new RegExp(`^${glob.replace(/^\.?\//, '').split('**/').map((a) => a.split('**').map((b) => b.split('*').map((lit) => lit.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*')).join('.*')).join('(?:.*/)?')}$`);
+    return project.editable.some((glob) => pattern(glob).test(file));
+  };
+
+  function proposeCode(by: By, said: string, how: { tweaked?: { file: string; name: string }; anew?: boolean } = {}) {
     if (!code) return;
     const files = code.changes();
     const open = proposals.list({ status: 'pending', round: CODE });
@@ -380,6 +490,10 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       about('');
       belongs([]);
       shown(null);
+      example(null);
+      rmSync(askedFile, { force: true });
+      exposed(null);
+      turned([]);
       // The copy is the project again: whatever was proposed is no more.
       if (open.length) { proposals.decide(CODE, 'rejected'); events.add({ type: 'proposal.decided', by, round: CODE, status: 'rejected', count: open.length, paths: ['code:working copy'] }); }
       return;
@@ -391,7 +505,9 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     // The whole list every time: a file the agent put back is not part of the change any more.
     p.after = after;
     const show = shown();
-    events.add({ type: 'proposal', by, round: CODE, id: p.id, kind: 'code', path: 'working copy', files, note, ...(show && { show }), ...(of.length && { touches: of.map((c) => ({ id: c.id, name: c.name, stage: c.stage })) }) });
+    const turn = tweaks();
+    const toy = example();
+    events.add({ type: 'proposal', by, round: CODE, id: p.id, kind: 'code', path: 'working copy', files, note, ...(copyPage() && { plays: true }), ...(show && { show }), ...(toy && { example: toy }), ...(turn.length && { tweaks: turn }), ...how, ...(of.length && { touches: of.map((c) => ({ id: c.id, name: c.name, stage: c.stage })) }) });
   }
 
   // ------------------------------------------------------------ helpers
@@ -495,6 +611,20 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     });
   }
 
+  /**
+   * What the agent writes is short: a concept is a sentence or two, and what says what a change set does is one.
+   * Long, it is not read, and has to be kept true afterwards; what does not fit is more than one concept, and is
+   * split into parts. Held to it here, because being asked was not enough; the person writes what they like.
+   * (A concept that is long already may be changed, not grown.)
+   */
+  const wordsIn = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
+  const CONCEPT_WORDS = 40, SAID_WORDS = 30;
+  function brief(by: By, text: string | undefined, now = '') {
+    if (!isAgent(by) || text === undefined) return;
+    const n = wordsIn(text);
+    if (n > CONCEPT_WORDS && n > wordsIn(now)) throw new CommandError('input', `that is ${n} words, and a concept is one sentence, two at most: ${CONCEPT_WORDS} words is the most there is. Write what it is, and nothing else. When there is more to say it is more than one thing: make each part a concept of its own under this one (links: part-of), as short as this. Leave out how it works step by step, facts and numbers (they are in the code), what is built first, and your doubts (ask those, or say them in your answer)`);
+  }
+
   /** Questions for the person: a few, each short enough to answer in a field. */
   const asQuestions = (v: unknown): string[] | undefined => {
     if (v === undefined) return undefined;
@@ -555,7 +685,8 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         if (!answers.some(Boolean)) throw new CommandError('input', 'nothing was answered');
         const about = proposal ? `${proposal.kind}:${proposal.path}` : typeof asked?.about === 'string' ? asked.about : undefined;
         const what = proposal ? ` about the ${proposal.kind} ${String((proposal.after as { name?: string }).name ?? proposal.path)}` : '';
-        events.add({ type: 'answered', by: c.by, to: i.to, answers });
+        // (With the questions as they were answered: the agent may change them afterwards, and those are asked anew.)
+        events.add({ type: 'answered', by: c.by, to: i.to, questions, answers });
         const text = `My answers to your questions${what}:\n${questions.map((q, n) => (answers[n] ? `- ${q}\n  ${answers[n]}` : '')).filter(Boolean).join('\n')}`;
         // A concept that is still a proposal is not there to be pointed at; what it is called is in the words.
         const refs = about && !(proposal && proposal.status === 'pending' && !proposal.before) ? [about] : [];
@@ -733,13 +864,19 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
           if (code && pending.some((p) => p.kind === 'code')) {
             try {
               const p = pending.find((x) => x.kind === 'code')!;
-              taken = code.accept(forConcepts(p.note.split('\n')[0].slice(0, 120) || String(p.after.said ?? '') || 'Accepted from the working copy', belongs()));
+              const said = p.note.split('\n')[0].slice(0, 120) || String(p.after.said ?? '') || 'Accepted from the working copy';
+              // What the person turned before accepting is said under it: the agent's words are about what it had set.
+              const say = (v: TweakValue) => (typeof v === 'string' ? `"${v}"` : String(v));
+              const mine = tweaks().filter((t) => t.was !== undefined);
+              const whole = mine.length ? `${said}\n\nSet by the person before accepting:\n${mine.map((t) => `- ${t.label}: ${say(t.value)}, where the agent had ${say(t.was!)} (${t.name} in ${t.file})`).join('\n')}` : said;
+              taken = code.accept(forConcepts(whole, belongs()));
             }
             catch (e) { throw new CommandError('failed', e instanceof Error ? e.message : String(e)); }
           }
           await art.accepting(pending);
         } else if (code && pending.some((p) => p.kind === 'code')) code.reject();
-        if (pending.some((p) => p.kind === 'code')) { about(''); belongs([]); shown(null); }
+        // (What the person turned and then accepted is in the project: the agent still hears of it. Rejected, it is gone.)
+        if (pending.some((p) => p.kind === 'code')) { about(''); belongs([]); shown(null); example(null); rmSync(askedFile, { force: true }); exposed(null); if (!i.accept) turned([]); }
         const set = proposals.decide(i.round, i.accept ? 'accepted' : 'rejected', only);
         if (i.accept) {
           for (const p of set) {
@@ -818,6 +955,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         const cid = concepts.slug(i.name);
         if (concepts.get(cid)) throw new CommandError('exists', `there already is a concept ${cid}`);
         for (const k of ['links', 'realised'] as const) checkList(i[k], k);
+        brief(c.by, i.text);
         const stage = STAGES.includes(i.stage) ? i.stage : 'idea';
         const fresh: Concept = { id: cid, name: i.name, stage, links: i.links ?? [], realised: i.realised ?? [], text: i.text ?? '' };
         if (isAgent(c.by)) {
@@ -841,6 +979,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         const questions = asQuestions(i.questions);
         const from = asThought(i.thought);
         if (i.stage !== undefined && !STAGES.includes(i.stage)) throw new CommandError('input', `stage is one of ${STAGES.join(', ')}`);
+        brief(c.by, i.text, concepts.get(i.id)?.text);
         // A concept that is itself still a proposal is worked on further as that proposal: its links and what makes it
         // real do not have to wait until the person has accepted it.
         const coming = concepts.get(i.id) ? undefined : proposals.list({ status: 'pending' }).find((p) => p.kind === 'concept' && p.path === i.id && !p.before);
@@ -1008,11 +1147,12 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'code.describe', kind: 'write', agent: 'free',
-      about: 'Say what the working copy\'s change set does, for the person: a sentence or two in plain words about what is different when the project is used, not which files or how. It describes the whole change set as it stands, everything the person gets by accepting it, not the step you took last: when you add to a change set, say it again so that it still covers all of it. It is what the proposal says, and its first line is the commit when it is accepted. concepts is a list of the ids of the concepts the change set is for, when it makes or changes something a concept that exists is about: the card names them, the commit says so, and the concept shows the change. Leave it out to keep what was said before; an empty list for a change that is for no concept (a fix, tidying up).',
+      about: 'Say what the working copy\'s change set does, for the person: one short sentence in plain words, thirty words at most about what is different when the project is used, not which files or how. It describes the whole change set as it stands, everything the person gets by accepting it, not the step you took last: when you add to a change set, say it again so that it still covers all of it. It is what the proposal says, and its first line is the commit when it is accepted. concepts is a list of the ids of the concepts the change set is for, when it makes or changes something a concept that exists is about: the card names them, the commit says so, and the concept shows the change. Leave it out to keep what was said before; an empty list for a change that is for no concept (a fix, tidying up).',
       input: { text: 'string', concepts: 'json?' },
       run(c, i) {
         if (!code) throw new CommandError('unsupported', 'there is no working copy here: the project is not in a repository');
         if (!i.text.trim()) throw new CommandError('input', 'say what the change does');
+        if (isAgent(c.by) && wordsIn(i.text) > SAID_WORDS) throw new CommandError('input', `that is ${wordsIn(i.text)} words: say what is different when the project is used in one short sentence, ${SAID_WORDS} words at the most. No list of what is in it: the card shows the files`);
         if (i.concepts !== undefined) {
           if (!Array.isArray(i.concepts) || (i.concepts as unknown[]).some((id) => typeof id !== 'string')) throw new CommandError('input', 'concepts is a list of concept ids, like ["slow-burn"]');
           const ids = [...new Set(i.concepts as string[])];
@@ -1059,11 +1199,102 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       },
     },
     {
+      name: 'code.example', kind: 'write', agent: 'free',
+      about: `Give the person an example of your change set to play, beside your copy itself: a page that shows the change in exactly the case it is about, so they do not have to play their way to it. path is that page as your copy's page serves it: one you wrote in your scratchpad ("/${SCRATCH}/example.html", which loads the project's own code from your copy and sets up the case; it is never part of the change set), or a path the project has for it already; text is a few words on what it shows. The card then has "Play the example" next to playing the copy, and the values you exposed can be turned there too. No path takes it away.`,
+      input: { path: 'string?', text: 'string?' },
+      run(c, i) {
+        if (!code) throw new CommandError('unsupported', 'there is no working copy here: the project is not in a repository');
+        const asked = i.path?.trim();
+        if (asked) {
+          if (!copyPage()) throw new CommandError('unsupported', 'the project has no page to show an example on (project.configure: page)');
+          // (A file of the copy may be named as it is named there: it is the same page.)
+          const path = asked.startsWith('/') ? asked : `/${asked.replace(/^\.\//, '')}`;
+          if (path.startsWith('//') || /[\s\\]/.test(path) || path.split(/[?#]/)[0].split('/').includes('..')) throw new CommandError('input', `path is a path on your copy's own page, like "/${SCRATCH}/example.html"`);
+          if (!made(path)) throw new CommandError('missing', `there is no file ${path.split(/[?#]/)[0].slice(1)} in your working copy: write the page first`);
+          example({ path, ...(i.text?.trim() && { text: i.text.trim().slice(0, 140) }) });
+        } else example(null);
+        if (proposals.list({ status: 'pending', round: CODE }).length) proposeCode(c.by, '');
+        if (!asked) return { example: false };
+        return { example: true, path: example()!.path, says: 'the person finds it on the card of your change set, beside playing your copy. A page you made is a guess until you have seen it: look at it yourself when you can (page.take, then page.go with this path and copy: true)' };
+      },
+    },
+    {
+      name: 'code.expose', kind: 'write', agent: 'free',
+      about: 'Give the person a value of your change set to turn themselves: one you guessed and that they will have an opinion about (how fast, how big, which colour), for tweaking. Not what makes the thing work, not a fact, not a setting the page has itself. values is a list of {"label": "what it is, in their words", "file": "the file in your working copy", "name": "the name the value has there"}, and for a number "min" and "max" (it then gets a slider) and "step". The value is one that is written out where it is named, once in that file: a number, true or false, a text in quotes or a colour (NAME = 4, name: 4, "name": 4, --name: 4px); give a value that is buried in a sum or used in passing a named constant of its own first. On the card each gets a slider, a switch or a field, and what the person sets is written in your working copy at once, so the copy\'s page shows it while they turn it; it is accepted with the rest. You hear what they turned at their next message. Say the whole list every time; an empty list takes them away.',
+      input: { values: 'json' },
+      run(c, i) {
+        if (!code) throw new CommandError('unsupported', 'there is no working copy here: the project is not in a repository');
+        if (!Array.isArray(i.values) || i.values.length > 8) throw new CommandError('input', 'values is a list of at most eight values');
+        const before = exposed();
+        const list = (i.values as Record<string, unknown>[]).map((v): Tweak => {
+          if (v && typeof v.label === 'string' && v.label.trim().length > 80) throw new CommandError('input', `a label is a few words, at most 80 letters: "${v.label.trim().slice(0, 40)}…" is ${v.label.trim().length}`);
+          if (!v || typeof v.label !== 'string' || !v.label.trim() || typeof v.file !== 'string' || typeof v.name !== 'string') throw new CommandError('input', 'a value is {"label": "what it is", "file": "the file in your working copy", "name": "the name the value has there"}, with "min", "max" and "step" for a number');
+          const file = v.file.replace(/^\.\//, ''), name = v.name.trim();
+          if (!editable(file)) throw new CommandError('input', `${v.file} is not a file of your working copy that you may change`);
+          const at = standing({ file, name });
+          if (!at) throw new CommandError('missing', `there is no file ${file} in your working copy`);
+          if (!at.found) throw new CommandError('input', at.times
+            ? `${name} is given a value ${at.times} times in ${file}: which one is meant cannot be told. Give the value a name of its own`
+            : `${name} is not given a value that is written out in ${file}: it has to stand there as a number, true or false, a text in quotes or a colour, right after the name (${name} = 4, ${name}: 4)`);
+          for (const k of ['min', 'max', 'step'] as const) if (v[k] !== undefined && (typeof v[k] !== 'number' || !Number.isFinite(v[k]))) throw new CommandError('input', `${k} is a number`);
+          const { min, max, step } = v as { min?: number; max?: number; step?: number };
+          if ((min !== undefined || max !== undefined || step !== undefined) && at.found.kind !== 'number') throw new CommandError('input', `${name} is not a number (it is ${JSON.stringify(at.found.value)}), so it has no min, max or step`);
+          if (min !== undefined && max !== undefined && min >= max) throw new CommandError('input', `${name}: min is below max`);
+          if (step !== undefined && step <= 0) throw new CommandError('input', `${name}: step is more than nothing`);
+          const out = unfit(at.found, at.found.value, { min, max });
+          if (out) throw new CommandError('input', `${name} is ${at.found.value} now, and ${out}: give it room on both sides`);
+          // Exposed before and turned by the person since: what the agent had set is still what it goes back to.
+          const earlier = before.find((t) => t.file === file && t.name === name);
+          const theirs = earlier?.set !== undefined && earlier.set === at.found.value;
+          return { label: v.label.trim(), file, name, ...(min !== undefined && { min }), ...(max !== undefined && { max }), ...(step !== undefined && { step }), was: theirs ? earlier.was : at.found.value, ...(theirs && { set: earlier.set }) };
+        });
+        const twice = list.find((t, n) => list.findIndex((x) => x.file === t.file && x.name === t.name) !== n);
+        if (twice) throw new CommandError('input', `${twice.name} in ${twice.file} is in the list twice`);
+        exposed(list);
+        if (proposals.list({ status: 'pending', round: CODE }).length) proposeCode(c.by, '');
+        if (!list.length) return { exposed: [] };
+        return {
+          exposed: tweaks().map((t) => ({ label: t.label, name: t.name, file: t.file, is: t.value, as: t.kind === 'number' ? (t.min !== undefined && t.max !== undefined ? 'a slider' : 'a number to fill in') : t.kind === 'boolean' ? 'a switch' : t.kind === 'colour' ? 'a colour to pick' : 'a text to fill in' })),
+          says: 'the person finds them on the card of your change set, and what they set is written in your working copy at once; you are told what they turned at their next message. Say in your answer that they are there to turn',
+          // (A value is judged on the thing itself: where that is small or hard to get to, the example is where it is turned.)
+          ...(copyPage() && !example() && { next: `not done yet: before you answer, make the example these values are judged on. Write ${SCRATCH}/example.html, a page that loads the project's own code from your copy and shows the thing they are about large and by itself, then run code.example with its path. Only when what they change is plain to see, large, the moment the app opens is there none: then say so in your answer` }),
+        };
+      },
+    },
+    {
+      name: 'code.tweak', kind: 'write',
+      about: 'Turn one of the values the agent exposed with its change set (code.expose): the value is written in the working copy, in the file it is in, and the copy\'s page shows it. It is part of the change set from then on, accepted or rejected with it, and the agent is told what was turned. Only the person does this.',
+      input: { file: 'string', name: 'string', value: 'json' },
+      run(_c, i) {
+        if (!code) throw new CommandError('unsupported', 'there is no working copy here: the project is not in a repository');
+        const p = proposals.list({ status: 'pending', round: CODE }).find((x) => x.kind === 'code');
+        const t = exposed().find((x) => x.file === i.file && x.name === i.name);
+        if (!p || !t) throw new CommandError('missing', `${i.name} in ${i.file} is not a value of a change set that waits`);
+        const at = standing(t);
+        if (!at?.found) throw new CommandError('missing', `${t.name} is not written out in ${t.file} any more`);
+        const why = unfit(at.found, i.value, t);
+        if (why) throw new CommandError('input', `${t.label}: ${why}`);
+        const value = i.value as TweakValue;
+        if (value === at.found.value) return { value, changed: false };
+        writeFileSync(join(code.work, t.file), put(at.source, at.found, value));
+        const now = standing(t)?.found?.value ?? value;
+        exposed(exposed().map((x) => (x.file === t.file && x.name === t.name ? { ...x, set: now } : x)));
+        // The agent hears where it went from what it knew: turned back to that, there is nothing to tell.
+        const list = turned();
+        const told = list.find((x) => x.file === t.file && x.name === t.name);
+        if (told) { told.to = now; told.label = t.label; } else list.push({ label: t.label, file: t.file, name: t.name, from: at.found.value, to: now });
+        turned(list.filter((x) => x.from !== x.to));
+        // A page that does not follow its own files is loaded anew by the screen that shows it.
+        proposeCode(p.by, String(p.after.said ?? ''), { tweaked: { file: t.file, name: t.name }, ...(copyPage() && !preview!.follows() && { anew: true }) });
+        return { value: now, changed: true };
+      },
+    },
+    {
       name: 'code.play', kind: 'write',
       about: 'The address of the page of the working copy: the game with what the agent coded, to play before any of it is in the project. Starts that page if it is not running.',
       async run() {
         if (!code) throw new CommandError('unsupported', 'there is no working copy here: the project is not in a repository');
-        if (!preview) throw new CommandError('unsupported', 'the project has no page to play: say how it is started in tandem.json ("page")');
+        if (!preview || !copyPage()) throw new CommandError('unsupported', 'the project has no page to play: say how it is started in tandem.json ("page")');
         bringUp();
         try { return { url: await preview.url() }; } catch (e) { throw new CommandError('failed', e instanceof Error ? e.message : String(e)); }
       },
@@ -1245,8 +1476,8 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   );
 
   return {
-    project, game: hasGame ? game : undefined, registry, events, proposals, concepts, thoughts, locks, art, code, preview, proposeCode, onStop,
-    turnOver() { release('engine', 'the agent\'s turn is over'); takenBack = false; },
+    project, game: hasGame ? game : undefined, registry, events, proposals, concepts, thoughts, locks, art, code, preview, proposeCode, tweaked, onStop,
+    turnOver() { release('engine', 'the agent\'s turn is over'); takenBack = false; wantExample(); },
     dirs: { project: project.root, data: dataDir, looks: looksDir, files: filesDir },
     run: (name, input, by, round) => registry.run(name, input, { by, round }),
     world,

@@ -47,7 +47,12 @@ export function withTandem(html: string): string {
   return html + TAG;
 }
 
-export function startThrough(opts: { port: number; to: number; host?: string }): Promise<Server> {
+/** Whether what a page opens beside its requests is how it hears that its files changed (Vite's, or one of the others that load a page anew). */
+export const liveReload = (url: string | undefined, protocol: string | string[] | undefined) =>
+  /^vite/.test(String(protocol ?? '')) || /hmr|live-?reload|browser-sync|sockjs-node|webpack/i.test(url ?? '');
+
+/** `live` is called when the page turns out to follow its own files: it loads itself anew when one changes. */
+export function startThrough(opts: { port: number; to: number; host?: string; live?: () => void }): Promise<Server> {
   const host = opts.host ?? '127.0.0.1';
   const server = createServer((req, res) => {
     if (req.url === SCRIPT) {
@@ -84,6 +89,7 @@ export function startThrough(opts: { port: number; to: number; host?: string }):
 
   // What is not a request and an answer (a page's live reload) is passed on as it comes.
   server.on('upgrade', (req: IncomingMessage, socket, head) => {
+    if (liveReload(req.url, req.headers['sec-websocket-protocol'])) opts.live?.();
     const inner = connect(opts.to, host, () => {
       const lines = [`${req.method} ${req.url} HTTP/${req.httpVersion}`];
       for (let i = 0; i < req.rawHeaders.length; i += 2) lines.push(`${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}`);

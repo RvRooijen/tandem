@@ -1,7 +1,8 @@
 // Concepts: the project's living design document, and the loose thoughts
 // that are not part of it yet. The document reads as one: a concept that is
-// part of nothing is a chapter, what is part of it stands under it, and each
-// says what it is in one sentence until it is opened. Above it the person
+// part of nothing is a chapter, what is part of it stands under it, and all of
+// it is there to read: a piece is folded to its one sentence, and a chapter's
+// parts put away, only when the person does that. Above it the person
 // types what comes to mind, without a name or a place for it; a thought goes
 // into the document when they want it to. One concept opened up to work on:
 // its words, its stage, what it is linked to and what makes it real, and a
@@ -49,9 +50,9 @@ export function conceptsPanel(): Panel {
   let open: string | undefined;
   let dirty = false;
 
-  /** What is open in the document: the pieces being read, and the chapters whose parts are unfolded. */
-  const reading = new Set<string>();
-  const unfolded = new Set<string>();
+  /** What the person folded away in the document: the pieces shut to their one sentence, and the chapters whose parts are put away. Everything else is open. */
+  const shut = new Set<string>();
+  const folded = new Set<string>();
   /** The words of the pieces that were opened, as they were when the list was last asked for. */
   let words = new Map<string, string>();
   let all: Brief[] = [];
@@ -73,8 +74,8 @@ export function conceptsPanel(): Panel {
     all = concepts ?? [];
     loose = thoughts ?? [];
     words = new Map();
-    for (const id of reading) if (!all.some((c) => c.id === id)) reading.delete(id);
-    await Promise.all([...reading].map(read));
+    for (const set of [shut, folded]) for (const id of set) if (!all.some((c) => c.id === id)) set.delete(id);
+    await Promise.all(all.filter((c) => !shut.has(c.id)).map((c) => read(c.id)));
     if (!body || open) return;
     paint();
   }
@@ -87,10 +88,10 @@ export function conceptsPanel(): Panel {
   /** A piece of the document: what it is in a sentence; opened, all of its words; under it, what is part of it. */
   function piece(c: Brief, parts: Map<string, Brief[]>, depth: number): HTMLElement {
     const mine = parts.get(c.id) ?? [];
-    const isOpen = reading.has(c.id) && words.has(c.id);
+    const isOpen = !shut.has(c.id) && words.has(c.id);
     const toggle = async () => {
-      if (reading.has(c.id)) reading.delete(c.id);
-      else { reading.add(c.id); if (!words.has(c.id)) await read(c.id); }
+      if (!shut.has(c.id)) shut.add(c.id);
+      else { shut.delete(c.id); if (!words.has(c.id)) await read(c.id); }
       if (body && !open) paint();
     };
     return h(`div.piece.${depth ? 'part' : 'chapter'}`, { data: { id: c.id, open: String(isOpen) } },
@@ -104,10 +105,10 @@ export function conceptsPanel(): Panel {
         h('div.t-row', {},
           h<'button'>('button', { onclick: () => void detail(c.id) }, icon('edit'), 'Edit'),
           h<'button'>('button', { onclick: () => app.attach(`concept:${c.id}`) }, 'Talk about this'))),
-      mine.length > 0 && h('div.fold', { 'aria-expanded': String(unfolded.has(c.id)), onclick: () => { if (unfolded.has(c.id)) unfolded.delete(c.id); else unfolded.add(c.id); paint(); } },
+      mine.length > 0 && h('div.fold', { 'aria-expanded': String(!folded.has(c.id)), onclick: () => { if (folded.has(c.id)) folded.delete(c.id); else folded.add(c.id); paint(); } },
         h('b', {}, `${mine.length} ${mine.length === 1 ? 'part' : 'parts'}`),
-        !unfolded.has(c.id) && h('span', {}, mine.map((m) => m.name).join(', '))),
-      mine.length > 0 && unfolded.has(c.id) && h('div.parts', {}, mine.map((m) => piece(m, parts, depth + 1))));
+        folded.has(c.id) && h('span', {}, mine.map((m) => m.name).join(', '))),
+      mine.length > 0 && !folded.has(c.id) && h('div.parts', {}, mine.map((m) => piece(m, parts, depth + 1))));
   }
 
   /** A loose thought: the words as they were typed, and what can be done with it. */
@@ -119,7 +120,6 @@ export function conceptsPanel(): Panel {
         const made = await app.act<{ id: string }>('concepts.create', { name: name.value.trim(), text: t.text, thought: t.id });
         if (!made) return;
         naming = undefined;
-        reading.add(made.id);
         void list();
       };
       name.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') void make(); });

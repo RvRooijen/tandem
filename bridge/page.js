@@ -7,9 +7,10 @@
 // the thing in the scene, not the canvas it is drawn on (bridge/scene.js, which
 // goes before this). And the agent can use the page as a person would, in the person's
 // own browser where they see it happen: read what is on it, tap something,
-// fill a field in, go somewhere; and, while the person lets it have the page,
-// get a picture of the page and tap a place in that picture. A page opened on
-// its own is not touched.
+// fill a field in, go somewhere, and what else a hand does: scroll, drag,
+// pinch, hold, press a key; and, while the person lets it have the page, get
+// a picture of the page and do those at a place in that picture. A page
+// opened on its own is not touched.
 (() => {
   if (window.parent === window || window.__tandemPage) return;
   window.__tandemPage = true;
@@ -387,6 +388,154 @@
   }
   const place = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
 
+  // ---- a hand on the page. What the agent does at a place is given to the page as this screen would give it:
+  // on a screen that is touched (a phone, a tablet) fingers, with the touches a page may listen for; elsewhere the
+  // mouse. The browser's own answer to a real finger (moving the page under it, zooming it) does not come with
+  // these: scrolling is done by itself (do: 'scroll').
+  const touched = () => (window.matchMedia ? !!window.matchMedia('(pointer: coarse)').matches : (navigator.maxTouchPoints || 0) > 0);
+  const EVENT = { bubbles: true, cancelable: true, composed: true, view: window };
+  /** What is down on the page now, by its number: a finger or the mouse, where it is, what it went down on, and what took hold of it. */
+  const down = new Map();
+  // A page may take hold of what went down on it (setPointerCapture), so it hears where it goes from then on. The
+  // browser knows only real fingers and would refuse these: they are kept here instead.
+  {
+    const proto = window.Element?.prototype;
+    if (proto?.setPointerCapture) {
+      const { setPointerCapture: take, releasePointerCapture: free, hasPointerCapture: has } = proto;
+      proto.setPointerCapture = function (id) { const f = down.get(id); if (!f) return take.call(this, id); f.held = this; };
+      proto.releasePointerCapture = function (id) { const f = down.get(id); if (!f) return free.call(this, id); if (f.held === this) f.held = null; };
+      proto.hasPointerCapture = function (id) { const f = down.get(id); return f ? f.held === this : has.call(this, id); };
+    }
+  }
+  /** Who hears where it is now: what took hold of it; else, for a finger, what it went down on, and for the mouse what is under it. */
+  const under = (f) => f.held ?? (f.touch ? f.el : document.elementFromPoint(f.x, f.y) ?? f.el);
+  function pointer(type, f) {
+    const Kind = window.PointerEvent ?? window.MouseEvent;
+    const on = type !== 'pointerup';
+    (type === 'pointerdown' ? f.el : under(f)).dispatchEvent(new Kind(type, {
+      ...EVENT, clientX: f.x, clientY: f.y, screenX: f.x, screenY: f.y, button: type === 'pointermove' ? -1 : 0, buttons: on ? 1 : 0,
+      pointerId: f.id, pointerType: f.touch ? 'touch' : 'mouse', isPrimary: f.first, pressure: on ? 0.5 : 0, ...(f.touch && { width: 24, height: 24 }),
+    }));
+  }
+  function mouse(type, f) {
+    const up = type === 'mouseup' || type === 'click';
+    (type === 'mousedown' || type === 'click' ? f.el : under(f)).dispatchEvent(new window.MouseEvent(type, { ...EVENT, clientX: f.x, clientY: f.y, screenX: f.x, screenY: f.y, button: 0, buttons: up ? 0 : 1, detail: type === 'mousemove' ? 0 : 1 }));
+  }
+  /** The touches a page hears, for the fingers that changed (`changed`), among all that are down (`fingers`). Says whether the page kept it to itself. */
+  function touch(type, changed, fingers) {
+    if (!window.TouchEvent && !window.Event) return false;
+    const one = (f) => {
+      const is = { identifier: f.id, target: f.el, clientX: f.x, clientY: f.y, pageX: f.x + (window.scrollX || 0), pageY: f.y + (window.scrollY || 0), screenX: f.x, screenY: f.y, radiusX: 12, radiusY: 12, force: 0.5 };
+      try { return new window.Touch(is); } catch { return is; }
+    };
+    let kept = false;
+    for (const el of new Set(changed.map((f) => f.el))) {
+      const on = fingers.filter((f) => f.on).map(one);
+      const lists = { touches: on, targetTouches: on.filter((t) => t.target === el), changedTouches: changed.filter((f) => f.el === el).map(one) };
+      let ev;
+      // (A browser that makes no touches of its own is given the same, as plain lists.)
+      try { ev = new window.TouchEvent(type, { ...EVENT, ...lists }); if (ev.touches.length !== on.length || ev.changedTouches.length !== lists.changedTouches.length) throw new Error('not taken'); }
+      catch {
+        ev = new window.Event(type, EVENT);
+        for (const [name, list] of Object.entries(lists)) { list.item = (i) => list[i] ?? null; Object.defineProperty(ev, name, { value: list }); }
+      }
+      if (!el.dispatchEvent(ev)) kept = true;
+    }
+    return kept;
+  }
+  /** A finger (or the mouse) goes down on what is at a place. */
+  function press(x, y, fingers) {
+    const isTouch = touched();
+    let id = isTouch ? 2 : 1;
+    while (down.has(id)) id++;
+    const f = { id, x, y, el: document.elementFromPoint(x, y) ?? document.body, touch: isTouch, first: !fingers.length, held: null, on: true, kept: false };
+    down.set(id, f);
+    fingers.push(f);
+    pointer('pointerdown', f);
+    if (f.touch) f.kept = touch('touchstart', [f], fingers); else mouse('mousedown', f);
+    return f;
+  }
+  /** Those that are down go somewhere, together. */
+  function move(to, fingers) {
+    for (const [f, x, y] of to) { f.x = x; f.y = y; pointer('pointermove', f); if (!f.touch) mouse('mousemove', f); }
+    if (to[0][0].touch) touch('touchmove', to.map(([f]) => f), fingers);
+  }
+  /** It is lifted. `tap`: it was a tap, so what it was on is clicked, unless the page kept the touch to itself. */
+  function lift(f, fingers, tap) {
+    f.on = false;
+    pointer('pointerup', f);
+    if (f.touch) { if (touch('touchend', [f], fingers)) f.kept = true; } else mouse('mouseup', f);
+    down.delete(f.id);
+    if (!tap || f.kept) return;
+    // (After a tap of a finger the browser gives the page what a mouse would have, for a page that knows only that.)
+    if (f.touch) { mouse('mousedown', f); mouse('mouseup', f); }
+    mouse('click', f);
+  }
+  /** Something that takes a while, in steps: a page that draws by the frame sees it move. */
+  function over(ms, step, done) {
+    const n = Math.max(4, Math.min(60, Math.round(ms / 16)));
+    let i = 0;
+    const next = () => { step(++i / n); if (i < n) setTimeout(next, ms / n); else done(); };
+    setTimeout(next, ms / n);
+  }
+  const within = (v, usual, least, most) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(least, Math.min(most, v)) : usual);
+  /** How long before a hand starts: the person sees the mark where it will be first. */
+  const SOON = 350;
+  /**
+   * Where something is done: a place in the picture of the page (x, y, in pixels of that picture), or the middle of
+   * what these words are on (the page moves to it); neither, and it is `else_` (the middle of the window, or nothing).
+   */
+  function spot(at, px, py, else_) {
+    if (typeof px === 'number' && typeof py === 'number') {
+      const x = px / pageScale(), y = py / pageScale();
+      const el = document.elementFromPoint(x, y);
+      if (!el) return { error: `there is nothing at ${px}, ${py}: the picture is ${Math.round(window.innerWidth * pageScale())} by ${Math.round(window.innerHeight * pageScale())}` };
+      const says = cut(words(el), 60);
+      return { x, y, el, says: `at ${px}, ${py}, on a ${el.tagName.toLowerCase()}${says ? ` "${says}"` : ''}` };
+    }
+    if (typeof at === 'string' && at.trim()) {
+      const found = byWords(at) ?? bySelector(at);
+      if (!found) return { error: `there is nothing on the page that says or is "${at}"` };
+      found.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+      const r = found.getBoundingClientRect();
+      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      return { x, y, el: document.elementFromPoint(x, y) ?? found, found, says: `on ${found.tagName.toLowerCase()} "${cut(words(found), 60)}"` };
+    }
+    if (else_ !== 'middle') return { error: else_ };
+    const x = window.innerWidth / 2, y = window.innerHeight / 2;
+    return { x, y, el: document.elementFromPoint(x, y) ?? document.body, says: 'in the middle of the page' };
+  }
+  const ring = (s) => ({ x: s.x - 16, y: s.y - 16, w: 32, h: 32 });
+
+  /** What scrolls that way, from something outwards: the first thing around it that has further to go; the page itself last. */
+  function scroller(from, dx, dy) {
+    const root = document.scrollingElement ?? document.documentElement;
+    const goes = (el, delta, at, size, room, flow) => !!delta && size - room > 1 && (delta > 0 ? at < size - room - 1 : at > 0)
+      && (el === root ? !/hidden|clip/.test(flow) : /auto|scroll|overlay/.test(flow));
+    for (let el = from; el && el.nodeType === 1; el = el.parentElement) {
+      if (el === document.body && root !== el && el.parentElement === root) continue;
+      const cs = getComputedStyle(el);
+      if (goes(el, dy, el.scrollTop, el.scrollHeight, el.clientHeight, cs.overflowY || cs.overflow) || goes(el, dx, el.scrollLeft, el.scrollWidth, el.clientWidth, cs.overflowX || cs.overflow)) return el;
+    }
+    return null;
+  }
+
+  /** A key as the page hears it, from what it is called. */
+  function keyOf(name) {
+    const raw = String(name ?? ''), low = raw.trim().toLowerCase();
+    if (raw === ' ' || low === 'space' || low === 'spacebar') return { key: ' ', code: 'Space', keyCode: 32, says: 'Space', letter: true };
+    const NAMED = { Enter: 13, Escape: 27, Tab: 9, Backspace: 8, Delete: 46, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Home: 36, End: 35, PageUp: 33, PageDown: 34, Shift: 16, Control: 17, Alt: 18 };
+    const ALSO = { esc: 'escape', return: 'enter', del: 'delete', left: 'arrowleft', up: 'arrowup', right: 'arrowright', down: 'arrowdown', ctrl: 'control' };
+    const key = Object.keys(NAMED).find((k) => k.toLowerCase() === (ALSO[low] ?? low));
+    if (key) return { key, code: /^(Shift|Control|Alt)$/.test(key) ? `${key}Left` : key, keyCode: NAMED[key], says: key, letter: key === 'Enter' };
+    const fn = /^f([1-9]|1[0-2])$/.exec(low);
+    if (fn) return { key: `F${fn[1]}`, code: `F${fn[1]}`, keyCode: 111 + Number(fn[1]), says: `F${fn[1]}`, letter: false };
+    const one = [...raw.trim()];
+    if (one.length !== 1) return null;
+    const c = one[0];
+    return { key: c, code: /^[a-z]$/i.test(c) ? `Key${c.toUpperCase()}` : /^\d$/.test(c) ? `Digit${c}` : '', keyCode: c.toUpperCase().charCodeAt(0), says: c, letter: true };
+  }
+
   /** Something the agent does on the page, as a person would. */
   function act(m) {
     if (m.do === 'look') return { ok: true, ...look() };
@@ -419,20 +568,19 @@
       return { ok: true, did: `went to ${to}` };
     }
     // A place instead of words: where in the picture of the page (page.look, while the agent has the page) to tap.
-    // That is how something drawn on a canvas is tapped: it has no words.
-    if (m.do === 'tap' && typeof m.x === 'number' && typeof m.y === 'number') {
-      const x = m.x / pageScale(), y = m.y / pageScale();
-      const el = document.elementFromPoint(x, y);
-      if (!el) return { ok: false, error: `there is nothing at ${m.x}, ${m.y}: the picture is ${Math.round(window.innerWidth * pageScale())} by ${Math.round(window.innerHeight * pageScale())}` };
-      const on = { bubbles: true, cancelable: true, composed: true, view: window, clientX: x, clientY: y, button: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+    // That is how something drawn on a canvas is tapped: it has no words. Held down a while (`hold`), it is a
+    // long press, by words too.
+    const hold = m.do === 'tap' ? within(m.hold, 0, 0, 5000) : 0;
+    if (m.do === 'tap' && (hold || (typeof m.x === 'number' && typeof m.y === 'number'))) {
+      const s = spot(m.at, m.x, m.y, 'say what to tap: at, or x and y');
+      if (s.error) return { ok: false, error: s.error };
       setTimeout(() => {
-        for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
-          const Kind = type.startsWith('pointer') && window.PointerEvent ? window.PointerEvent : window.MouseEvent;
-          el.dispatchEvent(new Kind(type, { ...on, buttons: type.endsWith('down') ? 1 : 0 }));
-        }
-      }, 350);
-      const says = cut(words(el), 60);
-      return { ok: true, did: `tapped at ${m.x}, ${m.y}, on a ${el.tagName.toLowerCase()}${says ? ` "${says}"` : ''}`, x: x - 16, y: y - 16, w: 32, h: 32 };
+        const fingers = [];
+        const f = press(s.x, s.y, fingers);
+        // (A finger held down is not a tap any more: nothing is clicked. A mouse button held down still clicks.)
+        if (hold) setTimeout(() => lift(f, fingers, !f.touch), hold); else lift(f, fingers, true);
+      }, SOON);
+      return { ok: true, did: hold ? `held ${s.says} down for ${hold} ms` : `tapped ${s.says}`, ...ring(s), ...(hold && { takes: SOON + hold }) };
     }
     if (m.do === 'tap') {
       const found = byWords(m.at) ?? bySelector(m.at);
@@ -440,8 +588,99 @@
       const el = tappable(found);
       if (el.disabled || el.getAttribute('aria-disabled') === 'true') return { ok: false, error: `"${cut(words(el), 60)}" cannot be tapped now: it is disabled` };
       el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
-      setTimeout(() => el.click(), 350);
+      setTimeout(() => el.click(), SOON);
       return { ok: true, did: `tapped ${el.tagName.toLowerCase()} "${cut(words(el), 60)}"`, ...place(el) };
+    }
+    // Scrolling: to something, by the words on it; or so far (dx to the right, dy down, in pixels of the picture),
+    // where the hand is: there, what has a wheel turned over it. A page that does something of its own with the
+    // wheel (a map, a scene that comes closer) gets it; else the first thing around that place that scrolls goes.
+    if (m.do === 'scroll') {
+      const k = pageScale();
+      const dx = within(m.dx, 0, -1e5, 1e5) / k, dy = within(m.dy, 0, -1e5, 1e5) / k;
+      const placed = typeof m.x === 'number' && typeof m.y === 'number';
+      if (!dx && !dy) {
+        if (placed || typeof m.at !== 'string' || !m.at.trim()) return { ok: false, error: 'say how far: dy (down; less than nothing is up) or dx (to the right), or only at to scroll to something' };
+        const found = byWords(m.at) ?? bySelector(m.at);
+        if (!found) return { ok: false, error: `there is nothing on the page that says or is "${m.at}"` };
+        found.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+        return { ok: true, did: `scrolled to ${found.tagName.toLowerCase()} "${cut(words(found), 60)}"`, ...place(found) };
+      }
+      const s = spot(m.at, m.x, m.y, 'middle');
+      if (s.error) return { ok: false, error: s.error };
+      const way = [dy > 0 ? 'down' : dy < 0 ? 'up' : '', dx > 0 ? 'right' : dx < 0 ? 'left' : ''].filter(Boolean).join(' and ');
+      if (window.WheelEvent && !s.el.dispatchEvent(new window.WheelEvent('wheel', { ...EVENT, clientX: s.x, clientY: s.y, screenX: s.x, screenY: s.y, deltaX: dx, deltaY: dy, deltaMode: 0 }))) {
+        return { ok: true, did: `scrolled ${way} ${s.says}: the page took the wheel itself`, ...ring(s) };
+      }
+      const box = scroller(s.el, dx, dy);
+      if (!box) return { ok: false, error: `nothing ${s.says} scrolls ${way} any further` };
+      const left = box.scrollLeft + dx, top = box.scrollTop + dy;
+      if (box.scrollTo) box.scrollTo({ left, top, behavior: 'instant' }); else { box.scrollLeft = left; box.scrollTop = top; }
+      const root = document.scrollingElement ?? document.documentElement;
+      const now = [dy && `${Math.round(box.scrollTop * k)} of ${Math.round((box.scrollHeight - box.clientHeight) * k)} down`, dx && `${Math.round(box.scrollLeft * k)} of ${Math.round((box.scrollWidth - box.clientWidth) * k)} to the right`].filter(Boolean).join(', ');
+      return { ok: true, did: `scrolled ${box === root ? 'the page' : selectorOf(box)} ${way}: now ${now}`, ...ring(s) };
+    }
+    // Dragging: down at one place, along to another, and up there; a swipe is the same, done quickly. Held down
+    // first (`hold`) for a page that only lets go of something after a while.
+    if (m.do === 'drag') {
+      const to = spot(m.to, m.toX, m.toY, 'say where to drag to: to (the words on it), or toX and toY');
+      if (to.error) return { ok: false, error: to.error };
+      const from = spot(m.at, m.x, m.y, 'say where to drag from: at (the words on it), or x and y');
+      if (from.error) return { ok: false, error: from.error };
+      // (Moving to where it starts may have moved where it ends.)
+      if (to.found && from.found) { const r = to.found.getBoundingClientRect(); to.x = r.left + r.width / 2; to.y = r.top + r.height / 2; }
+      const ms = within(m.ms, 400, 50, 5000), wait = within(m.hold, 0, 0, 5000);
+      setTimeout(() => {
+        const fingers = [];
+        const f = press(from.x, from.y, fingers);
+        setTimeout(() => over(ms, (t) => move([[f, from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t]], fingers), () => lift(f, fingers, false)), wait);
+      }, SOON);
+      return { ok: true, did: `dragged from ${from.says.replace(/^(at|on) /, '')} to ${to.says.replace(/^(at|on) /, '')}`, ...ring(from), to: { x: to.x, y: to.y }, takes: SOON + wait + ms };
+    }
+    // Pinching: two fingers around a place, going apart (scale above 1: closer, larger) or together (below 1). On a
+    // screen without fingers it is what a pinch on a trackpad gives a page: the wheel, with ctrl held.
+    if (m.do === 'pinch') {
+      const scale = Number(m.scale);
+      if (!(scale > 0) || scale === 1) return { ok: false, error: 'scale is how many times as far apart the fingers end as they began: 2 spreads them (closer, larger), 0.5 brings them together' };
+      const s = spot(m.at, m.x, m.y, 'middle');
+      if (s.error) return { ok: false, error: s.error };
+      const ms = within(m.ms, 400, 50, 5000);
+      const did = `pinched ${scale > 1 ? 'out' : 'in'} ${s.says}, to ${scale} times as far apart`;
+      if (!touched()) {
+        if (!window.WheelEvent) return { ok: false, error: 'this browser has no way to pinch' };
+        let last = 0;
+        const all = -Math.log(scale) * 100;
+        setTimeout(() => over(ms, (t) => { s.el.dispatchEvent(new window.WheelEvent('wheel', { ...EVENT, clientX: s.x, clientY: s.y, screenX: s.x, screenY: s.y, deltaY: all * (t - last), deltaMode: 0, ctrlKey: true })); last = t; }, () => {}), SOON);
+        return { ok: true, did: `${did} (no fingers on this screen: as the wheel with ctrl held)`, ...ring(s), takes: SOON + ms };
+      }
+      // As far apart as there is room for, to the left and right of the place.
+      const room = Math.max(8, Math.min(120, s.x - 4, window.innerWidth - s.x - 4));
+      const a = scale > 1 ? Math.max(4, room / scale) : room, b = scale > 1 ? room : Math.max(4, room * scale);
+      setTimeout(() => {
+        const fingers = [];
+        const f = press(s.x - a, s.y, fingers), g = press(s.x + a, s.y, fingers);
+        over(ms, (t) => { const half = a + (b - a) * t; move([[f, s.x - half, s.y], [g, s.x + half, s.y]], fingers); }, () => { lift(g, fingers, false); lift(f, fingers, false); });
+      }, SOON);
+      return { ok: true, did, x: s.x - Math.max(a, b), y: s.y - 16, w: 2 * Math.max(a, b), h: 32, takes: SOON + ms };
+    }
+    // A key: heard by what has the cursor (or what `at` names, which gets it first), and so by the page. Kept down
+    // a while with `hold`. Nothing is written in a field by it: that is do: 'type'.
+    if (m.do === 'key') {
+      const key = keyOf(m.key);
+      if (!key) return { ok: false, error: 'key is one letter or sign, or what a key is called: Enter, Escape, Tab, Space, Backspace, Delete, ArrowLeft, ArrowUp, ArrowRight, ArrowDown, Home, End, PageUp, PageDown, Shift, Control, Alt, F1 to F12' };
+      let el = document.activeElement ?? document.body;
+      if (typeof m.at === 'string' && m.at.trim()) {
+        const found = fieldFor(m.at) ?? byWords(m.at) ?? bySelector(m.at);
+        if (!found) return { ok: false, error: `there is nothing on the page that says or is "${m.at}"` };
+        found.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+        found.focus?.();
+        el = found;
+      }
+      const keep = within(m.hold, 0, 0, 5000);
+      const send = (type) => el.dispatchEvent(new window.KeyboardEvent(type, { ...EVENT, key: key.key, code: key.code, keyCode: key.keyCode, which: key.keyCode }));
+      send('keydown');
+      if (key.letter) send('keypress');
+      if (keep) setTimeout(() => send('keyup'), keep); else send('keyup');
+      return { ok: true, did: `pressed ${key.says}${keep ? ` for ${keep} ms` : ''}${el !== document.body && el !== document.documentElement ? `, in ${el.tagName.toLowerCase()} "${cut(el.matches(FIELD) ? fieldName(el) : words(el), 60)}"` : ''}`, ...(el !== document.body && el !== document.documentElement && place(el)), ...(keep && { takes: keep }) };
     }
     if (m.do === 'type') {
       const el = fieldFor(m.at);

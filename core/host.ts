@@ -262,7 +262,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     });
     if (!result) throw new CommandError('unavailable', 'the person\'s screen did not answer: tandem has to be open on their device for this. Ask them to open it, or go by the code');
     if (result.ok === false) throw new CommandError('failed', String(result.error ?? 'it did not work'));
-    if (what.do !== 'look') events.add({ type: 'page.did', by, what: what.do, ...(what.at !== undefined && { at: what.at }), ...(what.x !== undefined && { at: `${what.x}, ${what.y}` }), ...(what.path !== undefined && { path: what.path }), did: result.did ?? '', showing: result.showing });
+    if (what.do !== 'look') events.add({ type: 'page.did', by, what: what.do, ...(what.at !== undefined && { at: what.at }), ...(what.x !== undefined && { at: `${what.x}, ${what.y}` }), ...(what.path !== undefined && { path: what.path }), ...(what.key !== undefined && { key: what.key }), did: result.did ?? '', showing: result.showing });
     const { ok: _ok, lines, image, size, ...rest } = result;
     const picture = mine ? keepPicture(image) : undefined;
     return {
@@ -1470,13 +1470,50 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'page.tap', kind: 'write', agent: 'free',
-      about: 'Tap something on the project\'s page on the person\'s screen: at is the words on it (a button, a link, a checkbox by its label) or a CSS selector. Or x and y: a place in the picture of the page you got while you have the page (page.take), in pixels of that picture; that is how something drawn on a canvas is tapped. They see it happen. Answers with what is on the page afterwards. copy as in page.look.',
-      input: { at: 'string?', x: 'number?', y: 'number?', copy: 'boolean?' },
+      about: 'Tap something on the project\'s page on the person\'s screen: at is the words on it (a button, a link, a checkbox by its label) or a CSS selector. Or x and y: a place in the picture of the page you got while you have the page (page.take), in pixels of that picture; that is how something drawn on a canvas is tapped. hold keeps it down that many milliseconds: a long press. They see it happen. Answers with what is on the page afterwards. copy as in page.look.',
+      input: { at: 'string?', x: 'number?', y: 'number?', hold: 'number?', copy: 'boolean?' },
       run(c, i) {
         const place = typeof i.x === 'number' && typeof i.y === 'number';
         if (!place && !i.at?.trim()) throw new CommandError('input', 'page.tap needs at (the words on it, or a selector), or x and y (a place in the picture of the page)');
-        return onPage(c.by, { do: 'tap', ...(place ? { x: i.x, y: i.y } : { at: i.at }), ...(i.copy !== undefined && { copy: i.copy }) });
+        return onPage(c.by, { do: 'tap', ...(place ? { x: i.x, y: i.y } : { at: i.at }), ...(i.hold !== undefined && { hold: i.hold }), ...(i.copy !== undefined && { copy: i.copy }) });
       },
+    },
+    {
+      name: 'page.scroll', kind: 'write', agent: 'free',
+      about: 'Scroll on the project\'s page on the person\'s screen. Only at (the words on something, or a CSS selector): the page moves to it. With dy (down; less than nothing is up) or dx (to the right), in pixels of the picture of the page: so far, where the hand is: at, or x and y (a place in that picture), or the middle of the page. What scrolls there goes (a list inside the page before the page itself), and you are told how far it is now; a page that does something of its own with the wheel (a map, a scene that comes closer) gets the wheel instead. A large dy goes to the end. copy as in page.look.',
+      input: { at: 'string?', x: 'number?', y: 'number?', dx: 'number?', dy: 'number?', copy: 'boolean?' },
+      run(c, i) {
+        const place = typeof i.x === 'number' && typeof i.y === 'number';
+        if (!i.dx && !i.dy && (place || !i.at?.trim())) throw new CommandError('input', 'page.scroll needs dy (down; less than nothing is up) or dx (to the right), or only at: something to scroll to');
+        return onPage(c.by, { do: 'scroll', ...(place ? { x: i.x, y: i.y } : i.at?.trim() && { at: i.at }), ...(i.dx && { dx: i.dx }), ...(i.dy && { dy: i.dy }), ...(i.copy !== undefined && { copy: i.copy }) });
+      },
+    },
+    {
+      name: 'page.drag', kind: 'write', agent: 'free',
+      about: 'Drag on the project\'s page on the person\'s screen: down at one place, along to another, up there. From at (the words on it, or a CSS selector) or x and y; to to (words, or a selector) or toX and toY; places are in the picture of the page, in its pixels. ms is how long the way takes (400; a swipe is a short one, 100), hold how long it is kept down before it moves, for something that only comes loose after a while. That is how something is moved, a slider pulled, a scene turned. On a phone it is a finger, elsewhere the mouse. It does not move the page itself: page.scroll does. copy as in page.look.',
+      input: { at: 'string?', x: 'number?', y: 'number?', to: 'string?', toX: 'number?', toY: 'number?', ms: 'number?', hold: 'number?', copy: 'boolean?' },
+      run(c, i) {
+        const from = typeof i.x === 'number' && typeof i.y === 'number', to = typeof i.toX === 'number' && typeof i.toY === 'number';
+        if (!from && !i.at?.trim()) throw new CommandError('input', 'page.drag needs where it starts: at (the words on it, or a selector), or x and y (a place in the picture of the page)');
+        if (!to && !i.to?.trim()) throw new CommandError('input', 'page.drag needs where it ends: to (the words on it, or a selector), or toX and toY (a place in the picture of the page)');
+        return onPage(c.by, { do: 'drag', ...(from ? { x: i.x, y: i.y } : { at: i.at }), ...(to ? { toX: i.toX, toY: i.toY } : { to: i.to }), ...(i.ms !== undefined && { ms: i.ms }), ...(i.hold !== undefined && { hold: i.hold }), ...(i.copy !== undefined && { copy: i.copy }) });
+      },
+    },
+    {
+      name: 'page.pinch', kind: 'write', agent: 'free',
+      about: 'Pinch on the project\'s page on the person\'s screen, with two fingers: scale is how many times as far apart they end as they began: 2 spreads them (closer, larger), 0.5 brings them together. Around at (the words on it, or a CSS selector), or x and y (a place in the picture of the page), or the middle of the page; ms is how long it takes (400). It is for what the page itself does with two fingers (a map, a scene, a picture); the browser\'s own zooming of the page is not done. On a screen without touch the page gets what a pinch on a trackpad gives: the wheel with ctrl held. copy as in page.look.',
+      input: { scale: 'number', at: 'string?', x: 'number?', y: 'number?', ms: 'number?', copy: 'boolean?' },
+      run(c, i) {
+        if (!(i.scale > 0) || i.scale === 1) throw new CommandError('input', 'scale is how many times as far apart the fingers end as they began: 2 spreads them (closer, larger), 0.5 brings them together');
+        const place = typeof i.x === 'number' && typeof i.y === 'number';
+        return onPage(c.by, { do: 'pinch', scale: i.scale, ...(place ? { x: i.x, y: i.y } : i.at?.trim() && { at: i.at }), ...(i.ms !== undefined && { ms: i.ms }), ...(i.copy !== undefined && { copy: i.copy }) });
+      },
+    },
+    {
+      name: 'page.key', kind: 'write', agent: 'free',
+      about: 'Press a key on the project\'s page on the person\'s screen: key is one letter or sign, or what a key is called (Enter, Escape, Tab, Space, Backspace, Delete, ArrowLeft, ArrowUp, ArrowRight, ArrowDown, Home, End, PageUp, PageDown, Shift, Control, Alt, F1 to F12). It goes to what has the cursor, or to at (a field by what it is called, the words on something, or a CSS selector), and the page hears it; hold keeps it down that many milliseconds (a game that moves while a key is down). It writes nothing in a field and sends no form: page.type does. copy as in page.look.',
+      input: { key: 'string', at: 'string?', hold: 'number?', copy: 'boolean?' },
+      run: (c, i) => onPage(c.by, { do: 'key', key: i.key, ...(i.at?.trim() && { at: i.at }), ...(i.hold !== undefined && { hold: i.hold }), ...(i.copy !== undefined && { copy: i.copy }) }),
     },
     {
       name: 'page.type', kind: 'write', agent: 'free',
@@ -1498,7 +1535,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'page.take', kind: 'write', agent: 'free',
-      about: 'Ask the person to let you have the project\'s page on their screen for a while, to try what you made yourself instead of leaving it to them: why is what you want to see, in a few words. Waits for their answer (yes, or not now). While you have it, page.look, page.tap, page.type and page.go also give a picture of the page as it is on their screen (picture: a file to Read; size: how large it is), so you see what a canvas draws, and page.tap takes a place in that picture (x, y). They watch, and can take it back. Give it back with page.release when you have seen what you needed; it also ends with your turn.',
+      about: 'Ask the person to let you have the project\'s page on their screen for a while, to try what you made yourself instead of leaving it to them: why is what you want to see, in a few words. Waits for their answer (yes, or not now). While you have it, everything you do on the page (page.look, page.tap, page.type, page.go, page.scroll, page.drag, page.pinch, page.key) also gives a picture of the page as it is on their screen (picture: a file to Read; size: how large it is), so you see what a canvas draws, and page.tap, page.scroll, page.drag and page.pinch take a place in that picture (x, y). They watch, and can take it back. Give it back with page.release when you have seen what you needed; it also ends with your turn.',
       input: { why: 'string' },
       async run(c, i) {
         if (!project.pageCommand(0)) throw new CommandError('unsupported', 'this project has no page set up in tandem (project.configure: page)');
@@ -1544,7 +1581,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'page.answer', kind: 'write',
-      about: 'The person\'s screen answering what was asked of the project\'s page (page.look, page.tap, page.type, page.go). Sent by tandem\'s page, not by hand.',
+      about: 'The person\'s screen answering what was asked of the project\'s page (page.look, page.tap, page.type, page.go, page.scroll, page.drag, page.pinch, page.key). Sent by tandem\'s page, not by hand.',
       input: { id: 'string', result: 'json' },
       run(_c, i) {
         const waiting = asked.get(i.id);

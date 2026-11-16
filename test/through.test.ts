@@ -113,6 +113,10 @@ test('tandem\'s lines in a page find a thing by the words on it, or by a selecto
   proto.getBoundingClientRect = function (this: Element) { return { left: 5, top: 7, width: this.tagName === 'BUTTON' ? 120 : 300, height: 40, right: 0, bottom: 0, x: 5, y: 7, toJSON() {} }; };
   let moved: Element | undefined;
   proto.scrollIntoView = function (this: Element) { moved = this; };
+  // (And, as a browser does, it refuses to let a page take hold of a finger that is not a real one.)
+  const hand = proto as unknown as Record<string, (id: number) => unknown>;
+  hand.setPointerCapture = hand.releasePointerCapture = () => { throw new Error('NotFoundError: no such pointer'); };
+  hand.hasPointerCapture = () => false;
   // (What the page says is made in its own world; it is taken over as plain data.)
   const said: any[] = [];
   dom.window.addEventListener('message', (ev) => said.push(JSON.parse(JSON.stringify(ev.data))));
@@ -212,6 +216,113 @@ test('tandem\'s lines in a page find a thing by the words on it, or by a selecto
   assert.deepEqual([placed.ok, placed.did, placed.x, placed.y, placed.w], [true, 'tapped at 100, 200, on a canvas', 84, 184, 32]);
   await wait(() => got.length === 4);
   assert.deepEqual(got, ['pointerdown 100,200', 'mousedown 100,200', 'mouseup 100,200', 'click 100,200']);
+  // Kept down a while, it is a long press: the page hears it go down, and come up only then.
+  got.length = 0;
+  const held = await act({ do: 'tap', x: 100, y: 200, hold: 80 });
+  assert.deepEqual([held.ok, held.did, held.takes], [true, 'held at 100, 200, on a canvas down for 80 ms', 430]);
+  await wait(() => got.length === 2);
+  assert.deepEqual(got, ['pointerdown 100,200', 'mousedown 100,200']);
+  await wait(() => got.length === 4);
+
+  // What else a hand does. Scrolling: to something, by the words on it;
+  const scrolledTo = await act({ do: 'scroll', at: 'your board' });
+  assert.deepEqual([scrolledTo.ok, scrolledTo.did, moved?.tagName], [true, 'scrolled to h2 "Your board"', 'H2']);
+  // or so far, where the hand is: the first thing around that place that scrolls goes, and how far it is now is said;
+  const section = frame.document.querySelector('section')!;
+  section.style.overflow = 'auto';
+  Object.defineProperties(section, { scrollHeight: { value: 1000 }, clientHeight: { value: 400 } });
+  under = frame.document.querySelector('section p');
+  const scrolled = await act({ do: 'scroll', x: 50, y: 60, dy: 300 });
+  assert.deepEqual([scrolled.ok, scrolled.did, section.scrollTop, scrolled.x], [true, 'scrolled section down: now 300 of 600 down', 300, 34]);
+  assert.equal((await act({ do: 'scroll', dy: 5000 })).did, 'scrolled section down: now 5300 of 600 down', '(a browser stops at the end; this stand-in does not)');
+  section.scrollTop = 600;
+  assert.match((await act({ do: 'scroll', dy: 300 })).error, /^nothing in the middle of the page scrolls down any further$/);
+  assert.equal((await act({ do: 'scroll', dy: -200 })).did, 'scrolled section up: now 400 of 600 down');
+  assert.match((await act({ do: 'scroll' })).error, /say how far/);
+  // a page that does something of its own with the wheel gets the wheel, and nothing is moved for it.
+  const all: string[] = [];
+  const wheels: [number, boolean][] = [];
+  board.addEventListener('wheel', (e) => { e.preventDefault(); wheels.push([Math.round((e as WheelEvent).deltaY), (e as WheelEvent).ctrlKey]); });
+  under = board;
+  const wheeled = await act({ do: 'scroll', x: 100, y: 200, dy: 120 });
+  assert.deepEqual([wheeled.did, wheels, section.scrollTop], ['scrolled down at 100, 200, on a canvas: the page took the wheel itself', [[120, false]], 400]);
+
+  // A drag: down at one place, along to another, up there, over a while; no click comes of it. A page that takes
+  // hold of what went down on it (setPointerCapture) hears where it goes, whatever is under it by then.
+  (frame as unknown as { PointerEvent: unknown }).PointerEvent = class extends (frame as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent {
+    pointerId: number; pointerType: string;
+    constructor(type: string, init: PointerEventInit) { super(type, init); this.pointerId = init.pointerId!; this.pointerType = init.pointerType!; }
+  };
+  const xy = (e: Event) => `${(e as MouseEvent).clientX},${(e as MouseEvent).clientY}`;
+  for (const type of ['pointerdown', 'mousedown', 'pointermove', 'mousemove', 'pointerup', 'mouseup', 'click']) board.addEventListener(type, (e) => all.push(`${type} ${xy(e)}`));
+  let hasIt: unknown;
+  board.addEventListener('pointerdown', (e) => { if (hasIt !== undefined) return; board.setPointerCapture((e as PointerEvent).pointerId); hasIt = board.hasPointerCapture((e as PointerEvent).pointerId); under = frame.document.querySelector('h1'); });
+  const dragged = await act({ do: 'drag', x: 100, y: 200, toX: 300, toY: 200, ms: 64 });
+  assert.deepEqual([dragged.ok, dragged.did, dragged.x, dragged.to, dragged.takes], [true, 'dragged from 100, 200, on a canvas to 300, 200, on a canvas', 84, { x: 300, y: 200 }, 414]);
+  await wait(() => all.includes('mouseup 300,200'));
+  assert.deepEqual(all, [
+    'pointerdown 100,200', 'mousedown 100,200',
+    ...[150, 200, 250, 300].flatMap((x) => [`pointermove ${x},200`, `mousemove ${x},200`]),
+    'pointerup 300,200', 'mouseup 300,200',
+  ]);
+  assert.equal(hasIt, true);
+  assert.equal(board.hasPointerCapture(1), false, 'let go of once it is up');
+  assert.match((await act({ do: 'drag', x: 100, y: 200 })).error, /where to drag to/);
+
+  // Without fingers on this screen a pinch is what one on a trackpad gives the page: the wheel, with ctrl held.
+  under = board;
+  wheels.length = 0;
+  const squeezed = await act({ do: 'pinch', x: 400, y: 300, scale: 0.5, ms: 64 });
+  assert.match(squeezed.did, /^pinched in at 400, 300, on a canvas, to 0\.5 times as far apart \(no fingers on this screen/);
+  await wait(() => wheels.length === 4);
+  assert.deepEqual([wheels.every(([, ctrl]) => ctrl), wheels.reduce((sum, [d]) => sum + d, 0)], [true, 68]);
+  assert.match((await act({ do: 'pinch', scale: 1 })).error, /scale is how many times/);
+
+  // On a screen that is touched the page gets fingers: their touches, and no mouse. A pinch is two of them going apart.
+  (frame as unknown as { matchMedia: unknown }).matchMedia = () => ({ matches: true });
+  all.length = 0;
+  const touches: [string, number, number, number][] = [];
+  let keeps = false;
+  for (const type of ['touchstart', 'touchmove', 'touchend']) board.addEventListener(type, (e) => {
+    const t = (e as TouchEvent).touches, c = (e as TouchEvent).changedTouches;
+    touches.push([type, t.length, c.length, t.length === 2 ? Math.round(t[1].clientX - t[0].clientX) : 0]);
+    if (keeps) e.preventDefault();
+  });
+  const pinched = await act({ do: 'pinch', x: 400, y: 300, scale: 2, ms: 64 });
+  assert.deepEqual([pinched.did, pinched.x, pinched.w, pinched.takes], ['pinched out at 400, 300, on a canvas, to 2 times as far apart', 280, 240, 414]);
+  await wait(() => touches.filter(([type]) => type === 'touchend').length === 2);
+  assert.deepEqual(touches, [
+    ['touchstart', 1, 1, 0], ['touchstart', 2, 1, 120],
+    ['touchmove', 2, 2, 150], ['touchmove', 2, 2, 180], ['touchmove', 2, 2, 210], ['touchmove', 2, 2, 240],
+    ['touchend', 1, 1, 0], ['touchend', 0, 1, 0],
+  ]);
+  assert.deepEqual([all.filter((x) => x.startsWith('mouse')), all.filter((x) => x.startsWith('pointerdown')).length], [[], 2], 'fingers, not a mouse');
+  // A tap of a finger ends in the click a page that knows only the mouse waits for, unless the page kept the touch to itself.
+  all.length = 0;
+  await act({ do: 'tap', x: 100, y: 200 });
+  await wait(() => all.includes('click 100,200'));
+  assert.deepEqual(all, ['pointerdown 100,200', 'pointerup 100,200', 'mousedown 100,200', 'mouseup 100,200', 'click 100,200']);
+  keeps = true;
+  all.length = touches.length = 0;
+  await act({ do: 'tap', x: 100, y: 200 });
+  await wait(() => touches.length === 2);
+  assert.deepEqual(all, ['pointerdown 100,200', 'pointerup 100,200']);
+  (frame as unknown as { matchMedia: unknown }).matchMedia = undefined;
+
+  // A key: heard by what has the cursor, and so by the page; by what it is called, or the letter it is.
+  input.blur();
+  const keys: string[] = [];
+  for (const type of ['keydown', 'keypress', 'keyup']) frame.document.addEventListener(type, (e) => keys.push(`${type} ${(e as KeyboardEvent).key} ${(e as KeyboardEvent).code} ${(e as KeyboardEvent).keyCode} ${(e.target as Element).tagName}`));
+  assert.deepEqual(await act({ do: 'key', key: 'left' }), { ok: true, did: 'pressed ArrowLeft' });
+  assert.deepEqual((await act({ do: 'key', key: 'a', at: 'name of the group' })).did, 'pressed a, in input "Name of the group"');
+  assert.deepEqual(keys, ['keydown ArrowLeft ArrowLeft 37 BODY', 'keyup ArrowLeft ArrowLeft 37 BODY', 'keydown a KeyA 65 INPUT', 'keypress a KeyA 65 INPUT', 'keyup a KeyA 65 INPUT']);
+  assert.equal(input.value, 'Gran and all', 'nothing is written by it');
+  keys.length = 0;
+  const kept = await act({ do: 'key', key: 'Space', hold: 60 });
+  assert.deepEqual([kept.did, kept.takes, keys.length], ['pressed Space for 60 ms, in input "Name of the group"', 60, 2]);
+  await wait(() => keys.length === 3);
+  assert.equal((await act({ do: 'key', key: 'Hyper' })).ok, false);
+
   under = null;
   assert.equal((await act({ do: 'tap', x: 5000, y: 5000 })).ok, false, 'nothing is there');
   assert.deepEqual(await act({ do: 'go', path: 'https://elsewhere.example/' }), { ok: false, error: 'a place in this app starts with / (or ? or #)' });

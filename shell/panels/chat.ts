@@ -660,7 +660,7 @@ export function chatPanel(): Panel {
   const calls = new Map<string, { group: Acts; act: Act }>();
   const took = (ms: number) => (ms < 90_000 ? `${Math.max(1, Math.round(ms / 1000))} s` : `${Math.round(ms / 60_000)} min`);
   /** What kind of thing it was, by its first word: it is read at a glance by that word and its colour. */
-  const KIND: Record<string, string> = { read: 'read', looked: 'read', searched: 'read', changed: 'edit', wrote: 'edit', ran: 'run', used: 'run', tapped: 'page', filled: 'page', went: 'page', sent: 'page' };
+  const KIND: Record<string, string> = { read: 'read', looked: 'read', searched: 'read', changed: 'edit', wrote: 'edit', ran: 'run', used: 'run', tapped: 'page', filled: 'page', went: 'page', sent: 'page', scrolled: 'page', dragged: 'page', pinched: 'page', held: 'page', pressed: 'page' };
   function parts(did: string): { verb: string; rest: string; kind: string } {
     const m = /^(\S+)(?:\s+(at|for|to|in)(?=\s))?\s*(.*)$/s.exec(did) ?? [did, did, undefined, ''];
     return { verb: m[2] ? `${m[1]} ${m[2]}` : String(m[1]), rest: String(m[3] ?? ''), kind: KIND[String(m[1])] ?? 'other' };

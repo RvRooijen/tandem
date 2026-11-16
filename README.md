@@ -86,8 +86,9 @@ can put a ring around something on the page (`stage.point` with `at`: the words 
 tandem's round button onto something to point at it: it goes with your next message.
 
 **The agent trying it itself.** The agent can use the page on your screen as you would (`page.look`, `page.tap`,
-`page.type`, `page.go`). To see what it made, it asks for the page (`page.take`): you say yes or not now, over the page.
-While it has the page, a picture of the page comes back with everything it does there, and it can tap a place in that
+`page.type`, `page.go`, and what else a hand does: `page.scroll`, `page.drag`, `page.pinch`, `page.key`; on a phone
+the page gets fingers, elsewhere the mouse). To see what it made, it asks for the page (`page.take`): you say yes or not now, over the page.
+While it has the page, a picture of the page comes back with everything it does there, and it can tap, scroll, drag and pinch at a place in that
 picture, so it also sees and uses what a canvas draws. A mark over the page says it is at it, with a button to take the
 page back; it also gets it back to you when it is done or its turn is over.
 

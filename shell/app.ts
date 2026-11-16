@@ -560,7 +560,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     },
   };
   /**
-   * Something the agent does on the project's page (look, tap, type, go). It is done on what this screen shows, the
+   * Something the agent does on the project's page (look, tap, type, go, scroll, drag, pinch, a key). It is done on what this screen shows, the
    * project or the working copy (`copy` switches to one or the other first); the thing it touches is marked, so
    * the person sees it happen.
    */
@@ -577,9 +577,15 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       const what = String(ev.do);
       let did: Record<string, unknown> | null = { ok: true };
       if (what !== 'look') {
-        did = await stage.act({ do: what, at: ev.at, x: ev.x, y: ev.y, text: ev.text, submit: ev.submit, path: ev.path });
+        did = await stage.act({ do: what, at: ev.at, x: ev.x, y: ev.y, text: ev.text, submit: ev.submit, path: ev.path, hold: ev.hold, dx: ev.dx, dy: ev.dy, to: ev.to, toX: ev.toX, toY: ev.toY, ms: ev.ms, scale: ev.scale, key: ev.key });
         if (did && did.ok === false) return void answer({ ...did, showing: stage.showing });
-        if (did && typeof did.x === 'number') showRing(Number(did.x) + Number(did.w) / 2, Number(did.y) + Number(did.h) / 2, Number(did.w), Number(did.h), what === 'tap' ? 'the agent taps this' : 'the agent fills this in', true, true);
+        const says = ({ tap: ev.hold ? 'the agent holds this down' : 'the agent taps this', scroll: 'the agent scrolls here', drag: 'the agent drags from here', pinch: 'the agent pinches here', key: 'the agent presses a key here' } as Record<string, string>)[what] ?? 'the agent fills this in';
+        if (did && typeof did.x === 'number') showRing(Number(did.x) + Number(did.w) / 2, Number(did.y) + Number(did.h) / 2, Number(did.w), Number(did.h), says, true, true);
+        // What takes a while (a drag, a pinch, something held down) is waited for; the mark goes along to where a drag ends.
+        const takes = did?.takes;
+        if (typeof takes === 'number') await new Promise((r) => setTimeout(r, Math.min(takes, 12000)));
+        const end = did?.to as { x?: unknown; y?: unknown } | undefined;
+        if (end && typeof end.x === 'number' && typeof end.y === 'number') showRing(end.x, end.y, 32, 32, 'to here', true, true);
         // What it did may have loaded the page anew: wait for it to be there again, and for the page to settle.
         await new Promise((r) => setTimeout(r, 900));
         await wait(() => stage.can.find, 15000);

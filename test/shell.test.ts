@@ -925,6 +925,37 @@ test('the agent shows things on the person\'s screen', async () => {
   assert.match((await placing).picture, /^none/);
   assert.equal(host.events.since(0).filter((e) => e.type === 'page.did').at(-1)!.at, '100, 200');
   await assert.rejects(host.run('page.tap', {}, AGENT) as Promise<any>, /needs at/);
+  // What else a hand does goes the same way: scrolling, a drag (the mark goes along to where it ends, once it is
+  // there), a pinch, a key, something held down. Each is marked on the person's screen with what it is.
+  const noPicture = { ok: false, error: 'this browser does not hand a picture of the page back' };
+  const hand = async (name: string, input: Record<string, unknown>, says: Record<string, unknown>, mark: string) => {
+    const doing_ = host.run(`page.${name}`, input, AGENT) as Promise<any>;
+    const asked = await doing(name === 'tap' ? 'tap' : name, { ok: true, x: 84, y: 184, w: 32, h: 32, ...says });
+    await until(() => $('#t-ring span').textContent === mark, `the mark: ${mark}`);
+    return { asked, doing: doing_ };
+  };
+  const after = async (doing_: Promise<any>) => { await doing('look', onPage); await doing('picture', noPicture); return doing_; };
+  const scroll = await hand('scroll', { dy: 300 }, { did: 'scrolled the page down: now 300 of 900 down' }, 'the agent scrolls here');
+  assert.deepEqual([scroll.asked.dy, scroll.asked.dx, scroll.asked.at, scroll.asked.x], [300, undefined, undefined, undefined]);
+  assert.equal((await after(scroll.doing)).did, 'scrolled the page down: now 300 of 900 down');
+  const drag = await hand('drag', { x: 100, y: 200, toX: 300, toY: 220, ms: 100 }, { did: 'dragged from 100, 200, on a canvas to 300, 220, on a canvas', to: { x: 300, y: 220 }, takes: 450 }, 'the agent drags from here');
+  assert.deepEqual([drag.asked.x, drag.asked.y, drag.asked.toX, drag.asked.toY, drag.asked.ms, drag.asked.to], [100, 200, 300, 220, 100, undefined]);
+  await until(() => $('#t-ring span').textContent === 'to here' && $('#t-ring').style.left === '300px' && $('#t-ring').style.top === '220px', 'the mark where the drag ends');
+  const dragged = await after(drag.doing);
+  assert.deepEqual([dragged.did, dragged.to, dragged.takes], ['dragged from 100, 200, on a canvas to 300, 220, on a canvas', undefined, undefined]);
+  const pinch = await hand('pinch', { scale: 2, at: 'the map' }, { did: 'pinched out on canvas "", to 2 times as far apart', takes: 50 }, 'the agent pinches here');
+  assert.deepEqual([pinch.asked.scale, pinch.asked.at], [2, 'the map']);
+  await after(pinch.doing);
+  const key = await hand('key', { key: 'ArrowLeft', hold: 40 }, { did: 'pressed ArrowLeft for 40 ms', takes: 40 }, 'the agent presses a key here');
+  assert.deepEqual([key.asked.key, key.asked.hold], ['ArrowLeft', 40]);
+  await after(key.doing);
+  const long = await hand('tap', { x: 100, y: 200, hold: 60 }, { did: 'held at 100, 200, on a canvas down for 60 ms', takes: 410 }, 'the agent holds this down');
+  assert.equal(long.asked.hold, 60);
+  await after(long.doing);
+  assert.deepEqual(host.events.since(0).filter((e) => e.type === 'page.did').slice(-5).map((e) => [e.what, e.at ?? e.key]), [['scroll', undefined], ['drag', '100, 200'], ['pinch', 'the map'], ['key', 'ArrowLeft'], ['tap', '100, 200']]);
+  await assert.rejects(host.run('page.scroll', {}, AGENT) as Promise<any>, /needs dy/);
+  await assert.rejects(host.run('page.drag', { x: 1, y: 1 }, AGENT) as Promise<any>, /where it ends/);
+  await assert.rejects(host.run('page.pinch', { scale: 1 }, AGENT) as Promise<any>, /scale is how many times/);
   // The person takes it back: the agent leaves the page alone for the rest of its turn.
   click(button('Take it back', $('#t-held')));
   await until(() => $('#t-held').hidden && !document.body.classList.contains('t-held'), 'the mark to go');

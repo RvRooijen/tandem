@@ -17,7 +17,13 @@ const ENGINE = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '');
 /** Exit code that asks whoever started the core to start it again on the project in the state file. */
 export const SWITCH = 76;
 
-export interface State { project?: string; roots?: string[]; /** Where the person last made a project: where choosing a folder starts next time. */ lastIn?: string }
+export interface State {
+  project?: string; roots?: string[];
+  /** Where the person last made a project: where choosing a folder starts next time. */
+  lastIn?: string;
+  /** When each project was last opened, by its folder: what was worked on last is listed first. */
+  opened?: Record<string, number>;
+}
 
 const stateFile = () => process.env.TANDEM_STATE ?? join(homedir(), '.tandem', 'state.json');
 
@@ -29,6 +35,9 @@ export function writeState(state: State) {
   mkdirSync(dirname(stateFile()), { recursive: true });
   writeFileSync(stateFile(), JSON.stringify(state, null, 2) + '\n');
 }
+
+/** The state with this project as the one to open, opened now. */
+export const opening = (dir: string, state: State = readState()): State => ({ ...state, project: dir, opened: { ...state.opened, [dir]: Date.now() } });
 
 /** The person's own home folder. Inside a proot on Android that is the home of Termux, not the home of the guest system. */
 export function home(): string {
@@ -55,9 +64,11 @@ export interface Found {
   page: boolean;
   adapter: boolean;
   open: boolean;
+  /** When it was last opened in tandem, if it ever was. */
+  opened?: number;
 }
 
-function look(dir: string, current?: string): Found {
+function look(dir: string, current?: string, opened: Record<string, number> = {}): Found {
   let config: { name?: string; page?: string; adapter?: string } = {};
   for (const file of [join(dir, '.tandem', 'tandem.json'), join(dir, 'tandem.json')]) {
     try { config = JSON.parse(readFileSync(file, 'utf8')); break; } catch { /* none, or not JSON: it is still a folder */ }
@@ -71,12 +82,14 @@ function look(dir: string, current?: string): Found {
     page: !!config.page || vite,
     adapter: !!config.adapter,
     open: !!current && resolve(current) === dir,
+    ...(opened[dir] && { opened: opened[dir] }),
   };
 }
 
-/** The folders that could be a project: the ones tandem knows first, then by name. */
+/** The folders that could be a project: the open one, then the ones that were opened, the last first, then the ones tandem knows, then by name. */
 export function listProjects(current?: string): Found[] {
   const out = new Map<string, Found>();
+  const opened = readState().opened ?? {};
   for (const root of roots(current)) {
     let names: string[] = [];
     try { names = readdirSync(root); } catch { continue; }
@@ -84,11 +97,11 @@ export function listProjects(current?: string): Found[] {
       if (n.startsWith('.') || n === 'node_modules') continue;
       const dir = join(root, n);
       try { if (!statSync(dir).isDirectory()) continue; } catch { continue; }
-      if (!out.has(dir)) out.set(dir, look(dir, current));
+      if (!out.has(dir)) out.set(dir, look(dir, current, opened));
     }
   }
-  if (current && !out.has(resolve(current))) out.set(resolve(current), look(resolve(current), current));
-  return [...out.values()].sort((a, b) => Number(b.open) - Number(a.open) || Number(b.known) - Number(a.known) || Number(b.git) - Number(a.git) || a.name.localeCompare(b.name));
+  if (current && !out.has(resolve(current))) out.set(resolve(current), look(resolve(current), current, opened));
+  return [...out.values()].sort((a, b) => Number(b.open) - Number(a.open) || (b.opened ?? 0) - (a.opened ?? 0) || Number(b.known) - Number(a.known) || Number(b.git) - Number(a.git) || a.name.localeCompare(b.name));
 }
 
 /**
@@ -124,7 +137,7 @@ export function projectCommands(o: ProjectsOptions): CommandDef[] {
   return [
     {
       name: 'projects.list', kind: 'read',
-      about: 'The folders that could be a project (next to tandem, and wherever it was told to look): which is open, which have a git repository (one without gets one when it is opened), which tandem has been in before.',
+      about: 'The folders that could be a project (next to tandem, and wherever it was told to look): which is open, which have a git repository (one without gets one when it is opened), which tandem has been in before, and when each was last opened; the one opened last comes first.',
       run: () => ({ open: o.current ? resolve(o.current) : null, roots: roots(o.current), projects: listProjects(o.current) }),
     },
     {
@@ -139,7 +152,7 @@ export function projectCommands(o: ProjectsOptions): CommandDef[] {
         // A folder that is not a repository yet becomes one, with what is in it as its first commit.
         let started = false;
         try { started = ensureRepo(dir); } catch (e) { throw new CommandError('failed', `a git repository could not be started in ${dir}: ${(e instanceof Error ? e.message : String(e)).split('\n').slice(-2).join(' ')}`); }
-        writeState({ ...readState(), project: dir });
+        writeState(opening(dir));
         // After the answer has gone out.
         if (o.restart) setTimeout(o.restart, 300);
         return { opening: dir, restarting: !!o.restart, ...(started && { started: 'a git repository, with what was there as its first commit' }) };
@@ -164,7 +177,7 @@ export function projectCommands(o: ProjectsOptions): CommandDef[] {
         mkdirSync(join(dir, '.tandem'), { recursive: true });
         writeFileSync(join(dir, '.tandem', 'tandem.json'), JSON.stringify({ name: i.name.trim() }, null, 2) + '\n');
         try { ensureRepo(dir); } catch (e) { throw new CommandError('failed', `a git repository could not be started in ${dir}: ${(e instanceof Error ? e.message : String(e)).split('\n').slice(-2).join(' ')}`); }
-        writeState({ ...readState(), project: dir, lastIn: root });
+        writeState({ ...opening(dir), lastIn: root });
         if (o.restart) setTimeout(o.restart, 300);
         return { opening: dir, restarting: !!o.restart };
       },

@@ -6,7 +6,7 @@ import type { App, Panel } from '../app.ts';
 import { clear, h } from '../dom.ts';
 import { icon } from '../icons.ts';
 
-interface Found { dir: string; name: string; git: boolean; known: boolean; page: boolean; adapter: boolean; open: boolean }
+interface Found { dir: string; name: string; git: boolean; known: boolean; page: boolean; adapter: boolean; open: boolean; opened?: number }
 interface Listing { open: string | null; roots: string[]; projects: Found[] }
 interface Folder { dir: string; parent: string | null; folders: string[]; home: string; git: boolean }
 
@@ -17,6 +17,15 @@ export async function reopen(dir: string, says: (text: string) => void = () => {
   location.reload();
 }
 
+/** How long ago something was, in a word or two. */
+function ago(ts: number): string {
+  const days = Math.floor((Date.now() - ts) / 86_400_000);
+  if (days < 1) return 'today';
+  if (days < 2) return 'yesterday';
+  if (days < 60) return `${days} days ago`;
+  return new Date(ts).toLocaleDateString();
+}
+
 export function projectsPanel(): Panel {
   let app!: App;
   let body: HTMLElement | undefined;
@@ -25,6 +34,8 @@ export function projectsPanel(): Panel {
   const doing = (text: string) => { openingDoing = text; const el = body?.querySelector('.working .doing'); if (el) el.textContent = text; };
   /** The new project being filled in: kept while the folders are walked. */
   let draft = { name: '', in: '' };
+  /** What the list is narrowed to: kept while the panel is drawn again. */
+  let filter = '';
 
   /** Open the project in a folder: the core starts again on it, and the page with it. */
   async function openDir(dir: string, name: string) {
@@ -65,7 +76,7 @@ export function projectsPanel(): Panel {
     const got = await app.act<Listing>('projects.list');
     if (!body || !got) return;
     const open = (p: Found) => (p.open ? app.close() : void openDir(p.dir, p.name));
-    const what = (p: Found) => [p.open ? 'open now' : p.known ? 'been here before' : 'new to tandem', p.page && 'has a page', p.adapter && 'can be seen inside',
+    const what = (p: Found) => [p.open ? 'open now' : p.opened ? `opened ${ago(p.opened)}` : p.known ? 'been here before' : 'new to tandem', p.page && 'has a page', p.adapter && 'can be seen inside',
       !p.git && 'no git repository yet: tandem starts one when you open it'].filter(Boolean).join(' · ');
     // A new project: what it is called, and where it goes. Where is always the person's to choose: the folders of
     // this machine are walked from here, and the project is made in the one they say.
@@ -90,36 +101,28 @@ export function projectsPanel(): Panel {
       void reopen(ok.opening, doing);
     };
     fresh.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') void create(); });
-    // The open project: where it is pushed after every accept. The address of a repository that is there already.
-    const to = got.open ? await app.act<{ git: boolean; url: string | null; branch?: string }>('project.remote') : undefined;
-    if (!body) return;
-    const remote = h<'input'>('input', { placeholder: 'https://github.com/you/project.git', 'aria-label': 'Where the project is pushed', value: to?.url ?? '' });
-    const saveRemote = async () => {
-      const set = await app.act<{ url: string | null; pushed?: boolean; says?: string }>('project.setRemote', { url: remote.value.trim() });
-      if (!set) return;
-      app.toast(!set.url ? 'It has no remote any more.' : set.pushed === false ? `It is set, but pushing to it did not work: ${set.says ?? ''}` : set.pushed ? 'It is set, and the project is pushed there.' : 'It is set; there was nothing new to push.');
-      void paint();
+    const item = (p: Found) => h(`div.item.project${p.open ? '.open' : ''}`, { onclick: () => void open(p) },
+        h('div.line', {}, h('b', {}, p.name), p.open && h('span.t-chip', {}, 'open')),
+        h('p', {}, what(p)),
+        h('small', {}, p.dir),
+        // The open project can be set up from here: the agent reads it and proposes its concepts and how it is run.
+        p.open && h('div.t-row', {}, h<'button'>('button', { onclick: async (ev: MouseEvent) => { ev.stopPropagation(); if (await app.act('project.init')) app.open('chat'); } }, 'Set tandem up for it')));
+    // The list, narrowed to what is typed: a part of a name or of a folder. Drawn by itself, so the field keeps what is being typed.
+    const list = h('div.list');
+    const narrow = h<'input'>('input.narrow', { type: 'search', placeholder: 'Filter', 'aria-label': 'Filter the projects', value: filter, oninput: () => { filter = narrow.value; paintList(); } });
+    const paintList = () => {
+      const words = filter.toLowerCase().split(/\s+/).filter(Boolean);
+      const found = got.projects.filter((p) => words.every((word) => `${p.name} ${p.dir}`.toLowerCase().includes(word)));
+      clear(list, found.map(item), got.projects.length > 0 && !found.length && h('p.t-hint', {}, `Nothing called that. ${got.projects.length} ${got.projects.length === 1 ? 'folder is' : 'folders are'} left out.`));
     };
-    remote.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') void saveRemote(); });
+    paintList();
     clear(body,
-      to?.git && [
-        h('h3', {}, 'Settings'),
-        h('div.adder.remote', {}, remote, h<'button'>('button.primary', { onclick: () => void saveRemote() }, 'Save')),
-        h('p.t-hint', {}, to.url
-          ? `The remote of this project: ${to.branch ?? 'its branch'} is pushed there after every accept. Empty it to stop that.`
-          : 'A remote for this project: make an empty repository (on GitHub: New repository), and give its address. After every accept the project is pushed there.'),
-      ],
       h('h3', {}, 'A new project'),
       fresh, whereEl,
       h('div.t-row', {}, createBtn),
       h('p.t-hint', {}, 'A new folder with that name, in the folder you choose, with a git repository in it.'),
       h('h3', {}, 'Open a project'),
-      got.projects.map((p) => h(`div.item.project${p.open ? '.open' : ''}`, { onclick: () => void open(p) },
-        h('div.line', {}, h('b', {}, p.name), p.open && h('span.t-chip', {}, 'open')),
-        h('p', {}, what(p)),
-        h('small', {}, p.dir),
-        // The open project can be set up from here: the agent reads it and proposes its concepts and how it is run.
-        p.open && h('div.t-row', {}, h<'button'>('button', { onclick: async (ev: MouseEvent) => { ev.stopPropagation(); if (await app.act('project.init')) app.open('chat'); } }, 'Set tandem up for it')))),
+      narrow, list,
       !got.projects.length && h('div.empty', {}, h('b', {}, 'No folders found.'), h('p', {}, 'Show tandem where your projects are, below.')),
       h('h3', {}, 'Look somewhere else too'),
       h('div.t-row', {}, h<'button'>('button', { onclick: () => void browse('find') }, 'Find a folder')),
@@ -128,7 +131,7 @@ export function projectsPanel(): Panel {
   }
 
   return {
-    id: 'projects', title: 'Projects', tab: false,
+    id: 'projects', title: 'Projects',
     init(a) { app = a; },
     show(b) { body = b; void paint(); },
     hide() { body = undefined; },

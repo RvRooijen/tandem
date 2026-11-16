@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>tandem: the figure's voice</title>
+  <style>
+    body { margin: 0; padding: 32px 20px; background: #17161c; color: #ecebf2; font: 15px/1.5 system-ui, sans-serif; }
+    main { max-width: 620px; margin: 0 auto; }
+    h1 { font-size: 20px; margin: 0 0 8px; }
+    p { color: #9c9aae; margin: 0 0 20px; }
+    .row { border: 1px solid #34323f; border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; background: #1e1d27; }
+    .say { font-size: 22px; font-weight: 600; letter-spacing: 0.02em; }
+    .bar { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+    button { font: inherit; color: #ecebf2; background: #25242e; border: 1px solid #45435a; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+    button.on { background: #ff7a70; border-color: #ff7a70; color: #20170a; }
+    button.go { background: #f2b84b; border-color: #f2b84b; color: #20170a; font-weight: 600; }
+    button:disabled { opacity: 0.4; cursor: default; }
+    .chip { padding: 5px 10px; font-size: 13px; }
+    .state { color: #9c9aae; font-size: 13px; }
+    .state.ok { color: #7ad08a; }
+    .state.bad { color: #ff7a70; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>The figure's voice</h1>
+  <p>Each line is five sounds. Press Record, say the five with a short pause between them, in the voice the puppet
+    should have, and press Stop. They are cut apart where you paused; press one to hear it. When all four lines have
+    their five, download the file.</p>
+  <div id="rows"></div>
+  <div class="bar">
+    <button id="save" class="go" disabled>Download voice-samples.json</button>
+    <button id="try" disabled>Hear it babble</button>
+    <span id="total" class="state"></span>
+  </div>
+</main>
+<script type="module">
+  // What is said per line, and what each of its five sounds is kept as: a consonant and a vowel.
+  const LINES = [
+    ['ba · bee · bie · bo · boe', ['ba', 'be', 'bi', 'bo', 'bu']],
+    ['da · dee · die · do · doe', ['da', 'de', 'di', 'do', 'du']],
+    ['ma · mee · mie · mo · moe', ['ma', 'me', 'mi', 'mo', 'mu']],
+    ['la · lee · lie · lo · loe', ['la', 'le', 'li', 'lo', 'lu']],
+  ];
+  const RATE = 22050;
+  const audio = new AudioContext();
+  /** The sounds that are kept: name to samples at RATE. */
+  const kept = new Map();
+
+  // They are kept in the browser too, so that loading the page again does not lose them.
+  const STORE = 'tandem.voice';
+  const pack = (part) => {
+    const pcm = new Int16Array(part.length);
+    for (let i = 0; i < part.length; i++) pcm[i] = Math.max(-1, Math.min(1, part[i])) * 32767;
+    let text = '';
+    const bytes = new Uint8Array(pcm.buffer);
+    for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(text);
+  };
+  const unpack = (base64) => {
+    const pcm = new Int16Array(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)).buffer), part = new Float32Array(pcm.length);
+    for (let i = 0; i < pcm.length; i++) part[i] = pcm[i] / 32768;
+    return part;
+  };
+  const packed = () => Object.fromEntries([...kept].map(([name, part]) => [name, pack(part)]));
+  const remember = () => { try { localStorage.setItem(STORE, JSON.stringify(packed())); } catch { /* no room: they are only on this page then */ } };
+  try { for (const [name, base64] of Object.entries(JSON.parse(localStorage.getItem(STORE) ?? '{}'))) kept.set(name, unpack(base64)); } catch { /* nothing kept */ }
+
+  /** A recording as one row of samples at RATE. */
+  async function samplesOf(blob) {
+    const heard = await audio.decodeAudioData(await blob.arrayBuffer());
+    const offline = new OfflineAudioContext(1, Math.ceil(heard.duration * RATE), RATE);
+    const source = offline.createBufferSource();
+    source.buffer = heard;
+    source.connect(offline.destination);
+    source.start();
+    return (await offline.startRendering()).getChannelData(0);
+  }
+
+  /** Cut where it is quiet: every stretch of sound, with a little air before and after it, each made as loud as the others. */
+  function cut(samples) {
+    const win = Math.round(RATE * 0.01), loud = [];
+    let peak = 0;
+    for (let i = 0; i + win <= samples.length; i += win) {
+      let sum = 0;
+      for (let j = i; j < i + win; j++) sum += samples[j] * samples[j];
+      loud.push(Math.sqrt(sum / win));
+      peak = Math.max(peak, loud.at(-1));
+    }
+    const floor = Math.max(0.008, peak * 0.12), parts = [];
+    let from = -1, quiet = 0;
+    for (const [i, l] of loud.entries()) {
+      if (l > floor) { if (from < 0) from = i; quiet = 0; }
+      else if (from >= 0 && ++quiet >= 12) { parts.push([from, i - quiet + 1]); from = -1; }
+    }
+    if (from >= 0) parts.push([from, loud.length]);
+    return parts.filter(([a, b]) => b - a >= 5).map(([a, b]) => {
+      const part = samples.slice(Math.max(0, (a - 1) * win), Math.min(samples.length, (b + 2) * win));
+      // As loud as the others over the whole of it (not only at its loudest point), as far as that point allows.
+      let top = 0, sum = 0;
+      for (const s of part) { top = Math.max(top, Math.abs(s)); sum += s * s; }
+      const gain = Math.min(0.16 / (Math.sqrt(sum / part.length) || 1), 0.98 / (top || 1));
+      const fade = Math.round(RATE * 0.008);
+      for (let i = 0; i < part.length; i++) part[i] = part[i] * gain * Math.min(1, i / fade, (part.length - 1 - i) / fade);
+      return part;
+    });
+  }
+
+  function play(samples, rate = 1, at = audio.currentTime) {
+    const buffer = audio.createBuffer(1, samples.length, RATE);
+    buffer.getChannelData(0).set(samples);
+    const source = audio.createBufferSource();
+    source.buffer = buffer;
+    source.playbackRate.value = rate;
+    source.connect(audio.destination);
+    source.start(at);
+  }
+
+  const save = document.getElementById('save'), tryIt = document.getElementById('try'), total = document.getElementById('total');
+  function paintTotal() {
+    const all = LINES.every(([, names]) => names.every((n) => kept.has(n)));
+    save.disabled = tryIt.disabled = !all;
+    total.textContent = `${kept.size} of ${LINES.length * 5} sounds`;
+  }
+
+  for (const [says, names] of LINES) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<div class="say">${says}</div><div class="bar"><button class="rec">Record</button><span class="state">not recorded yet</span></div><div class="bar parts"></div>`;
+    document.getElementById('rows').append(row);
+    const button = row.querySelector('.rec'), state = row.querySelector('.state'), partsEl = row.querySelector('.parts');
+    let recorder, stream, stopping = 0;
+    /** The five of this line, when they are all there: a button each to hear it. */
+    const show = () => {
+      if (!names.every((n) => kept.has(n))) return;
+      partsEl.replaceChildren(...names.map((n) => {
+        const chip = document.createElement('button');
+        chip.className = 'chip';
+        chip.textContent = `${n} · ${(kept.get(n).length / RATE).toFixed(2)}s`;
+        chip.onclick = () => play(kept.get(n));
+        return chip;
+      }));
+      state.textContent = 'five sounds';
+      state.className = 'state ok';
+      button.textContent = 'Record again';
+    };
+    show();
+    button.onclick = async () => {
+      if (recorder) { recorder.stop(); return; }
+      await audio.resume();
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true } }); }
+      catch { state.textContent = 'the microphone was not allowed'; state.className = 'state bad'; return; }
+      const chunks = [];
+      recorder = new MediaRecorder(stream);
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = async () => {
+        clearTimeout(stopping);
+        for (const t of stream.getTracks()) t.stop();
+        recorder = undefined;
+        button.textContent = 'Record again';
+        button.classList.remove('on');
+        const parts = cut(await samplesOf(new Blob(chunks)));
+        for (const n of names) kept.delete(n);
+        if (parts.length === 5) {
+          for (const [i, n] of names.entries()) kept.set(n, parts[i]);
+          show();
+        } else {
+          partsEl.replaceChildren();
+          state.textContent = `${parts.length} sounds heard instead of five: say them apart, with a clear pause, and try again`;
+          state.className = 'state bad';
+        }
+        remember();
+        paintTotal();
+      };
+      recorder.start();
+      button.textContent = 'Stop';
+      button.classList.add('on');
+      state.textContent = 'recording…';
+      state.className = 'state';
+      // (Left running, it stops by itself.)
+      stopping = setTimeout(() => recorder?.stop(), 12000);
+    };
+  }
+  paintTotal();
+
+  // Roughly as the shell does it: one sound after the other, faster and higher than they were said.
+  tryIt.onclick = async () => {
+    await audio.resume();
+    const names = [...kept.keys()];
+    let at = audio.currentTime + 0.05;
+    for (let i = 0; i < 14; i++) {
+      const rate = 1.25 * 2 ** ((Math.random() * 6 - 3) / 12);
+      play(kept.get(names[Math.floor(Math.random() * names.length)]), rate, at);
+      at += 0.2 + Math.random() * 0.06;
+    }
+  };
+
+  save.onclick = () => {
+    const samples = packed();
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([JSON.stringify({ rate: RATE, samples })], { type: 'application/json' }));
+    link.download = 'voice-samples.json';
+    link.click();
+  };
+</script>
+</body>
+</html>

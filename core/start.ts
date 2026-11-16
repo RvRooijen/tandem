@@ -18,8 +18,8 @@ import { createServer } from 'node:http';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SETUP, loadProject, stopTree } from './project.ts';
-import { SWITCH, readState, writeState } from './projects.ts';
+import { SETUP, loadProject, startTree, stopTree } from './project.ts';
+import { SWITCH, opening, readState, writeState } from './projects.ts';
 import { innerPort, startThrough } from './through.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -32,7 +32,7 @@ let stopping = false;
 
 // A folder named on the command line is the one to open; otherwise the one that was open last.
 const named = process.argv.slice(2).find((a) => !a.startsWith('-')) ?? process.env.TANDEM_PROJECT;
-if (named) writeState({ ...readState(), project: resolve(named) });
+if (named) writeState(opening(resolve(named)));
 
 function startProject() {
   const dir = readState().project;
@@ -47,7 +47,7 @@ function startProject() {
     // The page itself runs on an inner port; it is shown through tandem, on the port it is known at (see below).
     const command = project?.pageCommand(innerPort(PAGE_PORT));
     if (project && command) {
-      const mine = spawn('sh', ['-c', command], { cwd: project.root, stdio: 'inherit', env, detached: true });
+      const mine = startTree(command, { cwd: project.root, env });
       page = mine;
       mine.on('exit', (code) => { if (!stopping && page === mine) console.log(`the project's page stopped (${code}): ${command}`); });
     } else if (project) console.log('the project has no page to show: say how it is started in tandem.json ("page"), with {port} where the port goes');
@@ -78,6 +78,8 @@ function stop(code = 0) {
 }
 process.on('SIGINT', () => stop());
 process.on('SIGTERM', () => stop());
+// (The terminal it was started in is closed.)
+process.on('SIGHUP', () => stop());
 
 // The project's page goes through tandem: as it is, with tandem's few lines added to it, so that things on it can
 // be pointed at. Whatever project is open, it is shown on this port.
@@ -101,6 +103,6 @@ status.on('error', (e) => console.log(`what the core is doing while it starts ca
 status.listen(STATUS_PORT, '127.0.0.1');
 
 // Tandem's own page.
-const shell = spawn('npx', ['vite'], { cwd: ROOT, stdio: 'inherit', env: process.env, detached: true });
+const shell = startTree('npx vite', { cwd: ROOT, env: process.env });
 shell.on('exit', (code) => { if (!stopping) { console.log(`tandem's page stopped (${code})`); stop(code ?? 0); } });
 startProject();

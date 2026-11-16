@@ -11,6 +11,7 @@
 // a working copy; with a page command, the person plays the project and the
 // copy inside tandem; with an adapter, the agent can also see inside the
 // running thing (its state, pictures of it, its entities, a bot playing it).
+import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 
@@ -35,6 +36,12 @@ export interface ProjectConfig {
   art?: { dir?: string; depth?: string; build?: string };
   /** What the agent may change in its working copy; everything but tandem's own folder and the drawings if not said. */
   edit?: string[];
+  /**
+   * Whether tandem commits in the project, and whether it pushes: both unless said not to (false). A project
+   * that is not committed for gets an accepted change set in its files, uncommitted, and is never pushed.
+   */
+  commit?: boolean;
+  push?: boolean;
 }
 
 export interface Project {
@@ -112,11 +119,26 @@ export function loadProject(dir: string, opts: { data?: string; tandem?: string;
 /** How the core ends when how the project is run was changed: whoever looks after it starts it again, and the project's page with it. */
 export const SETUP = 77;
 
+/** Where one of a started command's streams goes: ours, nowhere, or a file that is open. */
+type Out = 'inherit' | 'ignore' | number;
+
+/**
+ * Start a page with a command line, in a process group of its own (see stopTree) that does not outlive this
+ * process. A group of its own is not stopped with the terminal, and is only stopped by us when we get to it: closed
+ * with its window, killed, or fallen over, tandem left the page running and holding its port. So the group watches
+ * for us itself: it is handed the reading end of a pipe that only this process holds the other end of, and when
+ * that end is gone, however that came about, everything in the group is stopped.
+ */
+export function startTree(command: string, options: { cwd: string; env?: NodeJS.ProcessEnv; stdio?: [Out, Out, Out] }): ChildProcess {
+  const [stdin, stdout, stderr] = options.stdio ?? ['inherit', 'inherit', 'inherit'];
+  return spawn('sh', ['-c', `(cat <&3 >/dev/null; kill -TERM 0) & ${command}`], { cwd: options.cwd, env: options.env, stdio: [stdin, stdout, stderr, 'pipe'], detached: true });
+}
+
 /**
  * Stop a page that was started with a command line: the command and everything it started. A page command is a
  * shell line (npx vite …) whose real server is a grandchild; stopping only the first process leaves that one
- * running, holding the port. So such a command is started in a process group of its own (spawn with
- * `detached: true`), and stopped as a group.
+ * running, holding the port. So such a command is started in a process group of its own (startTree), and stopped
+ * as a group.
  */
 export function stopTree(child: { pid?: number; kill(): boolean } | undefined) {
   if (!child?.pid) return;

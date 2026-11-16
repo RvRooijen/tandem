@@ -82,6 +82,29 @@ body { overflow: hidden; -webkit-tap-highlight-color: transparent; }
    looks the same, so it goes round without a jump. */
 #t-fab.busy .mark { animation: t-turn 1.3s ease-in-out infinite; }
 @keyframes t-turn { 0% { transform: rotate(45deg) scale(1); } 35% { transform: rotate(90deg) scale(0.6); } 70%, 100% { transform: rotate(135deg) scale(1); } }
+/* The figure is in the button as in a hole: its body shows inside the circle only, its arms reach out over the edge
+   with what they hold. With it the button is larger and further from the corner. Its canvas is larger than the
+   button, the button's middle at (124, 70) in it (mascot.ts). The mark is what the button has without it. */
+#t-fab.mascot { width: 106px; height: 106px; right: max(44px, calc(50vw - 252px)); top: calc(48px + env(safe-area-inset-top)); }
+canvas.mascot { position: absolute; left: -73px; top: -19px; width: 216px; height: 175px; pointer-events: none; }
+#t-fab.mascot .mark { display: none; }
+/* While the chat is open the figure is there, in a small hole beside what the agent said last (app.ts): every line
+   of the agent has one, and it goes from the one to the next. The canvas is placed by
+   mascot.ts, which goes by how large the hole is. */
+.msg .t-hole { display: none; }
+body:has(#t-fab.mascot) .msg.agent:not(.welcome) { margin-left: 82px; max-width: calc(100% - 82px); min-height: 72px; }
+body:has(#t-fab.mascot) .msg.agent:not(.welcome) > .t-hole { display: block; position: absolute; left: -82px; bottom: 0; width: 72px; height: 72px; border-radius: 50%; border: 2px solid var(--t-line-2); background: var(--t-well); }
+/* (Before the agent has said anything: one large hole at the top of the chat.) */
+.t-stand { position: relative; flex: none; align-self: center; width: 150px; height: 150px; margin: 64px 0 56px; border-radius: 50%; border: 2px solid var(--t-accent); background: var(--t-well); }
+/* (Beside the page the button stays while it is away, small and with its mark: dragged, the figure is back in it.) */
+#t-fab.mascot.away .mark { display: block; }
+#t-fab.mascot.away.drag .mark { display: none; }
+#t-fab.mascot.drag { opacity: 1; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35); }
+/* While it carries what was pointed at to the chat, the button is in view over the tools, also where they cover it. */
+#t-fab.carrying, #t-fab.open.carrying { display: grid; z-index: 45; }
+#t-carry { position: fixed; z-index: 46; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 8px; border: 2px solid var(--t-accent); background: var(--t-raise) center / cover no-repeat; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); pointer-events: none; }
+#t-fab.mascot .badge { z-index: 1; top: 8px; right: 8px; }
+body:has(#t-fab.mascot) #t-bubbles { right: max(44px, calc(50vw - 252px)); top: calc(210px + env(safe-area-inset-top)); }
 body.t-offline #t-fab { border-color: var(--t-bad); }
 body.t-offline #t-fab .mark { background: var(--t-bad); }
 
@@ -133,8 +156,8 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 .t-tab.on { color: var(--t-ink); border-bottom-color: var(--t-accent); }
 .t-tab .dot { position: absolute; top: 9px; right: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--t-bad); display: none; }
 .t-tab.news .dot { display: block; }
-#t-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 12px 12px 18px; overscroll-behavior: contain; user-select: text; -webkit-user-select: text; }
-#t-foot { flex: none; padding: 0 10px calc(10px + env(safe-area-inset-bottom)); background: var(--t-plane); border-top: 1px solid var(--t-line-2); box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.35); position: relative; z-index: 2; }
+#t-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 16px 20px 22px; overscroll-behavior: contain; user-select: text; -webkit-user-select: text; }
+#t-foot { flex: none; padding: 0 20px calc(12px + env(safe-area-inset-bottom)); background: var(--t-plane); border-top: 1px solid var(--t-line-2); box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.35); position: relative; z-index: 2; }
 #t-foot:empty { display: none; }
 /* A concept with something changed in it: keep it or throw it away. */
 #t-foot .unsaved { justify-content: flex-end; align-items: center; padding-top: 8px; border-top: 1px solid var(--t-line); margin: 0; }
@@ -166,10 +189,75 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 #tandem h2 { font-size: var(--t-l); margin: 4px 0 10px; word-break: break-all; }
 #tandem h3 { font-size: var(--t-xs); color: var(--t-soft); margin: 16px 0 8px; font-weight: 600; }
 #tandem .t-hint { color: var(--t-soft); font-size: var(--t-s); margin: 6px 0; }
-#tandem .bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -6px 0 8px; position: sticky; top: -12px; background: var(--t-bg); z-index: 1; padding: 2px 0; }
+#tandem .bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -6px 0 8px; position: sticky; top: -16px; background: var(--t-bg); z-index: 1; padding: 2px 0; }
 #tandem .bar .primary { min-height: 38px; padding: 0 14px; border-radius: 8px; border: 0; font-weight: 600; }
 #tandem .adder { display: flex; gap: 8px; margin: 0 0 12px; }
 #tandem .adder > button { flex: none; }
+#tandem input.narrow { width: 100%; margin: 0 0 8px; }
+#tandem .standing { padding: 8px 10px; border-radius: 8px; background: var(--t-raise); border-left: 3px solid var(--t-accent); }
+#tandem .standing .line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+#tandem .standing .name { font-family: var(--t-mono); font-size: var(--t-m); }
+#tandem .standing small { display: block; margin-top: 2px; color: var(--t-soft); font-size: var(--t-xs); }
+#tandem .arrow { font-family: var(--t-mono); font-size: 11px; font-weight: 600; padding: 1px 5px; border-radius: 5px; background: rgba(255, 255, 255, 0.07); color: var(--t-soft); }
+#tandem .arrow.up { color: var(--t-accent); }
+#tandem .arrow.down { color: var(--t-blue); }
+#tandem .arrow.dirty { color: var(--t-accent); }
+#tandem .arrow.clean { color: var(--t-good); }
+#tandem .head { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; }
+#tandem .head h3 { margin: 0; flex: 1; }
+#tandem .head button { min-height: 26px; padding: 2px 10px; font-size: var(--t-s); font-weight: 600; border-radius: 6px; border: 1px solid var(--t-line-2); background: var(--t-raise); color: var(--t-ink); }
+#tandem .head button.link { padding: 2px 4px; border: 0; background: none; color: var(--t-accent); }
+#tandem .head button.again { width: 26px; padding: 0; border: 0; background: none; color: var(--t-soft); font-size: 15px; line-height: 1; }
+#tandem .head button.again:hover { color: var(--t-ink); }
+#tandem .head .count, #tandem .gfile .count { flex: none; display: flex; gap: 6px; font-family: var(--t-mono); font-size: 11px; }
+#tandem .head .count i, #tandem .gfile .count i { font-style: normal; }
+#tandem .count .in { color: var(--t-good); }
+#tandem .count .out { color: var(--t-bad); }
+#tandem .gfiles { border-radius: 8px; background: var(--t-raise); overflow: hidden; }
+#tandem .gfile .frow { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 2px 0 8px; cursor: pointer; }
+#tandem .gfile .frow:hover, #tandem .gfile.open .frow { background: var(--t-raise-2); }
+#tandem .gfile input[type=checkbox] { flex: none; width: 14px; height: 14px; min-height: 0; margin: 0; padding: 0; }
+#tandem .gfile .mark { flex: none; width: 14px; font-family: var(--t-mono); font-size: 11px; font-weight: 700; text-align: center; color: var(--t-accent); }
+#tandem .gfile[data-how=new] .mark { color: var(--t-good); }
+#tandem .gfile[data-how=gone] .mark { color: var(--t-bad); }
+#tandem .gfile[data-how=gone] .fname b { text-decoration: line-through; }
+#tandem .gfile .fname { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; font-size: var(--t-s); white-space: nowrap; }
+#tandem .gfile .fname b { flex: 0 1 auto; min-width: 40px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+#tandem .gfile .fname i { flex: 1 1 0; min-width: 0; font-style: normal; font-size: 11px; color: var(--t-soft); overflow: hidden; text-overflow: ellipsis; }
+#tandem .gfile button.undo { flex: none; width: 26px; height: 26px; min-height: 0; padding: 0; border: 0; background: none; color: var(--t-soft); font-size: 13px; line-height: 1; }
+#tandem .gfile button.undo:hover { color: var(--t-bad); }
+#tandem .gfile .sure, #tandem .discard .sure { flex: none; font-size: var(--t-xs); color: var(--t-bad); }
+#tandem .discard { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; min-height: 26px; }
+#tandem .discard .sure { flex: 1; }
+#tandem .discard button.link { min-height: 26px; padding: 2px 4px; font-size: var(--t-xs); color: var(--t-bad); }
+#tandem .gfile button.yes, #tandem .gfile button.no, #tandem .discard button.yes, #tandem .discard button.no { flex: none; height: 22px; min-height: 0; padding: 0 8px; border-radius: 6px; border: 1px solid var(--t-line-2); background: none; font-size: var(--t-xs); font-weight: 600; }
+#tandem .gfile button.yes, #tandem .discard button.yes { color: var(--t-bad); border-color: var(--t-bad); }
+#tandem .gfile pre.diff { margin: 0; border: 0; border-top: 1px solid var(--t-line); border-bottom: 1px solid var(--t-line); border-radius: 0; max-height: 50vh; }
+#tandem .adder.commit { align-items: flex-end; margin: 8px 0 4px; }
+#tandem .adder.commit textarea { flex: 1; }
+#tandem .commits { position: relative; padding-left: 2px; }
+#tandem .rev { position: relative; display: flex; align-items: baseline; gap: 8px; padding: 0 0 5px; }
+#tandem .rev::before { content: ''; position: absolute; left: 4px; top: 12px; bottom: -6px; width: 1px; background: var(--t-line-2); }
+#tandem .rev:last-child::before { display: none; }
+#tandem .rev .dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--t-line-2); border: 2px solid var(--t-line-2); position: relative; z-index: 1; }
+#tandem .rev.ahead .dot { background: var(--t-plane); border-color: var(--t-accent); }
+#tandem .rev.ahead::before { background: var(--t-accent); opacity: 0.5; }
+#tandem .rev div { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+#tandem .rev b { flex: 1; min-width: 0; font-weight: 400; font-size: var(--t-s); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#tandem .rev small { flex: none; color: var(--t-soft); font-size: 11px; font-family: var(--t-mono); }
+#tandem .mark-remote { display: flex; align-items: center; gap: 8px; margin: 0 0 5px 17px; color: var(--t-blue); font-family: var(--t-mono); font-size: 11px; }
+#tandem .mark-remote::after { content: ''; flex: 1; height: 1px; background: color-mix(in srgb, var(--t-blue) 40%, transparent); }
+#tandem .branches { border-radius: 8px; background: var(--t-raise); overflow: hidden; }
+#tandem .branch { display: flex; align-items: baseline; gap: 8px; padding: 5px 8px; }
+#tandem .branch .line { flex: none; max-width: 60%; display: flex; align-items: center; gap: 6px; }
+#tandem .branch b { font-family: var(--t-mono); font-size: var(--t-xs); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tandem .branch.current b { color: var(--t-accent); }
+#tandem .branch button.switch { flex: none; height: 22px; min-height: 0; padding: 0 8px; border-radius: 6px; border: 1px solid var(--t-line-2); background: none; font-size: var(--t-xs); font-weight: 600; }
+#tandem .branch small { flex: 1; min-width: 0; color: var(--t-soft); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+#tandem .keep { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; cursor: pointer; }
+#tandem p.hint { color: var(--t-soft); font-size: var(--t-s); line-height: 1.5; margin: 0 0 14px; }
+#tandem .keep input.switch { flex: none; }
+#tandem .keep input.switch:disabled { opacity: 0.4; cursor: default; }
 #tandem .empty { text-align: center; color: var(--t-soft); padding: 26px 16px; }
 #tandem .empty b { color: var(--t-ink); display: block; margin-bottom: 6px; }
 #tandem .t-chip { display: inline-flex; align-items: center; gap: 4px; font-size: var(--t-xs); font-weight: 600; line-height: 16px; padding: 2px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.07); border: 1px solid transparent; color: var(--t-soft); white-space: nowrap; }
@@ -239,7 +327,7 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 .prose pre { font-family: var(--t-mono); font-size: var(--t-xs); background: var(--t-well); padding: 8px; border-radius: 8px; overflow-x: auto; white-space: pre; margin: 6px 0; }
 .prose code { font-family: var(--t-mono); font-size: var(--t-s); background: var(--t-well); padding: 1px 5px; border-radius: 5px; }
 /* What still waits to be decided, kept at the top of the conversation while its card is out of view. */
-.pins { position: sticky; top: -12px; z-index: 3; margin: -12px -12px 10px; }
+.pins { position: sticky; top: -16px; z-index: 3; margin: -16px -20px 10px; }
 .pins:empty { display: none; }
 .pin { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--t-plane); border-bottom: 1px solid var(--t-line-2); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); cursor: pointer; }
 .pin .what { flex: 1; min-width: 0; font-size: var(--t-s); }
@@ -451,10 +539,12 @@ figure.card.look figcaption { padding: 6px 10px; font-size: var(--t-xs); color: 
 #tandem .piece .read { margin-top: 8px; }
 #tandem .piece .read .prose { font-size: var(--t-m); line-height: 1.55; color: var(--t-ink-2); }
 #tandem .piece .read .t-row { margin-top: 10px; }
-#tandem .piece .fold { display: flex; gap: 8px; align-items: baseline; margin-top: 8px; font-size: var(--t-s); color: var(--t-soft); cursor: pointer; min-height: 30px; }
-#tandem .piece .fold b { color: var(--t-ink-2); font-weight: 600; white-space: nowrap; }
-#tandem .piece .fold span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-#tandem .piece .parts { margin: 4px 0 0 4px; padding-left: 12px; border-left: 2px solid var(--t-line); }
+#tandem .piece .nest { display: flex; margin-top: 4px; }
+#tandem .piece .rail { position: relative; flex: none; width: 18px; min-height: 30px; padding: 0; border: 0; border-radius: 0; background: none; }
+#tandem .piece .rail::before { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; border-radius: 1px; background: var(--t-line); }
+#tandem .piece .rail:hover::before, #tandem .piece .rail:focus-visible::before { background: var(--t-soft); }
+#tandem .piece .parts { flex: 1; min-width: 0; }
+#tandem .piece .away { align-self: center; color: var(--t-soft); font-size: var(--t-s); cursor: pointer; }
 #tandem .piece.part { padding: 9px 0; }
 #tandem .piece.part + .piece.part { border-top: 1px solid var(--t-line); }
 
@@ -556,10 +646,10 @@ body.t-held #root::after { border-color: #7ad08a; }
 #tandem .tweak .back { border: 0; background: none; color: var(--t-soft); font-size: var(--t-xs); padding: 4px 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 #tandem .tweak input.n { width: 78px; min-height: 36px; padding: 6px 8px; text-align: right; }
 #tandem .tweak input.slide { grid-column: 1 / -1; min-height: 32px; padding: 0; border: 0; background: none; accent-color: var(--t-accent); touch-action: pan-y; }
-#tandem .tweak input.switch { -webkit-appearance: none; appearance: none; position: relative; width: 46px; height: 26px; min-height: 0; padding: 0; border-radius: 13px; cursor: pointer; }
-.tweak input.switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: var(--t-soft); transition: transform 0.12s; }
-#tandem .tweak input.switch:checked { background: var(--t-accent); border-color: var(--t-accent); }
-.tweak input.switch:checked::after { transform: translateX(20px); background: var(--t-accent-ink); }
+#tandem .tweak input.switch, #tandem .keep input.switch { -webkit-appearance: none; appearance: none; position: relative; width: 46px; height: 26px; min-height: 0; padding: 0; border-radius: 13px; cursor: pointer; }
+.tweak input.switch::after, .keep input.switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: var(--t-soft); transition: transform 0.12s; }
+#tandem .tweak input.switch:checked, #tandem .keep input.switch:checked { background: var(--t-accent); border-color: var(--t-accent); }
+.tweak input.switch:checked::after, .keep input.switch:checked::after { transform: translateX(20px); background: var(--t-accent-ink); }
 #tandem .tweak input.pick { width: 52px; height: 36px; min-height: 0; padding: 2px; cursor: pointer; }
 #tandem .tweak input.text { min-height: 38px; padding: 7px 9px; }
 #t-tweaks { position: fixed; z-index: 21; left: max(8px, calc(50vw - 252px)); bottom: calc(10px + env(safe-area-inset-bottom)); width: min(74vw, 290px); max-height: 46dvh; overflow-y: auto; background: color-mix(in srgb, var(--t-bg) 88%, transparent); color: var(--t-ink); border: 1px solid var(--t-accent); border-radius: 12px; padding: 4px 11px 10px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
@@ -578,7 +668,21 @@ body.t-wide #t-sheet.shut { transform: translateX(105%); }
 body.t-wide #t-fab { right: 16px; top: 16px; }
 body.t-wide #t-fab.open { display: grid; }
 body.t-wide.t-open #t-fab { right: calc(var(--t-panel) + 16px); }
+body.t-wide #t-fab.mascot { right: 44px; top: 48px; }
+/* The figure pulls the tools open and pushes them shut (mascot.ts: REACH, SLIDE): they wait until its hand is on
+   their edge, then go slowly, fast and slowly again; the button comes along a moment behind them. */
+@media (prefers-reduced-motion: no-preference) {
+  body.t-wide:has(#t-fab.mascot) #t-sheet { transition: transform 0.5s cubic-bezier(0.65, 0, 0.35, 1) 0.18s; }
+  body.t-wide #t-fab.mascot { transition: transform 0.15s, right 0.5s cubic-bezier(0.65, 0, 0.35, 1) 0.25s, top 0.5s cubic-bezier(0.65, 0, 0.35, 1) 0.25s, width 0.5s cubic-bezier(0.65, 0, 0.35, 1) 0.25s, height 0.5s cubic-bezier(0.65, 0, 0.35, 1) 0.25s; }
+  body.t-wide #t-fab.mascot.drag { transition: none; }
+  /* The project's page makes room only once the tools are over that part of it, and has it back before they go:
+     behind them, where it is not seen. Otherwise the empty room is there before the tools are. */
+  body.t-wide.t-open:has(#t-fab.mascot) #root { transition: right 0s 0.68s; }
+}
+body.t-wide.t-open #t-fab.mascot { right: calc(var(--t-panel) + 44px); }
+body.t-wide #t-fab.mascot.away { width: 44px; height: 44px; right: calc(var(--t-panel) + 16px); top: 16px; }
 body.t-wide #t-bubbles { right: 16px; top: 70px; }
+body.t-wide:has(#t-fab.mascot) #t-bubbles { right: 44px; top: 210px; }
 body.t-wide #t-tweaks { left: 16px; }
 body.t-wide.t-open #t-toast { left: calc((100vw - var(--t-panel)) / 2); }
 body.t-wide.t-open #t-marks, body.t-wide.t-open #t-take { left: calc((100vw - var(--t-panel)) / 2); }

@@ -8,8 +8,11 @@ import { info as getInfo, run, type Info } from './api.ts';
 import { createBubbles } from './bubbles.ts';
 import { clear, h } from './dom.ts';
 import { icon } from './icons.ts';
+import type { Mascot } from './mascot.ts';
 import type { Picked, Stage } from './stage.ts';
+import { sound } from './prefs.ts';
 import { createTweaks, type Tweak } from './tweaks.ts';
+import { babble, mouth } from './voice.ts';
 
 /** A file the core keeps with the conversation (chat.attach). */
 export interface Kept { name: string; label: string; url: string; image: boolean }
@@ -17,7 +20,7 @@ export interface Kept { name: string; label: string; url: string; image: boolean
 export interface Panel {
   id: string;
   title: string;
-  /** False for a panel that is not one of the tabs: it is opened some other way (the project chooser, by its button). */
+  /** False for a panel that is not one of the tabs: it is opened some other way (the settings, by their button). */
   tab?: boolean;
   /** The panels are made before the app is; it hands itself over here. */
   init(app: App): void;
@@ -77,16 +80,31 @@ export interface App {
 
 export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: Panel[]): App & { feed(ev: Event, live: boolean): void; stageChanged(): void } {
   const fab = h<'button'>('button#t-fab', { 'aria-label': 'Open the tools', title: 'Tap to open the tools; drag onto something on the page to point at it', onclick: () => { if (dragged) { dragged = false; return; } if (shown) app.close(); else app.open(last); } }, h('i.mark'), h('i.badge'));
+  // The figure in the button, where there is something to draw it with (a test's page has not): until it is there,
+  // and where it cannot be, the button has its mark.
+  let mascot: Mascot | undefined;
+  if ('WebGL2RenderingContext' in window) {
+    void import('./mascot.ts').then((m) => m.createMascot()).then((made) => {
+      mascot = made;
+      fab.classList.add('mascot');
+      made.into(fab, { now: true });
+      made.voice(mouth);
+      made.agent(app.agent.busy, app.agent.doing);
+      house();
+    }).catch(() => {});
+  }
   const tabs = h<'nav'>('nav#t-tabs');
   const body = h('div#t-body');
   const foot = h('div#t-foot');
   const sheet = h<'section'>('section#t-sheet.shut', {},
     h('header', {},
       tabs,
-      h<'button'>('button.icon.projects', { 'aria-label': 'Open another project', title: 'Open another project', onclick: () => app.open('projects') }, icon('folder')),
+      h<'button'>('button.icon.settings', { 'aria-label': 'Settings', title: 'Settings', onclick: () => app.open('settings') }, icon('settings')),
       h<'button'>('button.icon', { 'aria-label': 'Close', onclick: () => app.close() }, icon('close'))),
     body, foot);
   const ring = h('div#t-ring', { hidden: true }, h('i'), h('span'));
+  /** What the figure carries from the page to the chat: a picture of what was pointed at. */
+  const carry = h('div#t-carry', { hidden: true });
   // (With an example of the change set there are two ways to see the copy: from one to the other, right here.)
   let toy: Example | undefined;
   const bannerSays = h('span', { title: 'What the agent made, not yet the project' }, 'The working copy');
@@ -143,7 +161,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
   const toastEl = h('div#t-toast', { hidden: true });
   const zoomEl = h('div#t-zoom', { hidden: true, onclick: () => { zoomEl.hidden = true; } }, h<'img'>('img'));
   const bubbleEl = h('div#t-bubbles', { hidden: true });
-  root.append(fab, bubbleEl, marks, tray, takeEl, ring, sheet, toastEl, zoomEl);
+  root.append(fab, bubbleEl, marks, tray, takeEl, ring, sheet, toastEl, zoomEl, carry);
 
   let shown: string | null = null, last = 'chat';
   // A wide screen has room for the tools beside the page. The stylesheet goes by these two classes on the body.
@@ -200,6 +218,34 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     ringTimer = window.setTimeout(() => { ring.hidden = true; }, 7000);
   }
 
+  // ---- where the figure is: while the chat is open, in the small hole beside what the agent said last, and it
+  // goes from one to the next as the agent says more; otherwise, and while it points at something, in the button.
+  let pointing = false;
+  /** How long the figure takes over a letter of what the agent said, in milliseconds. */
+  const LETTER = 70;
+  /** When the agent last said something while this page was open, and how much: it talks only beside a line that is new, and as long as that takes to say. */
+  let said = 0, words = '', housed: HTMLElement | undefined;
+  const stand = h('div.t-stand');
+  function house(now = false) {
+    // (While it points at something it stays where it is: from the chat its arm comes out of the button.)
+    if (!mascot || pointing) return;
+    const list = shown === 'chat' ? body.querySelector('.chat') : null;
+    const holes = list ? list.querySelectorAll<HTMLElement>('.msg .t-hole') : [];
+    // Before the agent has said anything it stands at the top of the chat, large. (That hole is taken away again
+    // once the figure has left it.)
+    if (list && !holes.length) { if (stand.parentElement !== list) list.prepend(stand); } else if (!stand.contains(mascot.el) || !list) stand.remove();
+    const to = holes.length ? holes[holes.length - 1]! : list ? stand : fab;
+    fab.classList.toggle('away', to !== fab);
+    const says = to !== fab && to !== housed && Date.now() - said < 4000;
+    if (says) said = 0;
+    housed = to;
+    // (And it is heard, where the person turned that on: then its mouth goes by what is heard. Without sound it
+    // goes for a while that is longer for a longer line.)
+    const line = words, heard = sound();
+    mascot.into(to, { now, small: holes.length > 0, bare: to === stand, ...(says && { says: heard ? 600 : Math.min(Math.max(line.length * 25, 700), 3500), ...(heard && { up: () => babble(line, LETTER) }) }) });
+  }
+  if (typeof MutationObserver !== 'undefined') new MutationObserver(() => house()).observe(body, { childList: true, subtree: true });
+
   // ---- the button dragged onto something on the page: "this, here". What is under it is marked while it is
   // dragged; let go, that thing goes with the next message, and the button is back where it was.
   let drag: { id: number; x: number; y: number; on: boolean; last: number } | undefined;
@@ -217,7 +263,11 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       fab.setPointerCapture?.(ev.pointerId);
       fab.classList.add('drag');
     }
-    fab.style.transform = `translate(${dx}px, ${dy}px)`;
+    // With the figure in it the button stays where it is, and its arm goes to the finger with the glass.
+    if (mascot) {
+      pointing = true;
+      mascot.reach(ev.clientX, ev.clientY, fab);
+    } else fab.style.transform = `translate(${dx}px, ${dy}px)`;
     if (Date.now() - drag.last < 90) return;
     drag.last = Date.now();
     const mine = drag;
@@ -237,10 +287,24 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     setTimeout(() => { dragged = false; }, 350);
     fab.classList.remove('drag');
     fab.style.transform = '';
-    if (ev.type === 'pointercancel') { ring.hidden = true; return; }
-    void stage.pick(ev.clientX, ev.clientY, true).then((got) => {
+    const back = () => { mascot?.release(); pointing = false; house(); };
+    if (ev.type === 'pointercancel') { ring.hidden = true; back(); return; }
+    void stage.pick(ev.clientX, ev.clientY, true).then(async (got) => {
       ring.hidden = true;
-      if (!got) return app.toast(stage.can.find ? 'There is nothing there to point at.' : 'This page cannot be asked what is there.');
+      if (!got) { back(); return app.toast(stage.can.find ? 'There is nothing there to point at.' : 'This page cannot be asked what is there.'); }
+      // The figure takes it with its other hand and puts it in the chat, which is opened for that: the button stays
+      // in view over the tools until it is done.
+      if (mascot) {
+        carry.style.backgroundImage = got.image ? `url("${got.image}")` : '';
+        fab.classList.add('carrying');
+        app.open('chat');
+        await mascot.bring({ x: got.x + got.w / 2, y: got.y + got.h / 2 }, () => {
+          const r = (foot.querySelector('.composer') ?? foot).getBoundingClientRect();
+          return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        }, carry);
+        back();
+        setTimeout(() => fab.classList.remove('carrying'), 500);
+      }
       app.attach(`page:${JSON.stringify({ words: got.words, ...(got.near && { near: got.near }), tag: got.tag, selector: got.selector, path: got.path, ...(got.three && { three: got.three }) })}`, got.image);
     });
   };
@@ -251,6 +315,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     for (const [id, el] of tabEls) el.classList.toggle('news', badges.has(id));
     fab.classList.toggle('news', badges.size > 0);
     fab.classList.toggle('busy', app.agent.busy);
+    mascot?.agent(app.agent.busy, app.agent.doing);
   }
 
   const app: App & { feed(ev: Event, live: boolean): void; stageChanged(): void } = {
@@ -268,6 +333,8 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     open(tab, id) {
       const panel = panels.find((p) => p.id === tab) ?? panels[0];
       if (shown && shown !== panel.id) panels.find((p) => p.id === shown)?.hide?.();
+      // Beside the page the tools slide in from the edge: the figure pulls them open.
+      if (!shown && app.beside()) mascot?.hold(() => sheet.getBoundingClientRect().left, false);
       shown = last = panel.id;
       badges.delete(panel.id);
       for (const [pid, el] of tabEls) el.classList.toggle('on', pid === panel.id);
@@ -281,11 +348,16 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       if (!body.childNodes.length) body.append(h('div.working.loading', {}, h('i.spin'), h('span', {}, 'Loading…')));
       paintBadges();
       bubbles.shut(false);
+      house();
     },
 
     close() {
       if (shown) panels.find((p) => p.id === shown)?.hide?.();
+      const was = shown;
       shown = null;
+      // (Shut, it is in the button again, and from there it pushes them shut.)
+      house(true);
+      if (was && app.beside()) mascot?.hold(() => sheet.getBoundingClientRect().left, true);
       sheet.classList.add('shut');
       fab.classList.remove('open');
       paintLayout();
@@ -436,6 +508,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     },
 
     feed(ev, live) {
+      if (live && ev.type === 'message' && ev.by === 'agent') { said = Date.now(); words = String(ev.text ?? ''); }
       if (ev.type === 'agent.status') {
         setAgent(ev as unknown as AgentStatus);
         return;

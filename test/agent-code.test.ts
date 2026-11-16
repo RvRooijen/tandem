@@ -453,6 +453,266 @@ test('the person says where the project is pushed, and from then on every accept
   } finally { rmSync(bare, { recursive: true, force: true }); }
 });
 
+test('a project that is not committed for gets what is accepted in its files, uncommitted, and is not pushed', async () => {
+  const bare = mkdtempSync(join(tmpdir(), 'tandem-remote-'));
+  const files = async () => (await me('code.changes')).files.map((f: any) => `${f.status} ${f.path}`);
+  try {
+    execFileSync('git', ['init', '-q', '--bare', '-b', 'main', bare]);
+    await me('project.setRemote', { url: bare });
+    const head = git('rev-parse', 'HEAD');
+    const pushes = () => host.events.since(0).filter((e) => e.type === 'project.pushed').length;
+    const pushed = pushes();
+    await assert.rejects(host.run('project.keep', { commit: false }, 'agent:main', 'r1'), /the person's to do/);
+    assert.deepEqual(await me('project.keep', { commit: false }), { changed: true, commit: false, push: true });
+    assert.deepEqual(await me('project.keep', { commit: false }), { changed: false, commit: false, push: true });
+    assert.equal((await me('project.setup')).config.commit, false, 'kept with how the project is run');
+    assert.match(readFileSync(host.project.configFile, 'utf8'), /"commit": false/);
+
+    // The copy follows the project's files as they are: what the person has not committed is in it, and is not its change.
+    writeFileSync(join(dir, 'notes.txt'), 'mine\n');
+    host.code!.sync();
+    assert.equal(readFileSync(join(copy, 'notes.txt'), 'utf8'), 'mine\n');
+    assert.deepEqual(await files(), []);
+    assert.equal(git('rev-parse', 'HEAD'), head, 'and nothing was committed for that');
+    assert.equal(git('diff', '--cached', '--name-only'), '', 'nor put in the person\'s index');
+
+    // Accepted, the change set is in the project's files and left there.
+    writeFileSync(join(copy, 'src/weather.js'), 'export const RAIN = 1;\n');
+    host.proposeCode('agent:main', 'Weather.');
+    assert.deepEqual(await files(), ['new src/weather.js']);
+    await me('proposals.decide', { accept: true });
+    assert.equal(readFileSync(join(dir, 'src/weather.js'), 'utf8'), 'export const RAIN = 1;\n');
+    assert.equal(git('rev-parse', 'HEAD'), head, 'not committed');
+    assert.match(git('status', '--porcelain', '-uall'), /^\?\? src\/weather\.js$/m, 'it is the person\'s to commit');
+    assert.deepEqual(await files(), [], 'and the copy is the project again');
+    assert.equal(pushes(), pushed, 'nothing is pushed');
+
+    // The next one goes on top of what is still uncommitted, and on top of what the person changed since.
+    writeFileSync(join(dir, 'notes.txt'), 'mine, more\n');
+    writeFileSync(join(copy, 'src/weather.js'), 'export const RAIN = 2;\n');
+    host.proposeCode('agent:main', 'More rain.');
+    assert.deepEqual(await files(), ['changed src/weather.js']);
+    await me('proposals.decide', { accept: true });
+    assert.equal(readFileSync(join(dir, 'src/weather.js'), 'utf8'), 'export const RAIN = 2;\n');
+    assert.equal(readFileSync(join(dir, 'notes.txt'), 'utf8'), 'mine, more\n', 'the person\'s own work is as they left it');
+    assert.equal(readFileSync(join(copy, 'notes.txt'), 'utf8'), 'mine, more\n');
+
+    // What the engine writes itself is not committed either.
+    await host.run('concepts.create', { name: 'Left alone', text: 'Not committed.' }, 'agent:main', 'r97');
+    await me('proposals.decide', { accept: true });
+    assert.equal(git('rev-parse', 'HEAD'), head);
+    assert.equal(pushes(), pushed);
+
+    // Rejected, the copy is the project as it is, uncommitted work and all.
+    writeFileSync(join(copy, 'src/weather.js'), 'export const RAIN = 3;\n');
+    host.proposeCode('agent:main', 'Too much rain.');
+    await me('proposals.decide', { accept: false });
+    assert.equal(readFileSync(join(copy, 'src/weather.js'), 'utf8'), 'export const RAIN = 2;\n');
+
+    // The person commits when they want to, and the copy follows without a change set of its own.
+    await me('concepts.remove', { id: 'left-alone' });
+    git('add', '-A');
+    git('-c', 'user.name=Me', '-c', 'user.email=me@example.com', 'commit', '-q', '-m', 'Weather, by hand');
+    host.code!.sync();
+    assert.deepEqual(await files(), []);
+    assert.equal(git('log', '-1', '--format=%ae'), 'me@example.com');
+
+    // Only not pushing: it is committed as before, and stays here.
+    assert.deepEqual(await me('project.keep', { commit: true, push: false }), { changed: true, commit: true, push: false });
+    writeFileSync(join(copy, 'src/weather.js'), 'export const RAIN = 4;\n');
+    host.proposeCode('agent:main', 'A storm.');
+    assert.deepEqual(await files(), ['changed src/weather.js']);
+    await me('proposals.decide', { accept: true });
+    assert.notEqual(git('rev-parse', 'HEAD'), head);
+    assert.equal(git('status', '--porcelain'), '', 'committed');
+    assert.equal(pushes(), pushed, 'not pushed');
+    assert.deepEqual(await me('project.keep', { push: true }), { changed: true, commit: true, push: true });
+    assert.doesNotMatch(readFileSync(host.project.configFile, 'utf8'), /commit|push/, 'only a no is written down');
+  } finally {
+    await me('project.keep', { commit: true, push: true });
+    await me('project.setRemote', { url: '' });
+    await idle();
+    rmSync(bare, { recursive: true, force: true });
+  }
+});
+
+test('version control from the page: what is not committed is read and committed as the person, and pushed when they say', async () => {
+  const bare = mkdtempSync(join(tmpdir(), 'tandem-remote-'));
+  try {
+    execFileSync('git', ['init', '-q', '--bare', '-b', 'main', bare]);
+    git('config', 'user.name', 'Me');
+    git('config', 'user.email', 'me@example.com');
+    await me('project.keep', { commit: false });
+    await me('project.setRemote', { url: bare });
+    // (That nothing is committed for it is written in tandem's own file, and that is then the person's to commit too.)
+    assert.deepEqual((await me('git.status')).files.map((f: any) => f.path), ['.tandem/tandem.json']);
+    git('commit', '-q', '-am', 'How tandem keeps it');
+    const clean = await me('git.status');
+    assert.deepEqual([clean.git, clean.branch, clean.files, clean.commit, clean.push], [true, 'main', [], false, true]);
+    assert.deepEqual(clean.remote, { name: 'origin', url: bare });
+    assert.deepEqual(clean.who, { name: 'Me', email: 'me@example.com' });
+    assert.equal(clean.ahead, undefined, 'what the remote has is not known: nothing was pushed there');
+
+    // What is not committed: a file that is new, one that changed, one with a name git would put in quotes.
+    writeFileSync(join(dir, 'src/tide.js'), 'export const TIDE = 1;\nexport const EBB = 0;\n');
+    writeFileSync(join(dir, 'src/seasons.js'), readFileSync(join(dir, 'src/seasons.js'), 'utf8') + 'export const FIFTH = 1;\n');
+    writeFileSync(join(dir, 'a note.txt'), 'kept apart\n');
+    const now = await me('git.status');
+    assert.deepEqual(now.files, [
+      { path: 'a note.txt', added: 1, removed: 0, status: 'new' },
+      { path: 'src/seasons.js', added: 1, removed: 0, status: 'changed' },
+      { path: 'src/tide.js', added: 2, removed: 0, status: 'new' },
+    ]);
+    assert.match((await me('git.diff', { path: 'src/seasons.js' })).diff, /^\+export const FIFTH = 1;$/m);
+    assert.match((await me('git.diff', { path: 'src/tide.js' })).diff, /\+export const TIDE = 1;/, 'also of a file git does not follow yet');
+    await refused(me('git.diff', { path: '../elsewhere' }), 'input');
+    await refused(me('git.diff', { path: '--output=x' }), 'input');
+
+    // Committing is the person's: under their own name, the files they say, and the rest stays as it is.
+    await assert.rejects(host.run('git.commit', { message: 'Mine now' }, 'agent:main', 'r1'), /the person's to do/);
+    await assert.rejects(host.run('git.push', {}, 'agent:main', 'r1'), /the person's to do/);
+    await refused(me('git.commit', { message: '  ' }), 'input');
+    const made = await me('git.commit', { message: 'Tides and a fifth season', paths: ['src/tide.js', 'src/seasons.js'] });
+    assert.deepEqual([made.subject, made.files], ['Tides and a fifth season', 2]);
+    assert.equal(git('log', '-1', '--format=%an <%ae> %s'), 'Me <me@example.com> Tides and a fifth season');
+    assert.equal(git('status', '--porcelain'), '?? "a note.txt"');
+    assert.deepEqual(host.events.since(0).at(-1), { ...host.events.since(0).at(-1), type: 'project.committed', by: 'me', subject: 'Tides and a fifth season', files: 2 });
+    const after = await me('git.status');
+    assert.deepEqual(after.files.map((f: any) => f.path), ['a note.txt']);
+    assert.deepEqual([after.commits[0].subject, after.commits[0].by, after.commits[0].pushed], ['Tides and a fifth season', 'Me', false]);
+
+    // Pushed when they say so, and then the remote has it.
+    assert.deepEqual(await me('git.push'), { pushed: true, remote: 'origin', branch: 'main' });
+    assert.equal(execFileSync('git', ['rev-parse', 'main'], { cwd: bare, encoding: 'utf8' }).trim(), git('rev-parse', 'HEAD'));
+    const pushed = await me('git.status');
+    assert.deepEqual([pushed.ahead, pushed.commits[0].pushed], [0, true]);
+    assert.deepEqual(await me('git.push'), { pushed: false, says: 'the remote has everything already' });
+
+    // A change is thrown away per file: what changed is as it was committed, what was new is gone, what was taken away is back.
+    await assert.rejects(host.run('git.discard', { path: 'a note.txt' }, 'agent:main', 'r1'), /the person's to do/);
+    writeFileSync(join(dir, 'src/tide.js'), 'export const TIDE = 9;\n');
+    writeFileSync(join(dir, 'src/scrap.js'), 'export const SCRAP = 1;\n');
+    rmSync(join(dir, 'src/seasons.js'));
+    assert.deepEqual((await me('git.status')).files.map((f: any) => `${f.status} ${f.path}`), ['new a note.txt', 'new src/scrap.js', 'gone src/seasons.js', 'changed src/tide.js']);
+    assert.deepEqual(await me('git.discard', { path: 'src/tide.js' }), { path: 'src/tide.js', was: 'changed' });
+    assert.equal(readFileSync(join(dir, 'src/tide.js'), 'utf8'), 'export const TIDE = 1;\nexport const EBB = 0;\n');
+    await me('git.discard', { path: 'src/scrap.js' });
+    assert.ok(!existsSync(join(dir, 'src/scrap.js')));
+    await me('git.discard', { path: 'src/seasons.js' });
+    assert.match(readFileSync(join(dir, 'src/seasons.js'), 'utf8'), /FIFTH/);
+    assert.equal(git('status', '--porcelain'), '?? "a note.txt"', 'the rest is as it was');
+    assert.equal(host.events.since(0).at(-1)!.type, 'project.discarded');
+    await refused(me('git.discard', { path: 'src/tide.js' }), 'input');
+    await refused(me('git.discard', { path: '../elsewhere' }), 'input');
+    // Very many files git does not follow, in one folder: the folder is one line, and is thrown away as one.
+    mkdirSync(join(dir, 'heap/deep'), { recursive: true });
+    for (let n = 0; n < 320; n++) writeFileSync(join(dir, 'heap', n % 2 ? 'deep' : '.', `f${n}.txt`), 'x\n');
+    assert.deepEqual((await me('git.status')).files.map((f: any) => `${f.status} ${f.path}`), ['new a note.txt', 'new heap/']);
+    assert.equal((await me('git.diff', { path: 'heap/' })).diff, '');
+    assert.deepEqual(await me('git.discard', { path: 'heap/' }), { path: 'heap/', was: 'new' });
+    assert.ok(!existsSync(join(dir, 'heap')));
+    // Several at once; one that cannot be, and nothing is thrown away.
+    writeFileSync(join(dir, 'src/tide.js'), 'export const TIDE = 9;\n');
+    writeFileSync(join(dir, 'src/scrap.js'), 'export const SCRAP = 1;\n');
+    await refused(me('git.discard', { paths: ['src/tide.js', 'src/nothing.js'] }), 'input');
+    await refused(me('git.discard', {}), 'input');
+    assert.ok(existsSync(join(dir, 'src/scrap.js')) && /TIDE = 9/.test(readFileSync(join(dir, 'src/tide.js'), 'utf8')));
+    assert.deepEqual(await me('git.discard', { paths: ['src/tide.js', 'src/scrap.js'] }), { discarded: ['src/tide.js', 'src/scrap.js'] });
+    assert.equal(git('status', '--porcelain'), '?? "a note.txt"');
+    assert.equal(host.events.since(0).at(-1)!.count, 2);
+
+    // The branches of the repository, the one it is on first; the agent's own is not one of them.
+    git('branch', 'side', 'HEAD~1');
+    const tree = await me('git.status');
+    assert.deepEqual(tree.branches.map((b: any) => [b.name, b.current]), [['main', true], ['side', false]]);
+    assert.deepEqual([tree.branches[0].follows, tree.branches[0].subject], ['origin/main', 'Tides and a fifth season']);
+    assert.equal(tree.behind, 0);
+    // Switching branch: not with something uncommitted, not to the agent's own branch, and the copy goes along.
+    await assert.rejects(host.run('git.switch', { branch: 'side' }, 'agent:main', 'r1'), /the person's to do/);
+    await assert.rejects(me('git.switch', { branch: 'side' }), /1 file is not committed/);
+    await refused(me('git.switch', { branch: 'tandem-agent' }), 'failed');
+    await refused(me('git.switch', { branch: 'no-such' }), 'failed');
+    git('stash', '-u', '-q');
+    await assert.rejects(me('git.switch', { branch: 'main' }), /on main already/);
+    assert.deepEqual(await me('git.switch', { branch: 'side' }), { from: 'main', branch: 'side' });
+    assert.equal(git('rev-parse', '--abbrev-ref', 'HEAD'), 'side');
+    assert.ok(!existsSync(join(dir, 'src/tide.js')) && !existsSync(join(copy, 'src/tide.js')), 'the project and the copy are that branch');
+    assert.deepEqual((await me('code.changes')).files, []);
+    assert.deepEqual([host.events.since(0).at(-1)!.type, host.events.since(0).at(-1)!.branch], ['project.switched', 'side']);
+    // With a change set of the agent's waiting, it stays where it is.
+    writeFileSync(join(copy, 'src/side.js'), 'export const SIDE = 1;\n');
+    host.proposeCode('agent:main', 'On the side.');
+    await refused(me('git.switch', { branch: 'main' }), 'busy');
+    await me('proposals.decide', { accept: false });
+    await me('git.switch', { branch: 'main' });
+    assert.ok(existsSync(join(copy, 'src/tide.js')));
+    git('stash', 'pop', '-q');
+    git('branch', '-D', 'side');
+
+    // Pulling takes in what the remote has more, forward only; the agent does not do it.
+    await assert.rejects(host.run('git.pull', {}, 'agent:main', 'r1'), /the person's to do/);
+    assert.deepEqual(await me('git.pull'), { pulled: true, remote: 'origin', branch: 'main', commits: 0 });
+    const other = mkdtempSync(join(tmpdir(), 'tandem-other-'));
+    const there = (...args: string[]) => execFileSync('git', ['-c', 'user.name=Other', '-c', 'user.email=other@example.com', ...args], { cwd: other, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    execFileSync('git', ['clone', '-q', bare, other]);
+    writeFileSync(join(other, 'from-elsewhere.txt'), 'hello\n');
+    there('add', '-A'); there('commit', '-q', '-m', 'From elsewhere'); there('push', '-q');
+    assert.deepEqual(await me('git.pull'), { pulled: true, remote: 'origin', branch: 'main', commits: 1 });
+    assert.equal(readFileSync(join(dir, 'from-elsewhere.txt'), 'utf8'), 'hello\n');
+    assert.equal(git('status', '--porcelain'), '?? "a note.txt"', 'what was not committed is as it was');
+    assert.deepEqual([host.events.since(0).at(-1)!.type, host.events.since(0).at(-1)!.commits], ['project.pulled', 1]);
+    // Both went their own way: nothing is merged here, and it says so.
+    writeFileSync(join(other, 'from-elsewhere.txt'), 'hello again\n');
+    there('commit', '-q', '-am', 'More from elsewhere'); there('push', '-q');
+    git('commit', '-q', '--allow-empty', '-m', 'Mine meanwhile');
+    const apart = await me('git.pull');
+    assert.deepEqual([apart.pulled, apart.commits], [false, 0]);
+    assert.match(apart.says, /main has commits here that origin does not have, and origin has others/);
+    assert.equal(git('log', '-1', '--format=%s'), 'Mine meanwhile', 'the project is as it was');
+    git('reset', '-q', '--hard', 'HEAD~1');
+    // Fetching only asks: the project is as it was, and how far behind it is, is known.
+    await assert.rejects(host.run('git.fetch', {}, 'agent:main', 'r1'), /the person's to do/);
+    const at = git('rev-parse', 'HEAD');
+    assert.deepEqual(await me('git.fetch'), { fetched: true, remote: 'origin', ahead: 0, behind: 1 });
+    assert.equal(git('rev-parse', 'HEAD'), at);
+    assert.equal((await me('git.status')).behind, 1);
+    assert.equal((await me('git.pull')).commits, 1);
+    // A branch that is only on the remote is listed once it was fetched, and switching to it makes it a branch here.
+    there('switch', '-q', '-c', 'feature/elsewhere');
+    writeFileSync(join(other, 'only-there.txt'), 'x\n');
+    there('add', '-A'); there('commit', '-q', '-m', 'Only there'); there('push', '-q', '-u', 'origin', 'feature/elsewhere');
+    assert.ok(!(await me('git.status')).branches.some((b: any) => b.name === 'feature/elsewhere'), 'not known before it is fetched');
+    await me('git.fetch');
+    const far = (await me('git.status')).branches.find((b: any) => b.name === 'feature/elsewhere');
+    assert.deepEqual([far.remote, far.current, far.subject], ['origin', false, 'Only there']);
+    assert.ok(!(await me('git.status')).branches.some((b: any) => b.name === 'main' && b.remote), 'a branch that is here is not listed twice');
+    git('stash', '-u', '-q');
+    assert.deepEqual(await me('git.switch', { branch: 'feature/elsewhere' }), { from: 'main', branch: 'feature/elsewhere' });
+    assert.equal(readFileSync(join(dir, 'only-there.txt'), 'utf8'), 'x\n');
+    const mine = (await me('git.status')).branches.find((b: any) => b.name === 'feature/elsewhere');
+    assert.deepEqual([mine.current, mine.follows, mine.remote], [true, 'origin/feature/elsewhere', undefined]);
+    await me('git.switch', { branch: 'main' });
+    git('stash', 'pop', '-q');
+    git('branch', '-D', 'feature/elsewhere');
+    rmSync(other, { recursive: true, force: true });
+
+    // Everything that is left, without naming it.
+    assert.equal((await me('git.commit', { message: 'The note' })).files, 1);
+    assert.equal(git('status', '--porcelain'), '');
+    assert.equal((await me('git.status')).ahead, 1);
+    await refused(me('git.commit', { message: 'Nothing' }), 'failed');
+    // The copy follows: what the person committed is not a change set of the agent's.
+    host.code!.sync();
+    assert.deepEqual((await me('code.changes')).files, []);
+    assert.equal(readFileSync(join(copy, 'src/tide.js'), 'utf8'), 'export const TIDE = 1;\nexport const EBB = 0;\n');
+  } finally {
+    await me('project.setRemote', { url: '' });
+    await me('project.keep', { commit: true, push: true });
+    await idle();
+    rmSync(bare, { recursive: true, force: true });
+  }
+});
+
 test('a project that has no page yet is played from the copy, once its change set brings one', async () => {
   const card = () => host.events.since(0).filter((e) => e.type === 'proposal').at(-1)! as any;
   writeFileSync(join(copy, 'index.html'), '<h1>Fixture</h1>\n');

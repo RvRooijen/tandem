@@ -4,3 +4,4 @@ games/*/data/
 games/*/out/
 .work/
 *.log
+.tandem/

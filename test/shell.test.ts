@@ -155,7 +155,7 @@ test('the project\'s page is in a frame and the tools lie over it, shut', async 
   pagesUp = true;
   assert.ok($('#t-fab'));
   assert.ok($('#t-sheet').classList.contains('shut'));
-  assert.deepEqual(all('.t-tab').map((t) => t.textContent), ['Chat', 'Concepts', 'Art']);
+  assert.deepEqual(all('.t-tab').map((t) => t.textContent), ['Chat', 'Concepts', 'Art', 'Git', 'Projects']);
   await until(() => frame.src === 'http://localhost:5210/', 'the frame to show the project\'s own page');
   assert.ok(!frame.hidden && $('#t-nopage').hidden);
   assert.deepEqual(app.stage.can, { snapshot: false, point: false, find: false }, 'a page that says nothing is simply shown');
@@ -543,16 +543,17 @@ test('the concepts read as one document, and above it a thought is typed as it c
   assert.match($('.read .prose', chapter()).textContent!, /another place\.Things open that were shut\.$/);
   assert.deepEqual(all('.read button', chapter()).slice(0, 2).map((b) => b.textContent), ['Edit', 'Talk about this']);
   // And its parts stand under it, open too.
-  assert.equal($('.fold', chapter()).textContent, '1 part');
+  assert.equal($('.rail', chapter()).getAttribute('aria-expanded'), 'true');
   assert.deepEqual(all('.piece.part').map((p) => [$('.head b', p).textContent, p.dataset.open]), [['Night roses', 'true']]);
   // Tapped, a piece folds to the one sentence that says what it is, and a chapter's parts are put away; tapped again, they are back.
   click($(':scope > .head', chapter()));
   assert.equal(chapter().dataset.open, 'false');
   assert.equal($(':scope > .head p.core', chapter()).textContent, 'After dark the garden is another place.', 'what it is, in a sentence');
-  click($('.fold', chapter()));
-  assert.equal($('.fold', chapter()).textContent, '1 partNight roses');
+  // The line down the left of the parts is what puts them away, and what is left of it brings them back.
+  click($('.rail', chapter()));
+  assert.deepEqual([$('.rail', chapter()).getAttribute('aria-expanded'), $('.away', chapter()).textContent], ['false', '1 part']);
   assert.equal(all('.piece.part').length, 0);
-  click($('.fold', chapter()));
+  click($('.rail', chapter()));
   click($(':scope > .head', chapter()));
   await until(() => chapter().dataset.open === 'true' && all('.piece.part').length === 1, 'the chapter and its part, open again');
   click($(':scope > .head', chapter()));
@@ -1292,17 +1293,41 @@ test('on a wide screen the tools are a panel beside the page: it stays in view, 
   assert.ok($('#t-sheet').classList.contains('shut'), 'on a narrow one the tools cover the page, and are shut for it');
 });
 
-test('a tab that has to ask the core first says it is loading in the panel, not on the tab', async () => {
+test('a tab that has to ask the core first says it is loading in the panel, not on the tab; opened again, it is there at once', async () => {
   app.open('chat');
-  const concepts = all('.t-tab').find((t) => t.textContent === 'Concepts')!;
-  click(concepts);
-  assert.ok(!concepts.classList.contains('working') && !(concepts as HTMLButtonElement).disabled, 'the tab stays a tab');
+  // (The Git tab was not opened before: there is nothing to show yet but that it is being asked.)
+  const git = all('.t-tab').find((t) => t.textContent === 'Git')!;
+  click(git);
+  assert.ok(!git.classList.contains('working') && !(git as HTMLButtonElement).disabled, 'the tab stays a tab');
   assert.ok($('#t-body .loading .spin'), 'the panel says it is loading');
   await until(() => !$('#t-body .loading'), 'the panel to be drawn');
   assert.ok($('#t-body').childNodes.length > 0);
   // The chat is there at once: nothing to wait for.
   tab('Chat');
   assert.ok(!$('#t-body .loading'));
+  // And a tab that was shown before is there at once too, as it was: what changed since is asked behind it.
+  let before = ran.length;
+  tab('Git');
+  assert.ok(!$('#t-body .loading') && /No repository\./.test($('#t-body').textContent!), 'the Git tab as it was');
+  await until(() => ran.slice(before).includes('git.status'), 'it to be asked again all the same');
+  tab('Concepts');
+  await until(() => !$('#t-body .loading'), 'the concepts');
+  if ($('#t-body .bar button.link')) click($('#t-body .bar button.link'));
+  await until(() => $('#t-body .adder.mind'), 'the document');
+  tab('Chat');
+  before = ran.length;
+  tab('Concepts');
+  assert.ok(!$('#t-body .loading') && $('#t-body .adder.mind'), 'the document as it was');
+  await until(() => ran.slice(before).includes('concepts.list'), 'it to be asked again all the same');
+  tab('Art');
+  await until(() => !$('#t-body .loading'), 'the art');
+  if ($('#t-body .bar button.link')) click($('#t-body .bar button.link'));
+  await until(() => $('#t-body .item.drawing'), 'the drawings');
+  tab('Chat');
+  before = ran.length;
+  tab('Art');
+  assert.ok(!$('#t-body .loading') && $('#t-body .item.drawing'), 'the drawings as they were');
+  await until(() => ran.slice(before).includes('art.list'), 'them to be asked again all the same');
   app.close();
 });
 
@@ -1461,30 +1486,206 @@ test('with the tools shut, tandem speaks in a bubble: what it says goes again, w
   host.events.add({ type: 'chat.new', by: 'me' });
 });
 
-test('projects: where the open project is pushed is set under its settings', async () => {
+test('git: what is not committed is read and committed, what is not pushed is pushed, and what tandem does by itself is set there', async () => {
   // (This fixture is not looked after as a repository; what the core would say of one that is, is said for it.)
-  canned.set('project.remote', { git: true, url: null });
-  click($('button[aria-label="Open another project"]'));
-  await until(() => $('.adder.remote input'), 'the setting');
-  assert.match($('#t-body').textContent!, /Settings.*A remote for this project: make an empty repository/);
+  const standing = (more: Record<string, unknown> = {}) => ({
+    git: true, branch: 'main', files: [], branches: [{ name: 'main', current: true, ts: 1790000000000, subject: 'The first one' }, { name: 'feature/tide', current: false, ts: 1780000000000, subject: 'Half a tide', follows: 'origin/feature/tide', ahead: 3, behind: 1 }, { name: 'feature/far', current: false, ts: 1770000000000, subject: 'Far away', remote: 'origin' }], commits: [{ hash: 'abc1234def', ts: 1790000000000, by: 'Me', subject: 'The first one', pushed: true }],
+    who: { name: 'Me', email: 'me@example.com' }, commit: true, push: true, ...more,
+  });
+  const changed = [{ path: 'src/game.ts', added: 2, removed: 1, status: 'changed' }, { path: 'src/tide.ts', added: 5, removed: 0, status: 'new' }];
+  canned.set('git.status', standing({ files: changed }));
+  tab('Git');
+  const file = (path: string) => all('#t-body .gfile').find((x) => $('.frow', x)?.title === path)!;
+  await until(() => file('src/tide.ts'), 'the files that are not committed');
+  assert.match($('#t-body').textContent!, /main.*2 changed.*It has no remote: give it one below to push\..*Changes \(2\)\+7−1/);
+  assert.match(file('src/game.ts').textContent!, /^Mgame\.tssrc\+2−1/);
+  assert.match(file('src/tide.ts').textContent!, /^Atide\.tssrc\+5/);
+  assert.equal(file('src/tide.ts').dataset.how, 'new');
+  assert.match($('#t-body').textContent!, /Committed as Me <me@example\.com>/);
+
+  // What changed outside tandem is seen when it is asked to look again.
+  canned.set('git.status', standing({ files: [...changed, { path: 'README.md', added: 1, removed: 0, status: 'changed' }] }));
+  click($('#t-body button[aria-label="Refresh"]'));
+  await until(() => file('README.md'), 'the file that changed meanwhile');
+  canned.set('git.status', standing({ files: changed }));
+  click($('#t-body button[aria-label="Refresh"]'));
+  await until(() => !file('README.md'), 'it to be gone again');
+
+  // A file is read where it stands.
+  canned.set('git.diff', { path: 'src/game.ts', diff: 'diff --git a/src/game.ts b/src/game.ts\n--- a/src/game.ts\n+++ b/src/game.ts\n@@ -1,2 +1,3 @@\n const a = 1;\n-const season = 0;\n+const season = seasonOf(day);\n' });
+  click($('.frow', file('src/game.ts')));
+  await until(() => $('#t-body pre.diff'), 'the diff');
+  assert.ok($('pre.diff', file('src/game.ts')), 'under the file it is of');
+  assert.deepEqual(all('#t-body pre.diff span').map((x) => (x as HTMLElement).dataset.how), ['at', 'same', 'out', 'in']);
+
+  // A commit needs a message; a file can be left out of it.
+  const commit = () => all('#t-body .adder.commit button')[0] as HTMLButtonElement;
+  assert.ok(commit().disabled, 'nothing to say yet');
+  const box = $('input[aria-label="Commit src/tide.ts"]') as HTMLInputElement;
+  box.checked = false;
+  box.dispatchEvent(new w.Event('change'));
+  await until(() => commit()?.textContent === 'Commit 1 of 2', 'the file to be left out');
+  type($('textarea[aria-label="Commit message"]'), 'Seasons follow the day');
+  assert.ok(!commit().disabled);
+  canned.set('git.commit', { hash: 'fff0000aaa', subject: 'Seasons follow the day', files: 1 });
+  canned.set('git.status', standing({ remote: { name: 'origin', url: 'https://example.com/me/fixture.git' }, ahead: 1, files: [changed[1]],
+    commits: [{ hash: 'fff0000aaa', ts: 1790000100000, by: 'Me', subject: 'Seasons follow the day', pushed: false }, { hash: 'abc1234def', ts: 1790000000000, by: 'Me', subject: 'The first one', pushed: true }] }));
+  let before = ran.length;
+  click(commit());
+  await until(() => /Committed 1 file\./.test($('#t-toast').textContent!), 'it to say so');
+  assert.ok(ran.slice(before).includes('git.commit'));
+  await until(() => /1 commit is not on origin yet/.test($('#t-body').textContent!), 'how it stands now');
+  assert.equal(($('textarea[aria-label="Commit message"]') as HTMLTextAreaElement).value, '', 'the message went with the commit');
+  // What the remote does not have yet stands out, and where it has the rest is marked.
+  const item = all('#t-body .rev');
+  assert.match(item[0].textContent!, /Seasons follow the dayfff0000 · /);
+  assert.deepEqual(item.map((x) => x.classList.contains('ahead')), [true, false]);
+  assert.equal($('#t-body .mark-remote').textContent, 'origin/main');
+  assert.equal($('#t-body .mark-remote').nextElementSibling, item[1]);
+  assert.match($('#t-body .standing').textContent!, /main↑11 changed/);
+
+  // The remote is asked what it has, and how far behind the project is shows on the button that pulls.
+  canned.set('git.fetch', { fetched: true, remote: 'origin', ahead: 1, behind: 2 });
+  canned.set('git.status', standing({ remote: { name: 'origin', url: 'https://example.com/me/fixture.git' }, ahead: 1, behind: 2, files: [changed[1]],
+    commits: [{ hash: 'fff0000aaa', ts: 1790000100000, by: 'Me', subject: 'Seasons follow the day', pushed: false }, { hash: 'abc1234def', ts: 1790000000000, by: 'Me', subject: 'The first one', pushed: true }] }));
+  before = ran.length;
+  click(button('Fetch', $('#t-body')));
+  await until(() => /origin has 2 commits you do not have yet\./.test($('#t-toast').textContent!), 'it to say so');
+  assert.ok(ran.slice(before).includes('git.fetch'));
+  await until(() => button('Pull 2', $('#t-body')), 'how far behind it is');
+  assert.match($('#t-body .standing').textContent!, /main↑1↓2/);
+
+  // What the remote has more is pulled from here.
+  canned.set('git.pull', { pulled: true, remote: 'origin', branch: 'main', commits: 2 });
+  before = ran.length;
+  click(button('Pull 2', $('#t-body')));
+  await until(() => /Pulled 2 commits\./.test($('#t-toast').textContent!), 'it to say so');
+  assert.ok(ran.slice(before).includes('git.pull'));
+  host.events.add({ type: 'project.pulled', by: 'me', ok: true, remote: 'origin', branch: 'main', commits: 2 });
+
+  // What is not pushed is pushed from here.
+  canned.set('git.push', { pushed: true, remote: 'origin', branch: 'main' });
+  canned.set('git.status', standing({ remote: { name: 'origin', url: 'https://example.com/me/fixture.git' }, ahead: 0, files: [changed[1]] }));
+  before = ran.length;
+  click(button('Push 1 commit', $('#t-body')));
+  await until(() => /Pushed\./.test($('#t-toast').textContent!), 'it to say so');
+  assert.ok(ran.slice(before).includes('git.push'));
+  await until(() => /origin has everything that is committed/.test($('#t-body').textContent!), 'how it stands now');
+  assert.ok((button('Push', $('#t-body')) as HTMLButtonElement).disabled);
+
+  // Everything that is checked is thrown away at once, after asking with how many it is.
+  canned.set('git.status', standing({ remote: { name: 'origin', url: 'https://example.com/me/fixture.git' }, ahead: 0, files: changed }));
+  tab('Chat'); tab('Git');
+  await until(() => file('src/game.ts') && file('src/tide.ts'), 'two changes again');
+  const leave = $('input[aria-label="Commit src/tide.ts"]') as HTMLInputElement;
+  leave.checked = false;
+  leave.dispatchEvent(new w.Event('change'));
+  click(button('Discard 1 checked', $('#t-body')));
+  assert.match($('#t-body .discard').textContent!, /Throw away 1 of 2 changes\? It cannot be brought back\.YesNo/);
+  canned.set('git.discard', { discarded: ['src/game.ts'] });
+  canned.set('git.status', standing({ remote: { name: 'origin', url: 'https://example.com/me/fixture.git' }, ahead: 0, files: [changed[1]] }));
+  before = ran.length;
+  click($('button[aria-label="Yes, discard what is checked"]'));
+  await until(() => /1 change is thrown away\./.test($('#t-toast').textContent!), 'it to say so');
+  assert.ok(ran.slice(before).includes('git.discard'));
+  await until(() => !file('src/game.ts') && file('src/tide.ts'), 'the one that was left out to stay');
+
+  // A change is thrown away per file, after asking.
+  canned.set('git.discard', { path: 'src/tide.ts', was: 'new' });
+  canned.set('git.status', standing({ remote: { name: 'origin', url: 'https://example.com/me/fixture.git' }, ahead: 0, behind: 0 }));
+  before = ran.length;
+  click($('button[aria-label="Discard src/tide.ts"]'));
+  assert.match(file('src/tide.ts').textContent!, /Delete it\?YesNo$/, 'asked once more, in its row');
+  assert.ok(!ran.slice(before).includes('git.discard'), 'nothing is thrown away yet');
+  click($('button[aria-label="No, keep it"]'));
+  assert.doesNotMatch(file('src/tide.ts').textContent!, /Delete it/);
+  click($('button[aria-label="Discard src/tide.ts"]'));
+  click($('button[aria-label="Yes, discard src/tide.ts"]'));
+  await until(() => /It is gone\./.test($('#t-toast').textContent!), 'it to say so');
+  assert.ok(ran.slice(before).includes('git.discard'));
+  await until(() => /Everything in the project is committed\./.test($('#t-body').textContent!), 'nothing to be left');
+  assert.match($('#t-body .standing').textContent!, /main.*clean/);
+
+  // The branches: the one it is on, and the others when asked for.
+  assert.deepEqual(all('#t-body .branch').map((x) => $('b', x).textContent), ['main']);
+  assert.match($('#t-body').textContent!, /Branches \(3\)/);
+  click(button('Show all', $('#t-body')));
+  await until(() => all('#t-body .branch').length === 3, 'the other branches');
+  // One that is only on the remote says so, and can be switched to all the same.
+  assert.match(all('#t-body .branch')[2].textContent!, /feature\/faroriginonly on origin · .* · Far awaySwitch/);
+  assert.match(all('#t-body .branch')[1].textContent!, /feature\/tide↑3↓1follows origin\/feature\/tide · .* · Half a tide/);
+  assert.ok(all('#t-body .branch')[0].classList.contains('current'));
+  // Another branch is switched to from here, when nothing is uncommitted.
+  assert.ok(!$('.branch.current button.switch'), 'not to the one it is on');
+  const sw = () => $('button[aria-label="Switch to feature/tide"]') as HTMLButtonElement;
+  assert.ok(!sw().disabled);
+  canned.set('git.switch', { from: 'main', branch: 'feature/tide' });
+  canned.set('git.status', standing({ branch: 'feature/tide', remote: { name: 'origin', url: 'https://example.com/me/fixture.git' }, ahead: 3, behind: 1,
+    branches: [{ name: 'feature/tide', current: true, ts: 1780000000000, subject: 'Half a tide', follows: 'origin/feature/tide', ahead: 3, behind: 1 }, { name: 'main', current: false, ts: 1790000000000, subject: 'The first one' }] }));
+  before = ran.length;
+  click(sw());
+  await until(() => /The project is on feature\/tide now\./.test($('#t-toast').textContent!), 'it to say so');
+  assert.ok(ran.slice(before).includes('git.switch'));
+  await until(() => /feature\/tide↑3↓1/.test($('#t-body .standing').textContent!), 'the branch it is on now');
+  // With something uncommitted the button is off, and says why.
+  canned.set('git.status', standing({ remote: { name: 'origin', url: 'https://example.com/me/fixture.git' }, ahead: 0, behind: 0, files: [changed[0]] }));
+  host.events.add({ type: 'project.switched', by: 'me', branch: 'main', from: 'feature/tide' });
+  await until(() => file('src/game.ts'), 'the change');
+  click(button('Show all', $('#t-body')));
+  assert.ok(sw().disabled);
+  assert.match($('#t-body').textContent!, /To switch to another branch, commit or throw away what you changed first\./);
+  canned.set('git.status', standing({ remote: { name: 'origin', url: 'https://example.com/me/fixture.git' }, ahead: 0, behind: 0 }));
+  host.events.add({ type: 'project.committed', by: 'me', hash: 'eee', subject: 'x', files: 1 });
+  await until(() => !file('src/game.ts'), 'it to be clean again');
+
+  // Where it is pushed is set here.
   const field = () => $('.adder.remote input') as HTMLInputElement;
-  assert.equal(field().value, '');
-  type(field(), 'https://example.com/me/fixture.git');
-  canned.set('project.setRemote', { url: 'https://example.com/me/fixture.git', pushed: true });
-  canned.set('project.remote', { git: true, url: 'https://example.com/me/fixture.git', remote: 'origin', branch: 'main' });
-  const before = ran.length;
+  assert.equal(field().value, 'https://example.com/me/fixture.git');
+  assert.match($('#t-body').textContent!, /main is pushed there after every accept/);
+  type(field(), 'https://example.com/me/other.git');
+  canned.set('project.setRemote', { url: 'https://example.com/me/other.git', pushed: true });
+  before = ran.length;
   click(button('Save', $('.adder.remote')));
   await until(() => /It is set, and the project is pushed there/.test($('#t-toast').textContent!), 'it to say so');
   assert.ok(ran.slice(before).includes('project.setRemote'));
-  await until(() => field()?.value === 'https://example.com/me/fixture.git' && /main is pushed there after every accept/.test($('#t-body').textContent!), 'the setting as it is now');
-  // That a push went, or did not, is a line in the conversation.
+
+  // And whether tandem commits and pushes by itself.
+  const keep = (label: string) => $(`.keep input[aria-label="${label}"]`) as HTMLInputElement;
+  await until(() => keep('Commit what is accepted'), 'the switches');
+  assert.ok(keep('Commit what is accepted').checked && keep('Push after every accept').checked, 'both, unless said not to');
+  canned.set('project.keep', { changed: true, commit: false, push: true });
+  canned.set('git.status', standing({ remote: { name: 'origin', url: 'https://example.com/me/fixture.git' }, ahead: 0, commit: false }));
+  before = ran.length;
+  keep('Commit what is accepted').checked = false;
+  keep('Commit what is accepted').dispatchEvent(new w.Event('change'));
+  await until(() => /left uncommitted: committing and pushing are yours, here/.test($('#t-body').textContent!), 'what it means');
+  assert.ok(ran.slice(before).includes('project.keep'));
+  assert.ok(!keep('Commit what is accepted').checked);
+  assert.ok(!keep('Push after every accept').checked && keep('Push after every accept').disabled, 'what is not committed is not pushed');
+  assert.doesNotMatch($('#t-body').textContent!, /pushed there after every accept/);
+
+  // What happened is a line in the conversation, and the panel follows what happens elsewhere.
+  canned.set('git.status', standing({ files: [changed[0]], commit: false }));
+  host.events.add({ type: 'project.committed', by: 'me', hash: 'fff0000aaa', subject: 'Seasons follow the day', files: 1 });
+  await until(() => file('src/game.ts'), 'the panel to look again');
+  host.events.add({ type: 'keep.changed', by: 'me', commit: false, push: true });
   host.events.add({ type: 'project.pushed', by: 'me', ok: true, remote: 'origin', branch: 'main' });
   host.events.add({ type: 'project.pushed', by: 'me', ok: false, remote: 'origin', branch: 'main', says: 'rejected (fetch first)' });
+  host.events.add({ type: 'project.discarded', by: 'me', path: 'src/tide.ts', was: 'new' });
   tab('Chat');
   await until(() => all('.chat .sys.fail').some((x) => /committed, but could not be pushed to origin: rejected \(fetch first\)/.test(x.textContent!)), 'the push that did not go');
   assert.ok(all('.chat .sys').some((x) => /pushed to origin \(main\)/.test(x.textContent!)));
-  canned.delete('project.remote');
-  canned.delete('project.setRemote');
+  assert.ok(all('.chat .sys').some((x) => /pulled 2 commits from origin \(main\)/.test(x.textContent!)));
+  assert.ok(all('.chat .sys').some((x) => /you committed 1 file: Seasons follow the day/.test(x.textContent!)));
+  assert.ok(all('.chat .sys').some((x) => /you threw away what was not committed in src\/tide\.ts/.test(x.textContent!)));
+  assert.ok(all('.chat .sys').some((x) => /no longer commits in the project or pushes it/.test(x.textContent!)));
+
+  // A project that is not in a repository says so.
+  canned.set('git.status', { git: false });
+  tab('Git');
+  await until(() => /No repository\./.test($('#t-body').textContent!), 'it to say so');
+  for (const k of ['git.status', 'git.diff', 'git.commit', 'git.push', 'git.pull', 'git.fetch', 'git.switch', 'git.discard', 'project.setRemote', 'project.keep']) canned.delete(k);
+  tab('Chat');
 });
 
 test('projects: the folders that could be one are listed, and another is chosen from the page', async () => {
@@ -1493,15 +1694,32 @@ test('projects: the folders that could be one are listed, and another is chosen 
   mkdirSync(join(beside, 'other-game/.git'), { recursive: true });
   writeFileSync(join(beside, 'other-game/tandem.json'), JSON.stringify({ name: 'The Other Game', page: 'serve {port}' }));
   mkdirSync(join(beside, 'loose-notes'));
-  // Not a tab: the button at the end of the tabs, where another project is opened.
-  click($('button[aria-label="Open another project"]'));
+  // The last of the tabs is where another project is opened.
+  tab('Projects');
   await until(() => all('.item.project').length >= 3, 'the folders');
+  assert.equal($('.t-tab.on').textContent, 'Projects');
+  // (Beside the tabs are the settings, which are not a tab: what the person sets for this browser. Sound is off.)
+  click($('button[aria-label="Settings"]'));
   assert.equal(all('.t-tab.on').length, 0, 'none of the tabs is the one showing');
+  assert.equal(($('input[aria-label="Sound"]') as HTMLInputElement).checked, false);
+  tab('Projects');
+  await until(() => all('.item.project').length >= 3, 'the folders again');
   const item = (name: string) => all('.item.project').find((i) => $('b', i).textContent === name)!;
   assert.equal(all('.item.project')[0], item('Fixture'), 'the one that is open comes first');
   assert.match(item('Fixture').textContent!, /open now/);
   assert.match(item('The Other Game').textContent!, /new to tandem · has a page/);
   assert.match(item('loose-notes').textContent!, /no git repository yet: tandem starts one when you open it/);
+  // The list is narrowed to what is typed, a part of a name or of a folder, and the field keeps it.
+  const narrow = () => $('input[aria-label="Filter the projects"]') as HTMLInputElement;
+  type(narrow(), 'other gam');
+  assert.deepEqual(all('.item.project').map((i) => $('b', i).textContent), ['The Other Game']);
+  type(narrow(), 'no such thing');
+  assert.equal(all('.item.project').length, 0);
+  assert.match($('#t-body').textContent!, /Nothing called that\. \d+ folders are left out\./);
+  type(narrow(), 'LOOSE');
+  assert.deepEqual(all('.item.project').map((i) => $('b', i).textContent), ['loose-notes']);
+  type(narrow(), '');
+  assert.ok(all('.item.project').length >= 3);
   click(item('The Other Game'));
   await until(() => ran.includes('projects.open'), 'the other project to be asked for');
   // (Nothing looks after this core, so it is only remembered; started as `tandem`, the core starts again on it and the page with it.)
@@ -1514,7 +1732,7 @@ test('projects: the folders that could be one are listed, and another is chosen 
 
   // Projects that are somewhere else are found by walking the folders too, not by typing a path: the folder they
   // are in is pointed at, and standing in a repository that one can be opened.
-  click($('button[aria-label="Open another project"]'));
+  tab('Projects');
   const has = (text: string) => all('button', $('#t-sheet')).some((x) => x.textContent === text);
   await until(() => has('Find a folder'), 'the chooser');
   mkdirSync(join(beside, 'elsewhere/far-game'), { recursive: true });
@@ -1533,7 +1751,7 @@ test('projects: the folders that could be one are listed, and another is chosen 
 
   // And a project that does not exist yet is made from here. Where it goes is the person's to choose, every time:
   // until a folder is chosen it cannot be made.
-  click($('button[aria-label="Open another project"]'));
+  tab('Projects');
   await until(() => $('input[aria-label="Name of a new project"]'), 'the form');
   assert.match($('.where').textContent!, /Where\? Not chosen yet\./);
   assert.ok((button('Create') as HTMLButtonElement).disabled);

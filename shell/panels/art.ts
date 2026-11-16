@@ -65,10 +65,23 @@ export function artPanel(): Panel {
       : h('p.t-hint', {}, 'No worker is drawing. When one does, you watch it here.'));
   }
 
-  async function list() {
+  /** The drawings as they were last listed: shown at once when the tab is opened, and listed again behind it. */
+  let drawings: Drawing[] | undefined;
+
+  async function list(atOnce = false) {
     open = undefined; live = undefined;
-    const all = (await app.act<Drawing[]>('art.list')) ?? [];
+    if (atOnce && drawings && body) paintList(drawings);
+    const all = await app.act<Drawing[]>('art.list');
+    if (!all) return;
+    const same = !!drawings && JSON.stringify(all) === JSON.stringify(drawings);
+    drawings = all;
     if (!body || open) return;
+    if (!same || !body.contains(workersEl)) paintList(all);
+    else void paintWorkers();
+  }
+
+  function paintList(all: Drawing[]) {
+    if (!body) return;
     clear(body,
       h('h3', {}, 'Workers'),
       workersEl,
@@ -167,10 +180,11 @@ export function artPanel(): Panel {
       if (!id && open && 'worker' in open) return void workerView(open.worker);
       const name = id ?? (open && 'drawing' in open ? open.drawing : undefined);
       if (name) {
-        const d = ((await app.act<Drawing[]>('art.list')) ?? []).find((x) => x.name === name);
+        // (A drawing that was listed before is opened from that; one that is new since is asked for.)
+        const d = drawings?.find((x) => x.name === name) ?? (drawings = (await app.act<Drawing[]>('art.list')) ?? drawings)?.find((x) => x.name === name);
         if (d && body) return void detail(d);
       }
-      void list();
+      void list(true);
     },
     hide() { body = undefined; live = undefined; },
     event(ev: Event) {

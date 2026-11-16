@@ -64,20 +64,31 @@ export function conceptsPanel(): Panel {
   /** What is being typed as a loose thought: the list is drawn again when something changes, and it is not lost then. */
   let typing = '';
 
-  async function list() {
+  /** What the document was made of when it was last asked for: it is shown at once when the tab is opened, and asked again behind it. */
+  let heard: string | undefined;
+
+  async function list(atOnce = false) {
     if (!body) return;
     open = undefined;
     dirty = false;
     if (foot) clear(foot);
+    // The tab is opened: what was there last time is there at once, and is drawn again only if it turns out to be
+    // different now. (Not on the way back from a piece: what was done there is waited for.)
+    if (atOnce && heard !== undefined) paint();
     const [concepts, thoughts] = await Promise.all([app.act<Brief[]>('concepts.list'), app.act<Thought[]>('thoughts.list')]);
-    if (!body || open) return;
-    all = concepts ?? [];
-    loose = thoughts ?? [];
-    words = new Map();
+    if (!concepts || !thoughts) return;
+    const texts = new Map<string, string>();
+    await Promise.all(concepts.filter((c) => !shut.has(c.id)).map(async (c) => { const got = await app.act<Concept>('concepts.get', { id: c.id }); if (got) texts.set(c.id, got.text); }));
+    const now = JSON.stringify([concepts, thoughts, [...texts].sort()]);
+    const same = now === heard;
+    heard = now;
+    all = concepts;
+    loose = thoughts;
+    // (A piece that was opened by hand meanwhile keeps the words that were read for it.)
+    words = new Map([...words, ...texts].filter(([id]) => all.some((c) => c.id === id)));
     for (const set of [shut, folded]) for (const id of set) if (!all.some((c) => c.id === id)) set.delete(id);
-    await Promise.all(all.filter((c) => !shut.has(c.id)).map((c) => read(c.id)));
     if (!body || open) return;
-    paint();
+    if (!same || !body.querySelector('.adder.mind')) paint();
   }
 
   async function read(id: string) {
@@ -94,6 +105,7 @@ export function conceptsPanel(): Panel {
       else { shut.delete(c.id); if (!words.has(c.id)) await read(c.id); }
       if (body && !open) paint();
     };
+    const flip = () => { if (folded.has(c.id)) folded.delete(c.id); else folded.add(c.id); paint(); };
     return h(`div.piece.${depth ? 'part' : 'chapter'}`, { data: { id: c.id, open: String(isOpen) } },
       h('div.head', { onclick: () => void toggle() },
         h('div.line', {}, h('b', {}, c.locked && [icon('lock'), ' '], c.name), h('span.t-chip.stage', { data: { stage: c.stage } }, c.stage)),
@@ -105,10 +117,12 @@ export function conceptsPanel(): Panel {
         h('div.t-row', {},
           h<'button'>('button', { onclick: () => void detail(c.id) }, icon('edit'), 'Edit'),
           h<'button'>('button', { onclick: () => app.attach(`concept:${c.id}`) }, 'Talk about this'))),
-      mine.length > 0 && h('div.fold', { 'aria-expanded': String(!folded.has(c.id)), onclick: () => { if (folded.has(c.id)) folded.delete(c.id); else folded.add(c.id); paint(); } },
-        h('b', {}, `${mine.length} ${mine.length === 1 ? 'part' : 'parts'}`),
-        folded.has(c.id) && h('span', {}, mine.map((m) => m.name).join(', '))),
-      mine.length > 0 && !folded.has(c.id) && h('div.parts', {}, mine.map((m) => piece(m, parts, depth + 1))));
+      // Its parts hang on a line down their left side, as a block of code does on its braces: the line is what puts them away.
+      mine.length > 0 && h('div.nest', {},
+        h<'button'>('button.rail', { 'aria-expanded': String(!folded.has(c.id)), 'aria-label': `${folded.has(c.id) ? 'Show' : 'Put away'} the parts of ${c.name}`, onclick: flip }),
+        folded.has(c.id)
+          ? h('small.away', { onclick: flip }, `${mine.length} ${mine.length === 1 ? 'part' : 'parts'}`)
+          : h('div.parts', {}, mine.map((m) => piece(m, parts, depth + 1)))));
   }
 
   /** A loose thought: the words as they were typed, and what can be done with it. */
@@ -238,7 +252,7 @@ export function conceptsPanel(): Panel {
     show(b, f, id) {
       body = b;
       foot = f;
-      void (id ? detail(id) : open ? detail(open) : list());
+      void (id ? detail(id) : open ? detail(open) : list(true));
     },
     hide() { body = undefined; foot = undefined; },
     event(ev: Event, live) {

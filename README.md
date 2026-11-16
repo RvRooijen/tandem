@@ -58,7 +58,7 @@ project that wants tandem out of its history ignores `.tandem` and that is all:
 
 ## A new project, and one that exists already
 
-The project chooser (the folder button in the sheet) makes a new project: a name, and a folder you choose by walking
+The project chooser (the Projects tab in the sheet) makes a new project: a name, and a folder you choose by walking
 the folders of the machine (it is never chosen for you); it makes a new folder there with a git repository in it.
 It also opens any folder; one without a repository gets one, with what is in it as its first commit.
 

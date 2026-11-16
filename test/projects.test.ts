@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { CommandError, createRegistry } from '../core/commands.ts';
 import { execFileSync } from 'node:child_process';
 import { createHost } from '../core/host.ts';
-import { listProjects, projectCommands, readState, welcome } from '../core/projects.ts';
+import { listProjects, projectCommands, readState, welcome, writeState } from '../core/projects.ts';
 import { startLobby } from '../core/server.ts';
 import { fixture } from './helpers.ts';
 
@@ -50,6 +50,11 @@ test('opening a project: a repository, when nothing is in the way; then the core
   busy = undefined;
   assert.deepEqual(await run('projects.open', { dir: join(root, 'garden') }), { opening: join(root, 'garden'), restarting: true });
   assert.equal(readState().project, join(root, 'garden'), 'it is remembered, for the next start too');
+  // And when: what was opened last is listed first, after the one that is open.
+  assert.ok(Math.abs(readState().opened![join(root, 'garden')] - Date.now()) < 5000);
+  writeState({ ...readState(), opened: { [join(root, 'garden')]: 1000, [join(root, 'notes')]: 2000 } });
+  assert.deepEqual(mine(listProjects(join(root, 'website'))).map((p) => [p.name, p.opened]), [['website', undefined], ['notes', 2000], ['Gnome Garden', 1000]]);
+  writeState({ ...readState(), opened: { [join(root, 'garden')]: Date.now() } });
   await new Promise((r) => setTimeout(r, 400));
   assert.equal(restarted, 1);
 

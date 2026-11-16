@@ -56,6 +56,8 @@ export interface Host {
   turnOver(): void;
   /** Things to stop before the core does. */
   onStop: (() => void)[];
+  /** Why the project cannot be put on another footing right now (the agent or a worker is at work in it), as whoever starts them says it. */
+  busy: { why?: () => string | undefined };
   dirs: { project: string; data: string; looks: string; files: string };
   /** Run a command as somebody. */
   run(name: string, input: Record<string, unknown> | undefined, by: By, round?: string): Promise<unknown>;
@@ -117,13 +119,14 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   const locks = createLocks(project.locksFile);
   const thoughts = createThoughts(join(project.dirs.tandem, 'thoughts.json'));
   const onStop: (() => void)[] = [];
+  const busy: { why?: () => string | undefined } = {};
 
   // Working files and project files: the agent codes in a copy of its own (code.ts), when the project is in a
   // repository. What the engine itself writes in the project (concepts, locks, accepted drawings) is committed by
   // it, so the copy can take it in; the person's own uncommitted work is theirs and is left alone.
   opts.doing?.('looking at its git repository');
   const candidate = opts.code === undefined && process.env.TANDEM_CODE !== 'off'
-    ? createCode({ root: project.root, paths: ['.tandem/concepts', '.tandem/thoughts.json', '.tandem/locks.json', '.tandem/.gitignore', '.tandem/tandem.json', '.tandem/page.sh', 'art', 'depth'] }) : undefined;
+    ? createCode({ root: project.root, paths: ['.tandem/concepts', '.tandem/thoughts.json', '.tandem/locks.json', '.tandem/.gitignore', '.tandem/tandem.json', '.tandem/page.sh', 'art', 'depth'], commits: () => project.config.commit !== false }) : undefined;
   const code = opts.code ?? (candidate?.usable() ? candidate : undefined);
   // (Also for a project that has no page yet: the change set that gives it one is played from the copy.)
   const preview = code ? createPreview(() => project.at(code.work), join(dataDir, 'copy-page.log')) : undefined;
@@ -337,12 +340,14 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   /**
    * Something was accepted: what the engine wrote in the project for it (a concept, a drawing, how it is run) is
    * committed, and the project's branch goes to its remote when it has one. How a push went is said; one that
-   * does not go undoes nothing.
+   * does not go undoes nothing. A project can say it is not committed for, or not pushed (project.keep): then
+   * that is the person's to do.
    */
   async function publish(by: By) {
     if (!code) return;
     try {
       code.commitProject('What was changed and accepted in tandem');
+      if (project.config.commit === false || project.config.push === false) return;
       const pushed = await code.push();
       if (pushed) events.add({ type: 'project.pushed', by, ok: pushed.ok, remote: pushed.remote, branch: pushed.branch, ...(pushed.says && { says: pushed.says }) });
     } catch (e) {
@@ -765,6 +770,121 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         await publish(c.by);
         const said = events.since(0).at(-1)!;
         return { url: i.url.trim(), ...(said.type === 'project.pushed' && { pushed: !!said.ok, ...(typeof said.says === 'string' && { says: said.says }) }) };
+      },
+    },
+    // ---- version control: the person's own, from tandem's page
+    {
+      name: 'git.status', kind: 'read',
+      about: 'How the project stands in its repository: its branch and its other branches (what each follows and how far apart they are), its remote, how many commits the remote does not have (ahead) and has more (behind, as far as is known here), the files that are not committed (with the lines that came and went), the last commits and whether each is pushed, whose name a commit made here carries, and whether tandem commits and pushes by itself (project.keep).',
+      run: () => (code ? { git: true, ...code.standing(), commit: project.config.commit !== false, push: project.config.push !== false } : { git: false }),
+    },
+    {
+      name: 'git.diff', kind: 'read',
+      about: 'What is not committed in one file of the project, as a diff against the last commit.',
+      input: { path: 'string' },
+      run(_c, i) {
+        if (!code) throw new CommandError('unsupported', 'the project is not in a git repository');
+        try { return { path: i.path, diff: code.uncommittedIn(i.path) }; } catch (e) { throw new CommandError('input', e instanceof Error ? e.message.split('\n')[0] : String(e)); }
+      },
+    },
+    {
+      name: 'git.commit', kind: 'write',
+      about: 'Commit what is not committed in the project: everything, or only the files in paths. It is the person\'s commit, under their own name, with the message they give. Only the person does this.',
+      input: { message: 'string', paths: 'json?' },
+      run(c, i) {
+        if (!code) throw new CommandError('unsupported', 'the project is not in a git repository');
+        if (!i.message.trim()) throw new CommandError('input', 'a commit says what it is: give it a message');
+        if (i.paths !== undefined && i.paths !== null && !(Array.isArray(i.paths) && i.paths.length && (i.paths as unknown[]).every((x) => typeof x === 'string'))) throw new CommandError('input', 'paths is a list of files');
+        let made: ReturnType<Code['commit']>;
+        try { made = code.commit(i.message.trim(), (i.paths as string[] | null | undefined) ?? undefined); } catch (e) { throw new CommandError('failed', e instanceof Error ? e.message.split('\n')[0] : String(e)); }
+        events.add({ type: 'project.committed', by: c.by, hash: made.hash, subject: made.subject, files: made.files });
+        return made;
+      },
+    },
+    {
+      name: 'git.discard', kind: 'write',
+      about: 'Throw away what is not committed in a file of the project (path), or in several (paths): each is as the last commit has it again (a new file is gone, one that was taken away is back). It cannot be undone. Only the person does this.',
+      input: { path: 'string?', paths: 'json?' },
+      run(c, i) {
+        if (!code) throw new CommandError('unsupported', 'the project is not in a git repository');
+        if (i.paths !== undefined && i.paths !== null && !(Array.isArray(i.paths) && i.paths.length && (i.paths as unknown[]).every((x) => typeof x === 'string'))) throw new CommandError('input', 'paths is a list of files');
+        const asked = i.paths ? i.paths as string[] : i.path ? [i.path] : [];
+        if (!asked.length) throw new CommandError('input', 'say which file: path, or paths for several');
+        // (Looked at before anything is thrown away: one that cannot be, and nothing is.)
+        const done: FileChange[] = [];
+        try {
+          for (const file of code.discardable(asked)) done.push(code.discard(file.path, file));
+        } catch (e) { throw new CommandError('input', e instanceof Error ? e.message.split('\n')[0] : String(e)); }
+        finally { if (done.length) events.add({ type: 'project.discarded', by: c.by, path: done[0].path, was: done[0].status, count: done.length }); }
+        return i.paths ? { discarded: done.map((f) => f.path) } : { path: done[0].path, was: done[0].status };
+      },
+    },
+    {
+      name: 'git.switch', kind: 'write',
+      about: 'Put the project on another of its branches; one that is only on the remote (git.status says so) becomes a branch here that follows it. Only when nothing in it is uncommitted, nothing of the agent\'s is waiting to be decided, and the agent is not at work: the agent\'s working copy goes along, and is that branch from then on. Only the person does this.',
+      input: { branch: 'string' },
+      run(c, i) {
+        if (!code) throw new CommandError('unsupported', 'the project is not in a git repository');
+        const why = busy.why?.();
+        if (why) throw new CommandError('busy', why);
+        if (waiting().some((p) => p.kind === 'code')) throw new CommandError('busy', 'a change set of the agent\'s is waiting: accept or reject it first, it was made for the branch the project is on');
+        let went: { from: string; branch: string };
+        try { went = code.switchTo(i.branch.trim()); } catch (e) { throw new CommandError('failed', e instanceof Error ? e.message.split('\n')[0] : String(e)); }
+        events.add({ type: 'project.switched', by: c.by, branch: went.branch, from: went.from });
+        return went;
+      },
+    },
+    {
+      name: 'git.fetch', kind: 'write',
+      about: 'Ask the remote what it has, of every branch. Nothing of the project changes: only what is known here of the remote, so that how far ahead and behind the branches are (git.status) is true again. Only the person does this.',
+      async run() {
+        if (!code) throw new CommandError('unsupported', 'the project is not in a git repository');
+        const got = await code.fetch();
+        if (!got) throw new CommandError('missing', 'the project has no remote to ask: give it one first');
+        if (!got.ok) throw new CommandError('failed', `${got.remote} could not be asked: ${got.says}`);
+        const now = code.standing();
+        return { fetched: true, remote: got.remote, ...(now.ahead !== undefined && { ahead: now.ahead, behind: now.behind }) };
+      },
+    },
+    {
+      name: 'git.pull', kind: 'write',
+      about: 'Take in what the remote has of the project\'s branch, now. Only forward: when the project has commits the remote does not have and the remote has others, nothing is merged and it says so. Not while the agent is at work. Only the person does this.',
+      async run(c) {
+        if (!code) throw new CommandError('unsupported', 'the project is not in a git repository');
+        if (!code.remote()) throw new CommandError('missing', 'the project has no remote to pull from: give it one first');
+        const why = busy.why?.();
+        if (why) throw new CommandError('busy', why);
+        const pulled = (await code.pull())!;
+        events.add({ type: 'project.pulled', by: c.by, ok: pulled.ok, remote: pulled.remote, branch: pulled.branch, commits: pulled.commits, ...(pulled.says && { says: pulled.says }) });
+        return { pulled: pulled.ok, remote: pulled.remote, branch: pulled.branch, commits: pulled.commits, ...(pulled.says && { says: pulled.says }) };
+      },
+    },
+    {
+      name: 'git.push', kind: 'write',
+      about: 'Push the project\'s branch to its remote, now. Never forced: when the remote has something the project does not, it says so and nothing changes. Only the person does this.',
+      async run(c) {
+        if (!code) throw new CommandError('unsupported', 'the project is not in a git repository');
+        if (!code.remote()) throw new CommandError('missing', 'the project has no remote to push to: give it one first');
+        const pushed = await code.push();
+        if (!pushed) return { pushed: false, says: 'the remote has everything already' };
+        events.add({ type: 'project.pushed', by: c.by, ok: pushed.ok, remote: pushed.remote, branch: pushed.branch, ...(pushed.says && { says: pushed.says }) });
+        return { pushed: pushed.ok, remote: pushed.remote, branch: pushed.branch, ...(pushed.says && { says: pushed.says }) };
+      },
+    },
+    {
+      name: 'project.keep', kind: 'write',
+      about: 'Say whether tandem commits in this project and whether it pushes it; both unless said not to. commit false: an accepted change set is written in the project\'s files and left uncommitted, what tandem itself writes (concepts, drawings) too, and nothing is pushed: committing and pushing are the person\'s. push false: tandem commits, and does not push. Kept with how the project is run (project.setup shows it). Only the person does this.',
+      input: { commit: 'boolean?', push: 'boolean?' },
+      run(c, i) {
+        const after: Record<string, unknown> = {};
+        // (Only a no is written down.)
+        for (const k of ['commit', 'push'] as const) if (i[k] !== undefined && i[k] !== (project.config[k] !== false)) after[k] = i[k] ? null : false;
+        if (!Object.keys(after).length) return { changed: false, commit: project.config.commit !== false, push: project.config.push !== false };
+        writeSetup(after as RecordValue);
+        // (The copy follows something else from now on: the project's branch, or its files as they are.)
+        try { code?.sync(); } catch { /* it is brought up to date when the agent next works */ }
+        events.add({ type: 'keep.changed', by: c.by, commit: project.config.commit !== false, push: project.config.push !== false });
+        return { changed: true, commit: project.config.commit !== false, push: project.config.push !== false };
       },
     },
     {
@@ -1481,7 +1601,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   );
 
   return {
-    project, game: hasGame ? game : undefined, registry, events, proposals, concepts, thoughts, locks, art, code, preview, proposeCode, tweaked, onStop,
+    project, game: hasGame ? game : undefined, registry, events, proposals, concepts, thoughts, locks, art, code, preview, proposeCode, tweaked, onStop, busy,
     turnOver() { release('engine', 'the agent\'s turn is over'); takenBack = false; wantExample(); },
     dirs: { project: project.root, data: dataDir, looks: looksDir, files: filesDir },
     run: (name, input, by, round) => registry.run(name, input, { by, round }),

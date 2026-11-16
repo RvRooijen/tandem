@@ -42,10 +42,11 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
   if (runner) host.registry.add(...runner.commands);
   // Whoever stops the core stops what it started: the agent and the workers are its children.
   host.onStop.push(() => runner?.stop(), () => host.art.workers.stopAll());
+  host.busy.why = () => (runner?.status().busy ? 'the agent is in the middle of something here; stop it or let it finish first' : host.art.workers.list().some((w) => w.state === 'running') ? 'a worker is drawing here; stop it or let it finish first' : undefined);
   // Another project is opened from the page: the core ends, and whoever looks after it starts it on that one.
   host.registry.add(...projectCommands({
     current: host.project.root,
-    busy: () => (runner?.status().busy ? 'the agent is in the middle of something here; stop it or let it finish first' : host.art.workers.list().some((w) => w.state === 'running') ? 'a worker is drawing here; stop it or let it finish first' : undefined),
+    busy: () => host.busy.why?.(),
     restart: process.env.TANDEM_SUPERVISED ? () => { for (const stop of host.onStop) stop(); process.exit(SWITCH); } : undefined,
   }));
 

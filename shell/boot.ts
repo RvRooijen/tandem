@@ -6,7 +6,9 @@ import { h } from './dom.ts';
 import { artPanel } from './panels/art.ts';
 import { chatPanel } from './panels/chat.ts';
 import { conceptsPanel } from './panels/concepts.ts';
+import { gitPanel } from './panels/git.ts';
 import { projectsPanel } from './panels/projects.ts';
+import { settingsPanel } from './panels/settings.ts';
 import { createStage } from './stage.ts';
 
 export async function boot() {
@@ -34,7 +36,7 @@ export async function boot() {
     changed: () => app.stageChanged(),
   });
   // With no project open there is one thing to do: choose one.
-  const app = createApp(layer, info, stage, info.project ? [chatPanel(), conceptsPanel(), artPanel(), projectsPanel()] : [projectsPanel()]);
+  const app = createApp(layer, info, stage, info.project ? [chatPanel(), conceptsPanel(), artPanel(), gitPanel(), projectsPanel(), settingsPanel()] : [projectsPanel(), settingsPanel()]);
   if (!info.project) { app.open('projects'); return app; }
 
   // Everything up to now is history; what comes after is live.

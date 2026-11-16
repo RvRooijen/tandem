@@ -590,6 +590,8 @@ export function chatPanel(): Panel {
         if (ev.by === 'engine' && ev.kind === 'accepted') return h('div.sys.engine', {}, icon('engine'), ` The agent was told what you accepted${ev.changed ? ', and what you made different in it' : ''}.`);
         if (ev.by === 'engine') return h('div.sys.engine', {}, icon('engine'), ev.kind === 'init' ? ' The agent was asked to read this project and set tandem up for it: its concepts, and how it is run.' : ` to the agent: ${String(ev.text ?? '')}`);
         return h(`div.msg.${ev.by === 'me' ? 'me' : 'agent'}${ev.error ? '.error' : ''}`, {},
+          // (The hole beside what the agent said: the figure of the round button is in the last one. app.ts)
+          ev.by !== 'me' && h('i.t-hole', { 'aria-hidden': 'true' }),
           Array.isArray(ev.refs) && h('div.refs', {}, (ev.refs as string[]).map((r) => refChip(app, r))),
           Array.isArray(ev.files) && h('div.shared', {}, (ev.files as Shared[]).map((f) => fileChip(f))),
           prose(String(ev.text ?? '')),
@@ -621,6 +623,16 @@ export function chatPanel(): Panel {
         return h('div.sys', {}, icon('yes'), ` how tandem runs the project was changed (${(ev.fields as string[]).join(', ')})${ev.restarting ? '. Its page starts again with it' : ''}`);
       case 'remote.changed':
         return h('div.sys', {}, icon('yes'), ev.url ? ` the project is pushed to ${ev.url} from now on` : ' the project has no remote any more');
+      case 'keep.changed':
+        return h('div.sys', {}, icon('yes'), ev.commit === false ? ' tandem no longer commits in the project or pushes it: what is accepted is left in its files for you to commit' : ev.push === false ? ' tandem commits what is accepted, and no longer pushes it' : ' tandem commits what is accepted and pushes it');
+      case 'project.pulled':
+        return h(`div.sys${ev.ok ? '' : '.fail'}`, {}, icon(ev.ok ? 'yes' : 'close'), ev.ok ? (Number(ev.commits) ? ` pulled ${ev.commits} ${ev.commits === 1 ? 'commit' : 'commits'} from ${ev.remote} (${ev.branch})` : ` nothing new on ${ev.remote} (${ev.branch})`) : ` could not pull from ${ev.remote}: ${String(ev.says ?? '')}`);
+      case 'project.switched':
+        return h('div.sys', {}, icon('yes'), ` the project is on ${String(ev.branch ?? '')} now${ev.from ? ` (it was on ${String(ev.from)})` : ''}`);
+      case 'project.discarded':
+        return h('div.sys', {}, icon('close'), ` you threw away what was not committed in ${Number(ev.count) > 1 ? `${ev.count} files` : String(ev.path ?? '')}`);
+      case 'project.committed':
+        return h('div.sys', {}, icon('yes'), ` you committed ${ev.files} ${ev.files === 1 ? 'file' : 'files'}: ${String(ev.subject ?? '')}`);
       case 'project.pushed':
         return h(`div.sys${ev.ok ? '' : '.fail'}`, {}, icon(ev.ok ? 'yes' : 'close'), ev.ok ? ` pushed to ${ev.remote} (${ev.branch})` : ` what was accepted is committed, but could not be pushed${ev.remote ? ` to ${ev.remote}` : ''}: ${String(ev.says ?? '')}`);
       case 'code.changed':

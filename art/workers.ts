@@ -47,6 +47,8 @@ export interface Worker {
   started: number;
   /** How many runs of it have ended: the silhouette, the colour, and every round of feedback after. */
   rounds?: number;
+  /** What the run it is in was asked, while it runs: a run that was cut off (the engine stopped) is taken up again with it. */
+  asked?: string;
 }
 
 // What only a worker needs to hear; the way of working itself is in the guide.
@@ -79,11 +81,27 @@ export function createWorkers(o: WorkersOptions) {
   const save = (w: Worker) => writeFileSync(file(w.id), JSON.stringify(w, null, 2));
   const cast = (w: Worker) => events.cast({ type: 'art.status', worker: w.id, name: w.names[0], state: w.state, phase: w.phase, doing: w.doing });
 
-  // A worker that was running when the engine stopped is not running any more.
+  // A worker that was running when the engine stopped (tandem was started again after a change was accepted,
+  // another project was opened and this one again, a crash) was cut off with it. It goes on where it was once the
+  // engine is up: in the conversation it had, or, cut off before it had one, with what it was asked. One that was
+  // never written down what it was asked (an older tandem's) cannot, and is stopped.
+  /** The engine is stopping: the runs it ends are not written down as ended, so they are taken up again. */
+  let ending = false;
+  const cut: Worker[] = [];
   for (const id of spaces.list()) {
     const w = get(id);
-    if (w?.state === 'running') { w.state = 'stopped'; w.doing = 'stopped when the engine did'; save(w); }
+    if (w?.state !== 'running') continue;
+    if (w.session || w.asked) cut.push(w);
+    else { w.state = 'stopped'; w.doing = 'stopped when the engine did'; save(w); }
   }
+  setTimeout(() => {
+    for (const w of cut) {
+      if (ending || !spaces.exists(w.id) || runs.has(w.id)) continue;
+      const asked = w.asked ? `\n\nWhat you were asked:\n\n${w.asked}` : '';
+      if (w.session) run(w, `Tandem was started again while you were drawing art/${w.names[0]}.txt, and your run was cut off. Whatever you had drawn is still in your files: look at where it stands (render it), then carry on from where you were and finish the phase. Do not start over.${asked}`, { asked: w.asked, cut: true });
+      else run(w, w.asked!);
+    }
+  }, 800).unref?.();
 
   /** Its changes as one round of proposals, each with a picture before and after. */
   async function propose(w: Worker) {
@@ -102,8 +120,9 @@ export function createWorkers(o: WorkersOptions) {
     }
   }
 
-  function run(w: Worker, prompt: string) {
-    w.state = 'running'; w.doing = 'starting'; w.said = '';
+  /** `how.cut`: it takes up a run that was cut off, in the conversation it had; `how.asked` is what that run was asked. */
+  function run(w: Worker, prompt: string, how: { asked?: string; cut?: boolean } = {}) {
+    w.state = 'running'; w.doing = 'starting'; w.said = ''; w.asked = how.asked ?? prompt;
     active.set(w.id, w);
     save(w); cast(w);
     const edit = w.names.flatMap((n) => [`Edit(art/${n}.txt)`, `Write(art/${n}.txt)`, `Edit(depth/${n}.txt)`, `Write(depth/${n}.txt)`]);
@@ -156,7 +175,8 @@ export function createWorkers(o: WorkersOptions) {
       for (const line of lines) {
         let msg: any;
         try { msg = JSON.parse(line); } catch { continue; }
-        if (msg.session_id) w.session = msg.session_id;
+        // (Kept at once: a run that is cut off is taken up again in this conversation.)
+        if (msg.session_id && msg.session_id !== w.session) { w.session = msg.session_id; if (spaces.exists(w.id)) save(w); }
         if (msg.type === 'stream_event') {
           const e = msg.event;
           if (e?.type === 'content_block_start') {
@@ -191,7 +211,11 @@ export function createWorkers(o: WorkersOptions) {
       runs.delete(w.id);
       active.delete(w.id);
       if (!spaces.exists(w.id)) return;                        // closed while it ran
+      if (ending) return;                                      // the engine is stopping: it goes on when the engine is up again
       const wasStopped = stopped.delete(w.id);
+      // Most often the conversation to go on in is gone: it starts again with what it was asked, once.
+      if (!wasStopped && (failed || code !== 0) && how.cut && !w.said && w.asked) { w.session = undefined; return run(w, w.asked); }
+      delete w.asked;
       if (wasStopped) { w.state = 'stopped'; w.doing = 'stopped'; }
       else if (failed || code !== 0) { w.state = 'failed'; w.doing = failed || err.trim().split('\n').pop() || `claude ended with code ${code}`; }
       else { w.state = 'waiting'; w.doing = w.phase === 'silhouette' ? 'silhouette done: the agent looks at it' : 'done: the agent looks at it'; }
@@ -266,6 +290,9 @@ export function createWorkers(o: WorkersOptions) {
       const proc = runs.get(id);
       if (!proc) return false;
       stopped.add(id);
+      // (Written down at once: stopped by hand, it is not taken up again when the engine starts.)
+      const w = active.get(id);
+      if (w) { w.state = 'stopped'; w.doing = 'stopped'; delete w.asked; save(w); }
       proc.kill();
       return true;
     },
@@ -278,7 +305,8 @@ export function createWorkers(o: WorkersOptions) {
       spaces.remove(id);
     },
 
-    stopAll() { for (const proc of runs.values()) proc.kill(); },
+    /** The engine stops: what is drawing is cut off, and goes on when the engine is up again. */
+    stopAll() { ending = true; for (const proc of runs.values()) proc.kill(); },
   };
 }
 

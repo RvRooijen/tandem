@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CommandError } from '../core/commands.ts';
+import { createHost } from '../core/host.ts';
 import { startServer } from '../core/server.ts';
 import { exportArt } from '../art/export.ts';
 import { spriteSheet } from '../art/sprites.ts';
@@ -186,6 +187,34 @@ test('a worker that fails says so, and a worker can be stopped', async () => {
   assert.equal((await me('art.workers')).length, 1);
   assert.deepEqual(await agent('art.close', { worker: w }), { closed: true });
   assert.deepEqual(await me('art.workers'), []);
+});
+
+test('a worker that was drawing when tandem was started again goes on when it is up; one stopped by hand does not', async () => {
+  const fx = await fixture({ code: false });
+  const one = await startServer({ port: 0, host: fx.host, agent: false });
+  const ask = async (name: string) => ((await fx.host.run('art.ask', { name, message: 'a taller hat' }, 'me')) as { worker: string }).worker;
+  const w = await ask('gnome');
+  await until(() => fx.host.art.workers.get(w)?.session, 'the conversation it draws in');
+  await new Promise((r) => setTimeout(r, 5));
+  const byHand = await ask('garden-icons');
+  assert.deepEqual(await fx.host.run('art.stop', { worker: byHand }, 'me'), { stopped: true });
+  // The engine stops in the middle of its run (a change was accepted, and tandem starts again).
+  await one.close();
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(fx.host.events.since(0).filter((e) => e.type === 'art.round' && e.worker === w).length, 0, 'nothing is said to have ended');
+  const up = await createHost({ project: fx.dir, code: null });
+  const two = await startServer({ port: 0, host: up, agent: false });
+  const cut = up.art.workers.get(w)!;
+  assert.deepEqual([cut.state, cut.session, /a taller hat/.test(cut.asked ?? '')], ['running', 'sess-1', true]);
+  // It goes on by itself, and its round ends as any other: a proposal, and the agent is told.
+  const round = () => up.events.since(0).find((e) => e.type === 'art.round' && e.worker === w);
+  await until(round, 'the round it was cut off in');
+  assert.deepEqual([round()!.state, up.art.workers.get(w)!.state, up.art.workers.get(w)!.asked], ['waiting', 'waiting', undefined]);
+  assert.equal(((await up.run('proposals.list', { status: 'pending' }, 'me')) as { round: string }[]).filter((p) => p.round === w).length, 1);
+  assert.ok(up.events.since(0).some((e) => e.type === 'message' && e.by === 'engine' && e.kind === 'art' && e.worker === w), 'the agent hears of it');
+  assert.deepEqual([up.art.workers.get(byHand)!.state, up.art.workers.busy(byHand)], ['stopped', false]);
+  await two.close();
+  fx.cleanup();
 });
 
 test('tandem exports a project\'s drawings as sheets it can load: looks, animations, depth, tiles, characters', () => {

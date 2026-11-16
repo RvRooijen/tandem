@@ -131,64 +131,174 @@
     const kx = canvas.width / r.width, ky = canvas.height / r.height;
     try { return copyOf(canvas, (x0 - r.left) * kx, (y0 - r.top) * ky, (x1 - x0) * kx, (y1 - y0) * ky, behind(canvas), SMALL); } catch { return null; }
   }
+  // ---- what a picture the browser draws cannot get by itself: a background picture, a font. They are fetched
+  // here (the browser has them already, the page shows them) and written into the picture.
+  const URL_OF = /url\((["']?)(.*?)\1\)/, URLS = new RegExp(URL_OF.source, 'g');
+  /** What may name a picture from elsewhere. */
+  const PICTURED = new Set(['background-image', 'border-image-source', 'list-style-image', 'mask-image', '-webkit-mask-image', 'content']);
+  const fetching = new Map(), ready = new Map();
+  /** Something from elsewhere, kept as what it holds (a data URL in `ready`); what cannot be had is asked again next time. */
+  function inlined(url) {
+    if (ready.has(url)) return Promise.resolve();
+    let got = fetching.get(url);
+    if (!got) {
+      got = (typeof fetch === 'function' ? fetch(url) : Promise.reject(new Error('no fetch')))
+        .then((res) => (res.ok ? res.blob() : null))
+        .then((blob) => (blob && blob.size <= 2e6 ? new Promise((done) => { const fr = new FileReader(); fr.onload = () => done(fr.result); fr.onerror = () => done(null); fr.readAsDataURL(blob); }) : null))
+        .then((data) => { fetching.delete(url); if (typeof data === 'string') ready.set(url, data); }, () => { fetching.delete(url); });
+      fetching.set(url, got);
+    }
+    return got;
+  }
+  /** Styles with what was fetched written in place of where it is. */
+  const swap = (css) => css.replace(URLS, (all, q, u) => (ready.has(u) ? `url("${ready.get(u)}")` : all));
+  const family = (name) => name.trim().replace(/^["']|["']$/g, '').toLowerCase();
+  /**
+   * The fonts the page brought itself, as far as these families and this text need them (a font comes in parts, one
+   * for each kind of letter): without them the picture is in whatever font the browser has by itself.
+   */
+  function fontsFor(families, text) {
+    const points = new Set();
+    for (const ch of text.slice(0, 20000)) points.add(ch.codePointAt(0));
+    const covers = (range) => !range || range.split(',').some((part) => {
+      const m = /U\+([0-9a-f?]+)(?:-([0-9a-f]+))?/i.exec(part);
+      if (!m) return false;
+      const lo = parseInt(m[1].replace(/\?/g, '0'), 16), hi = parseInt(m[2] ?? m[1].replace(/\?/g, 'f'), 16);
+      for (const p of points) if (p >= lo && p <= hi) return true;
+      return false;
+    });
+    const out = [];
+    const walk = (rules, base) => {
+      for (const rule of rules) {
+        if (out.length >= 12) return;
+        if (rule.styleSheet) { try { walk(rule.styleSheet.cssRules, rule.styleSheet.href ?? base); } catch { /* not to be read */ } continue; }
+        if (rule.type !== 5) { if (rule.cssRules && !rule.selectorText) walk(rule.cssRules, base); continue; }
+        const d = rule.style, name = d?.getPropertyValue('font-family') ?? '', range = d?.getPropertyValue('unicode-range') ?? '';
+        const src = URL_OF.exec(d?.getPropertyValue('src') ?? '');
+        if (!src || !families.has(family(name)) || !covers(range)) continue;
+        let url;
+        try { url = new URL(src[2], base).href; } catch { continue; }
+        let css = `font-family:${name};`;
+        for (const p of ['font-style', 'font-weight', 'font-stretch', 'unicode-range']) { const v = d.getPropertyValue(p); if (v) css += `${p}:${v};`; }
+        out.push({ url, css: `@font-face{${css}src:url("${url}");}` });
+      }
+    };
+    for (const sheet of document.styleSheets) { try { walk(sheet.cssRules, sheet.href ?? document.baseURI); } catch { /* a sheet from elsewhere is not to be read */ } }
+    return out;
+  }
+  /** What is painted behind something, when that is more than a colour (a pattern, a gradient): as a layer under it, where it is from there. */
+  function backdrop(el, r) {
+    for (let at = el.parentElement; at; at = at.parentElement) {
+      const cs = getComputedStyle(at), c = cs.backgroundColor;
+      if (cs.backgroundImage && cs.backgroundImage !== 'none') {
+        const ar = at.getBoundingClientRect();
+        let css = `position:absolute;z-index:-1;box-sizing:border-box;left:${ar.left - r.left}px;top:${ar.top - r.top}px;width:${ar.width}px;height:${ar.height}px;`;
+        for (const p of ['background-color', 'background-image', 'background-position-x', 'background-position-y', 'background-size', 'background-repeat', 'background-origin', 'background-clip']) css += `${p}:${cs.getPropertyValue(p)};`;
+        return css;
+      }
+      if (c && c !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(c)) return null;
+    }
+    return null;
+  }
   /**
    * Anything else on the page, drawn again from what it is made of: a copy of it with every style written out,
-   * put in a picture the browser draws. What it cannot draw that way (a font or a picture from elsewhere) is left
-   * out or looks plainer; a browser that will not hand such a picture back gives none.
+   * put in a picture the browser draws. It is to look as it does on the page: what is drawn before and after an
+   * element (::before, ::after) is copied too, the background pictures and the fonts of the page are written into
+   * it, what is painted behind it lies under it, and it is as sharp as the screen is. What cannot be had (a picture
+   * from elsewhere that may not be read) is left out; a browser that will not hand such a picture back gives none.
    */
   function ofElement(el, page) {
-    return new Promise((resolve) => {
-      const r = el.getBoundingClientRect();
-      // (For the whole page: what the window shows of it, with the canvases as they were just copied.)
-      const w = page ? window.innerWidth : Math.ceil(r.width), h = page ? window.innerHeight : Math.ceil(r.height);
-      if (w < 1 || h < 1) return resolve(null);
-      let left = page ? 2000 : 200;
-      const copy = (from) => {
-        if (from.nodeType === 3) return document.createTextNode(from.nodeValue);
-        if (from.nodeType !== 1 || /^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|IFRAME|LINK|META)$/.test(from.tagName) || --left < 0) return null;
-        let to;
-        if (/^(CANVAS|IMG|VIDEO)$/.test(from.tagName)) {
-          // What is drawn, as it is now; where that may not be read, an empty place of its size.
-          to = document.createElement('img');
-          const fr = from.getBoundingClientRect();
-          const pw = from.tagName === 'IMG' ? from.naturalWidth : from.tagName === 'VIDEO' ? from.videoWidth : from.width;
-          const ph = from.tagName === 'IMG' ? from.naturalHeight : from.tagName === 'VIDEO' ? from.videoHeight : from.height;
-          let data = null;
-          try { data = page?.drawn.get(from) ?? copyOf(from, 0, 0, pw, ph, behind(from)); } catch { /* not to be read */ }
-          if (data) to.setAttribute('src', data);
-          to.setAttribute('width', String(Math.round(fr.width)));
-          to.setAttribute('height', String(Math.round(fr.height)));
-        } else to = from.cloneNode(false);
-        const cs = getComputedStyle(from);
-        let css = '';
-        for (let i = 0; i < cs.length; i++) { const v = cs.getPropertyValue(cs[i]); if (v) css += `${cs[i]}:${v};`; }
-        to.setAttribute('style', css);
-        to.removeAttribute('class');
-        to.removeAttribute('id');
-        if (from.tagName === 'INPUT' || from.tagName === 'TEXTAREA') { to.setAttribute('value', from.value ?? ''); if (from.tagName === 'TEXTAREA') to.textContent = from.value ?? ''; }
-        if (!/^(CANVAS|IMG|VIDEO|TEXTAREA)$/.test(from.tagName)) for (const kid of from.childNodes) { const k = copy(kid); if (k) to.append(k); }
-        return to;
-      };
+    const r = el.getBoundingClientRect();
+    // (For the whole page: what the window shows of it, with the canvases as they were just copied.)
+    const w = page ? window.innerWidth : Math.ceil(r.width), h = page ? window.innerHeight : Math.ceil(r.height);
+    if (w < 1 || h < 1) return Promise.resolve(null);
+    let left = page ? 2000 : 400, marks = 0, rules = '', text = '';
+    /** Every copy with its styles (written on it once what they name is fetched), what they name, and the fonts they are in. */
+    const styled = [], urls = new Set(), families = new Set();
+    const written = (cs) => {
+      let css = '';
+      for (let i = 0; i < cs.length; i++) {
+        const v = cs.getPropertyValue(cs[i]);
+        if (!v) continue;
+        css += `${cs[i]}:${v};`;
+        if (PICTURED.has(cs[i]) && v.includes('url(')) for (const m of v.matchAll(URLS)) if (!/^(data:|#|about:)/i.test(m[2])) urls.add(m[2]);
+      }
+      for (const name of (cs.fontFamily ?? '').split(',')) if (name.trim()) families.add(family(name));
+      return css;
+    };
+    const copy = (from) => {
+      if (from.nodeType === 3) { text += from.nodeValue; return document.createTextNode(from.nodeValue); }
+      if (from.nodeType !== 1 || /^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|IFRAME|LINK|META)$/.test(from.tagName) || --left < 0) return null;
+      let to;
+      if (/^(CANVAS|IMG|VIDEO)$/.test(from.tagName)) {
+        // What is drawn, as it is now; where that may not be read, an empty place of its size.
+        to = document.createElement('img');
+        const fr = from.getBoundingClientRect();
+        const pw = from.tagName === 'IMG' ? from.naturalWidth : from.tagName === 'VIDEO' ? from.videoWidth : from.width;
+        const ph = from.tagName === 'IMG' ? from.naturalHeight : from.tagName === 'VIDEO' ? from.videoHeight : from.height;
+        let data = null;
+        try { data = page?.drawn.get(from) ?? copyOf(from, 0, 0, pw, ph, behind(from)); } catch { /* not to be read */ }
+        if (data) to.setAttribute('src', data);
+        to.setAttribute('width', String(Math.round(fr.width)));
+        to.setAttribute('height', String(Math.round(fr.height)));
+      } else to = from.cloneNode(false);
+      styled.push({ to, css: written(getComputedStyle(from)) });
+      to.removeAttribute('class');
+      to.removeAttribute('id');
+      // What the page draws before and after it (an icon, a mark): that is in no element, so it gets a rule of its own.
+      for (const part of ['::before', '::after']) {
+        let ps = null;
+        try { ps = getComputedStyle(from, part); } catch { /* a browser that cannot say */ }
+        const content = ps?.content;
+        if (!content || content === 'none' || content === 'normal' || ps.display === 'none') continue;
+        if (!to.hasAttribute('data-t')) to.setAttribute('data-t', String(++marks));
+        rules += `[data-t="${marks}"]${part}{${written(ps)}}`;
+        if (/^["']/.test(content)) text += content;
+      }
+      if (from.tagName === 'INPUT' || from.tagName === 'TEXTAREA') { text += from.value ?? ''; to.setAttribute('value', from.value ?? ''); if (from.tagName === 'TEXTAREA') to.textContent = from.value ?? ''; }
+      if (!/^(CANVAS|IMG|VIDEO|TEXTAREA)$/.test(from.tagName)) for (const kid of from.childNodes) { const k = copy(kid); if (k) to.append(k); }
+      return to;
+    };
+    let holder, fonts = [];
+    try {
+      const root = copy(el);
+      if (!root || !styled.length) return Promise.resolve(null);
+      // Where it stood among other things does not matter here: it is alone in its picture. (What is placed inside
+      // it by its corners stays placed by them.)
+      const placed = getComputedStyle(el).position;
+      styled[0].css += `margin:${page ? `${r.top}px 0 0 ${r.left}px` : '0'};position:${placed && placed !== 'static' ? 'relative' : 'static'};top:auto;right:auto;bottom:auto;left:auto;transform:none;`;
+      holder = document.createElement('div');
+      holder.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+      holder.setAttribute('style', `position:relative;z-index:0;width:${w}px;height:${h}px;background:${behind(el)};overflow:hidden;`);
+      const under = page ? null : backdrop(el, r);
+      if (under) {
+        const layer = document.createElement('div');
+        styled.push({ to: layer, css: under });
+        for (const m of under.matchAll(URLS)) if (!/^(data:|#|about:)/i.test(m[2])) urls.add(m[2]);
+        holder.append(layer);
+      }
+      holder.append(root);
+      fonts = fontsFor(families, text);
+      for (const f of fonts) if (!/^data:/i.test(f.url)) urls.add(f.url);
+    } catch { return Promise.resolve(null); }
+    // (Not waited for long: whoever pointed is waiting for the picture. What is not there by then is left out.)
+    const had = Promise.all([...urls].map(inlined));
+    return Promise.race([had, new Promise((done) => setTimeout(done, 1500))]).then(() => new Promise((resolve) => {
+      // As sharp as the screen shows it, as far as a picture may be large. (The whole page is as large as the window: a place in its picture is a place on the page.)
+      const k = page ? 1 : Math.max(1, Math.min(window.devicePixelRatio || 1, 3, PICTURE / Math.max(w, h)));
       let svg;
       try {
-        const root = copy(el);
-        if (!root) return resolve(null);
-        // Where it stood among other things does not matter here: it is alone in its picture.
-        root.style.margin = page ? `${r.top}px 0 0 ${r.left}px` : '0';
-        root.style.position = 'static';
-        root.style.transform = 'none';
-        const holder = document.createElement('div');
-        holder.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
-        holder.setAttribute('style', `width:${w}px;height:${h}px;background:${behind(el)};overflow:hidden;`);
-        holder.append(root);
-        svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject x="0" y="0" width="100%" height="100%">${new XMLSerializer().serializeToString(holder)}</foreignObject></svg>`;
+        for (const at of styled) at.to.setAttribute('style', swap(at.css));
+        const sheet = fonts.map((f) => f.css).join('') + rules;
+        if (sheet) { const style = document.createElement('style'); style.textContent = swap(sheet); holder.prepend(style); }
+        svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(w * k)}" height="${Math.round(h * k)}" viewBox="0 0 ${w} ${h}"><foreignObject x="0" y="0" width="${w}" height="${h}">${new XMLSerializer().serializeToString(holder)}</foreignObject></svg>`;
       } catch { return resolve(null); }
       const img = new Image();
       const give = setTimeout(() => resolve(null), 2500);
-      img.onload = () => { clearTimeout(give); let out = null; try { out = copyOf(img, 0, 0, w, h, '#ffffff'); } catch { /* not handed back */ } resolve(out); };
+      img.onload = () => { clearTimeout(give); let out = null; try { out = copyOf(img, 0, 0, Math.round(w * k), Math.round(h * k), '#ffffff'); } catch { /* not handed back */ } resolve(out); };
       img.onerror = () => { clearTimeout(give); resolve(null); };
       img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-    });
+    }));
   }
   /** How much smaller than the window a picture of the whole page is: a place in the picture is a place on the page by this. */
   const pageScale = () => Math.min(1, PICTURE / Math.max(window.innerWidth, window.innerHeight, 1));

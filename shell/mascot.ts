@@ -43,6 +43,8 @@ export interface Mascot {
    * talks for that long once it is up: the line it is beside was just said. `up` is called at that moment.
    */
   into(hole: HTMLElement, how?: { now?: boolean; small?: boolean; bare?: boolean; says?: number; up?: () => void }): void;
+  /** Told when it is in another hole than it was, the moment it is moved there (it has yet to come up): `to` gets that hole. */
+  moved(to: (hole: HTMLElement) => void): void;
   /** It says something, for this long. */
   say(ms: number): void;
   /** What it is heard to say moves its mouth: asked every frame how far that is open, and nothing when it is silent. */
@@ -528,6 +530,7 @@ ${shader.vertexShader}`.replace('#include <begin_vertex>', `
   let heardMouth: (() => number | undefined) | undefined, spokenMouth = 0;
   let tunnelled = 0, tunnelArm: 'L' | 'R' = 'R';
   let sink = 0, going: { to: HTMLElement; small: boolean; bare: boolean; says: number; up?: () => void } | undefined, small = false, bare = false, saying = 0, armsOut = 1;
+  let arrived: ((hole: HTMLElement) => void) | undefined;
   function move(to: HTMLElement, inChat: boolean, armless: boolean) {
     going = undefined;
     small = inChat;
@@ -540,6 +543,15 @@ ${shader.vertexShader}`.replace('#include <begin_vertex>', `
     // (Laid out anew for the hole it is in now.)
     wide = false;
     scale = 0;
+    arrived?.(to);
+  }
+  /** In another hole at once, down in it: it comes up out of that one without having gone down in the one it was in. */
+  function jump(to: HTMLElement, how: { small?: boolean; bare?: boolean; says?: number; up?: () => void }) {
+    if (how.says) { saying = performance.now() + how.says; how.up?.(); }
+    move(to, !!how.small, !!how.bare);
+    holding = undefined;
+    sink = still ? 0 : 1;
+    if (!still) armsOut = 0;
   }
 
   function draw(ms: number) {
@@ -624,6 +636,10 @@ ${shader.vertexShader}`.replace('#include <begin_vertex>', `
   let last = 0;
   const tick = (ms: number) => {
     requestAnimationFrame(tick);
+    // The hole it is in went out of view while it was on its way to another (on a phone the button is gone once the
+    // tools are open): nothing is drawn in a hole that is not seen, so it would never get down in it. It comes up
+    // out of the other.
+    if (going && home && !fetching && !home.getClientRects().length) jump(going.to, going);
     // Not when it is not seen, and not more often than the eye needs for something this small.
     // (Reaching, it is drawn every frame: it follows a finger.)
     if (document.hidden || !home || !home.getClientRects().length || (ms - last < 30 && !wide)) return;
@@ -668,12 +684,11 @@ ${shader.vertexShader}`.replace('#include <begin_vertex>', `
       if (going?.to === to) return;
       if (!going && home === to) return;
       if (home === to) { going = undefined; return; }
-      // (Not in a page any more, the hole it was in is gone: it comes up out of the new one.)
-      if (how.now || !home?.isConnected || still) {
-        if (how.says) { saying = performance.now() + how.says; how.up?.(); }
-        move(to, !!how.small, !!how.bare);
-        sink = still ? 0 : 1;
-        if (!still) armsOut = 0;
+      // (Not in a page any more, the hole it was in is gone: it comes up out of the new one. So it does when that
+      // hole is not shown: on a phone the button is gone while the tools are open, and nothing is drawn in a hole
+      // that is not seen, so it would never get down in it and out of it.)
+      if (how.now || !home?.isConnected || !home.getClientRects().length || still) {
+        jump(to, how);
         if (still) draw(0);
         return;
       }
@@ -681,6 +696,7 @@ ${shader.vertexShader}`.replace('#include <begin_vertex>', `
     },
     say(ms) { saying = performance.now() + ms; },
     voice(mouth) { heardMouth = mouth; },
+    moved(to) { arrived = to; },
     hold(edge, push) {
       if (still || !home) return;
       window.clearTimeout(shrinking);

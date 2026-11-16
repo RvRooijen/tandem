@@ -83,10 +83,14 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
   // The figure in the button, where there is something to draw it with (a test's page has not): until it is there,
   // and where it cannot be, the button has its mark.
   let mascot: Mascot | undefined;
+  /** The hole the figure is in, and the wait after which the button is no longer kept in view for it. */
+  let lives: HTMLElement | undefined, kept = 0;
   if ('WebGL2RenderingContext' in window) {
     void import('./mascot.ts').then((m) => m.createMascot()).then((made) => {
       mascot = made;
       fab.classList.add('mascot');
+      // (Out of the button, the button does not have to stay in view for it any longer: see `carrying`.)
+      made.moved((hole) => { lives = hole; if (hole !== fab) fab.classList.remove('carrying'); });
       made.into(fab, { now: true });
       made.voice(mouth);
       made.agent(app.agent.busy, app.agent.doing);
@@ -303,7 +307,11 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
           return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
         }, carry);
         back();
-        setTimeout(() => fab.classList.remove('carrying'), 500);
+        // The button stays until the figure has gone down in it, on its way to the chat: on a phone the button is
+        // gone with the tools open, and the figure with it, before it got there. (Already in the chat, its arm only
+        // has to be back; and never for long, whatever happens.)
+        clearTimeout(kept);
+        kept = window.setTimeout(() => fab.classList.remove('carrying'), lives === fab ? 3000 : 500);
       }
       app.attach(`page:${JSON.stringify({ words: got.words, ...(got.near && { near: got.near }), tag: got.tag, selector: got.selector, path: got.path, ...(got.three && { three: got.three }) })}`, got.image);
     });

@@ -105,6 +105,11 @@ body:has(#t-fab.mascot) .msg.agent:not(.welcome) > .t-hole { display: block; pos
 #t-carry { position: fixed; z-index: 46; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 8px; border: 2px solid var(--t-accent); background: var(--t-raise) center / cover no-repeat; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); pointer-events: none; }
 #t-fab.mascot .badge { z-index: 1; top: 8px; right: 8px; }
 body:has(#t-fab.mascot) #t-bubbles { right: max(44px, calc(50vw - 252px)); top: calc(210px + env(safe-area-inset-top)); }
+/* On a phone it is over the project's page itself, and half as large there: the figure goes by how large the button
+   is (mascot.ts), so the button, how far it is from the corner and what hangs under it are all half. */
+body:not(.t-wide) #t-fab.mascot { width: 55px; height: 55px; right: max(22px, calc(50vw - 252px)); top: calc(24px + env(safe-area-inset-top)); }
+body:not(.t-wide) #t-fab.mascot .badge { top: 0; right: 0; }
+body:not(.t-wide):has(#t-fab.mascot) #t-bubbles { right: max(22px, calc(50vw - 252px)); top: calc(110px + env(safe-area-inset-top)); }
 body.t-offline #t-fab { border-color: var(--t-bad); }
 body.t-offline #t-fab .mark { background: var(--t-bad); }
 

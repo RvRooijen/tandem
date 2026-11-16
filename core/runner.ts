@@ -12,7 +12,8 @@ import { ROOT, type Host } from './host.ts';
 import { entityView } from '../ecs/inspect.ts';
 
 /**
- * What the agent may do. Always: the engine's commands (the `tandem` command line) and reading the project. In its
+ * What the agent may do. Always: the engine's commands (the `tandem` command line) and reading, anywhere on the
+ * disk: what a project needs is often beside it (another repository, where a runtime is installed). In its
  * working copy, on top of that: change the project's files (not tandem's own folder and not the drawings: those go
  * through commands, where they are proposals and can be locked), run what the project says may be run (its tests,
  * its type check, its builds), and see what it changed.
@@ -198,9 +199,9 @@ export function createRunner(host: Host) {
       project.pageCommand(0) ? 'It has a page the person plays in tandem; they can switch it to your working copy.' : 'It has no page yet. When your change set gives it one that tandem starts by itself (Vite, see below), the person can play your copy before they accept it; a page that is started some other way is said with project.configure (page).',
       host.code ? `In your working copy you may run: ${can || 'nothing but the tandem commands; tandem was not told how its tests are run (project.configure: test, check, run)'}` : '',
       host.code ? `And a script of your own from your scratchpad: ${SCRIPTS.map((c) => `\`${c} ${SCRATCH}/<file>\``).join(', ')}.` : '',
-      `From the command line you can look around with ${LOOKING.join(', ')}, also strung together; anything else there is refused, so do not try it.`,
+      `From the command line you can look around with ${LOOKING.join(', ')}, also strung together, and read with them and with your own tools anywhere on the disk, also outside your working copy (the project's own folder, a repository beside it, where something is installed)${host.code ? '; writing is only for your working copy' : ''}. Anything else on the command line is refused, so do not try it.`,
     ].filter(Boolean).join(' ');
-    return `${readFileSync(join(ROOT, 'core/agent-intro.md'), 'utf8')}${host.code ? `\n${readFileSync(join(ROOT, 'core/agent-code.md'), 'utf8')}` : ''}\n## The project\n\n${about}\n\n## The commands\n\nRun one with \`tandem run <command> '<json input>'\`.\n\n${list}\n`;
+    return `${readFileSync(join(ROOT, 'core/agent-intro.md'), 'utf8')}${host.code ? `\n${readFileSync(join(ROOT, 'core/agent-code.md'), 'utf8')}` : ''}\n## The project\n\n${about}\n\n## The commands\n\nRun one with \`tandem run <command> '<json input>'\`. Several of them may go in one command line, one per line, but each json is written out whole inside one pair of single quotes: a quote that is closed and opened again in the middle of it, a shell variable and \`set -e\` are all refused. An apostrophe in a text is written as \\u0027.\n\n${list}\n`;
   }
 
   /** What a message points at, written out, so the agent does not have to go and fetch it. */
@@ -281,6 +282,8 @@ export function createRunner(host: Host) {
       '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
       '--model', process.env.TANDEM_MODEL ?? 'claude-fable-5-2', '--effort', process.env.TANDEM_EFFORT ?? 'medium',
       ...(session && !retry ? ['--resume', session] : []),
+      // It may read everywhere; an Edit rule still only reaches the folder it is started in.
+      '--add-dir', '/',
       // Only the tools below: the person's own default permission mode is not inherited.
       '--permission-mode', 'default', '--allowedTools', ...may.allow, ...(may.deny.length ? ['--disallowedTools', ...may.deny] : []),
     ];

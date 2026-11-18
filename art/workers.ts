@@ -143,6 +143,14 @@ export function createWorkers(o: WorkersOptions) {
     // Write and Edit calls on a drawing are told as they are typed: the file as it will be with what has arrived
     // so far, so whoever watches sees it being drawn. (The way pixeldraw's viewer is fed.)
     const blocks: Record<number, { name: string; json: string; base?: string }> = {};
+    // What it thinks, as it thinks it: the end of it is told, now and then, so who watches can read along.
+    let thought = '', lastThought = 0;
+    const think = (more: string, force = false) => {
+      thought += more;
+      if (!force && Date.now() - lastThought < 700) return;
+      lastThought = Date.now();
+      events.cast({ type: 'art.thinking', worker: w.id, name: w.names[0], text: thought.slice(-900) });
+    };
     let lastDraft = 0;
     const draft = (block: { name: string; json: string; base?: string }, force = false) => {
       const now = Date.now();
@@ -177,12 +185,16 @@ export function createWorkers(o: WorkersOptions) {
           const e = msg.event;
           if (e?.type === 'content_block_start') {
             const kind = e.content_block?.type;
-            if (kind === 'thinking') doing('thinking');
+            if (kind === 'thinking') { doing('thinking'); thought = ''; }
             else if (kind === 'text') doing('writing');
             else if (kind === 'tool_use' && (e.content_block.name === 'Write' || e.content_block.name === 'Edit')) blocks[e.index] = { name: e.content_block.name, json: '' };
+          } else if (e?.type === 'content_block_delta' && e.delta?.type === 'thinking_delta' && typeof e.delta.thinking === 'string') {
+            think(e.delta.thinking);
           } else if (e?.type === 'content_block_delta' && e.delta?.type === 'input_json_delta' && blocks[e.index]) {
             blocks[e.index].json += e.delta.partial_json;
             draft(blocks[e.index]);
+          } else if (e?.type === 'content_block_stop' && thought && !blocks[e.index]) {
+            think('', true);
           } else if (e?.type === 'content_block_stop' && blocks[e.index]) {
             draft(blocks[e.index], true);
             delete blocks[e.index];

@@ -69,7 +69,10 @@ export function createWorkspaces(gameDir: string, workDir: string) {
    * Gives the picture's path. flags: --anim=, --frame=, --recolor=, --crop=, --grid. A 3D model is pictured with
    * tandem's own (art/model/render.ts): flags --views=, --turn=, --wire, --form, --anim=, --at=.
    */
-  function render(id: string, file: string, flags: string[] = []): Promise<string> {
+  const render = (id: string, file: string, flags: string[] = []): Promise<string> => rendered(id, file, flags).then((r) => r.png);
+
+  /** The same, with what the render said beside the picture (a model's: what it is, and with --clips where its shapes cross). */
+  function rendered(id: string, file: string, flags: string[] = []): Promise<{ png: string; said: string }> {
     const root = dir(id);
     let model = false;
     try { model = isModel(readFileSync(join(root, file), 'utf8')); } catch { /* no such file: the render says so */ }
@@ -80,7 +83,7 @@ export function createWorkspaces(gameDir: string, workDir: string) {
         const name = file.slice(file.indexOf('/') + 1, -4);
         const png = join(root, 'out', file.startsWith('depth/') ? 'depth' : '', `${name}.png`);
         if (err || !existsSync(png)) fail(new Error((stderr || stdout || err?.message || 'no picture came out').trim().split('\n').filter((l) => !/^\s+at |^node:|^Node\.js/.test(l)).slice(-2).join(' ')));
-        else ok(png);
+        else ok({ png, said: stdout.trim() });
       });
     });
   }
@@ -90,7 +93,7 @@ export function createWorkspaces(gameDir: string, workDir: string) {
   const scratch = () => { const id = `_s${process.pid}-${++n}`; ensure(id, true); return id; };
 
   return {
-    dir, ensure, changes, render, scratch,
+    dir, ensure, changes, render, rendered, scratch,
     exists: (id: string) => existsSync(join(dir(id), 'base.json')),
     remove: (id: string) => rmSync(dir(id), { recursive: true, force: true }),
     list: () => (existsSync(workDir) ? readdirSync(workDir).filter((id) => existsSync(join(dir(id), 'worker.json'))) : []),

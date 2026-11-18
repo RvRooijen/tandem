@@ -142,11 +142,22 @@ test('a worker makes a 3D model: its form, approval, colour with a joint that sw
   assert.match(String(first.note), /Blocked out gate-post\. Render ok, events ok\./);
   assert.match((first.pictures as any).after, /^\/api\/file\/looks\//);
   const news = () => host.events.since(0).filter((e) => e.type === 'message' && e.by === 'engine' && e.kind === 'art' && e.worker === w);
+  // (Told once where its shapes cross is measured.)
+  await until(() => news().length === 1, 'the agent to be told');
+  assert.match(String(news()[0].text), /Measured where its shapes cross: /);
   assert.match(String(news()[0].text), /has the form of the model ready, in one tone.*art\.look with worker "w[a-z0-9]+": the model from four sides.*art\.approve when the form is right from every side/);
   // It said first what it is and what it is made of: who watches sees that, and so does the agent, and art.workers keeps it.
   assert.ok(told.some((e) => e.type === 'art.described' && e.worker === w && /a leg drawn from two silhouettes/.test(e.text)));
   assert.match(String(news()[0].text), /What it made it as: "A post with a sign on a joint/);
   assert.match((await me('art.workers')).find((x: any) => x.worker === w).described, /^A post with a sign/);
+  // And read along with what it thought.
+  assert.ok(told.some((e) => e.type === 'art.thinking' && e.worker === w && e.text === 'A gate-post: what is it made of? '));
+  // A text cut off as it is typed is built as far as it is whole: the parts so far.
+  const typed = (await me('art.get', { name: 'gate-post', worker: w })).text as string;
+  const half = typed.slice(0, typed.indexOf('// sign'));
+  await refused(me('art.mesh', { text: half }), 'input');
+  const sofar = await me('art.mesh', { text: half, draft: true });
+  assert.deepEqual([sofar.draft, sofar.triangles], [true, 6 * 2 + 2 * 4], 'the post, which is whole; the sign is not typed yet');
   // Who watches saw it typed, and saw the render it looked at.
   assert.ok(told.some((e) => e.type === 'art.draft' && e.worker === w && /^\/\/ @model/.test(e.text)));
   const looked = told.filter((e) => e.type === 'art.looked' && e.worker === w);
@@ -160,7 +171,7 @@ test('a worker makes a 3D model: its form, approval, colour with a joint that sw
   assert.match((await me('art.mesh', { text: (await me('art.get', { name: 'gate-post', worker: w })).text })).glb, /^Z2xURg/);
 
   await agent('art.approve', { worker: w });
-  await until(() => rounds(w).length === 2, 'the colour round');
+  await until(() => rounds(w).length === 2 && news().length === 2, 'the colour round');
   assert.match(String(news()[1].text), /has the model ready in colour/);
   const coloured = await me('art.mesh', { name: 'gate-post', worker: w });
   assert.deepEqual([coloured.bones, coloured.anims], [['sign'], { swing: 2 }]);

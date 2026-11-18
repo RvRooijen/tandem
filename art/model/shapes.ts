@@ -14,9 +14,13 @@ export type Mat = number[];
 export interface Bone { name: string; parent: number; pos: Vec3; quat: [number, number, number, number]; scale: Vec3 }
 
 /** What hangs on one bone (bone -1: on the model itself): its triangles and the outlines of its faces, in the bone's own space. */
-export interface Piece { bone: number; positions: number[]; colors: number[]; edges: number[] }
+/** What hangs on one bone (bone -1: on the model itself): its triangles, which shape each is of (in the order they are written), and the outlines of its faces, in the bone's own space. */
+export interface Piece { bone: number; positions: number[]; colors: number[]; shapes: number[]; edges: number[] }
 
-export interface Built { model: Model; bones: Bone[]; pieces: Piece[]; triangles: number }
+/** A shape as it is written: what kind it is, its name when it has one, its colour, and the bone it hangs on. */
+export interface ShapeOf { kind: string; name?: string; color: string; bone: number }
+
+export interface Built { model: Model; bones: Bone[]; pieces: Piece[]; triangles: number; shapes: ShapeOf[] }
 
 type Face = number[][];
 
@@ -24,10 +28,11 @@ export function buildModel(model: Model): Built {
   const bones: Bone[] = [], pieces = new Map<number, Piece>();
   const piece = (bone: number) => {
     let p = pieces.get(bone);
-    if (!p) { p = { bone, positions: [], colors: [], edges: [] }; pieces.set(bone, p); }
+    if (!p) { p = { bone, positions: [], colors: [], shapes: [], edges: [] }; pieces.set(bone, p); }
     return p;
   };
-  let triangles = 0;
+  let triangles = 0, shapes = 0;
+  const kinds: ShapeOf[] = [];
   const walk = (parts: Part[], m: Mat, color: string, bone: number) => {
     for (const part of parts) {
       const here = multiply(m, compose(part.pos, part.rot, part.scale));
@@ -40,19 +45,20 @@ export function buildModel(model: Model): Built {
         } else walk(part.group, here, c, bone);
         continue;
       }
-      const out = piece(bone), rgb = hexToRgb(c);
+      const out = piece(bone), rgb = hexToRgb(c), shape = shapes++;
+      kinds.push({ kind: part.shape, ...(part.name && { name: part.name }), color: c, bone });
       // (A mirrored part turns its faces inside out: they are turned back.)
       const flip = det(here) < 0;
       for (const face of faces(part)) {
         const v = (flip ? [...face].reverse() : face).map((p) => transform(here, p));
-        for (let i = 1; i + 1 < v.length; i++) for (const p of [v[0], v[i], v[i + 1]]) { out.positions.push(p[0], p[1], p[2]); out.colors.push(...rgb); }
+        for (let i = 1; i + 1 < v.length; i++) { for (const p of [v[0], v[i], v[i + 1]]) { out.positions.push(p[0], p[1], p[2]); out.colors.push(...rgb); } out.shapes.push(shape); }
         triangles += v.length - 2;
         for (let i = 0; i < v.length; i++) out.edges.push(...v[i], ...v[(i + 1) % v.length]);
       }
     }
   };
   walk(model.parts, identity(), '#cccccc', -1);
-  return { model, bones, pieces: [...pieces.values()].sort((a, b) => a.bone - b.bone), triangles };
+  return { model, bones, pieces: [...pieces.values()].sort((a, b) => a.bone - b.bone), triangles, shapes: kinds };
 }
 
 /** Where each bone is in the model at a moment of an animation (t from 0 to 1 of its loop); at rest without one. */
@@ -74,6 +80,7 @@ export function posed(built: Built, anim?: string, t = 0) {
   const at = boneMatrices(built, anim, t);
   const count = (k: 'positions' | 'edges') => built.pieces.reduce((n, p) => n + p[k].length, 0);
   const positions = new Float32Array(count('positions')), colors = new Float32Array(count('positions')), edges = new Float32Array(count('edges'));
+  const shapes = new Uint32Array(count('positions') / 9);
   let o = 0, e = 0;
   for (const p of built.pieces) {
     const m = p.bone < 0 ? undefined : at[p.bone];
@@ -85,10 +92,11 @@ export function posed(built: Built, anim?: string, t = 0) {
     };
     put(p.positions, positions, o);
     colors.set(p.colors, o);
+    shapes.set(p.shapes, o / 9);
     put(p.edges, edges, e);
     o += p.positions.length; e += p.edges.length;
   }
-  return { positions, colors, edges, bones: at };
+  return { positions, colors, shapes, edges, bones: at };
 }
 
 /** The box the model stands in at rest: its lowest and highest corner. */
@@ -141,10 +149,12 @@ function bridge(rings: number[][][]): Face[] {
 const closes = (caps: Caps, end: 'start' | 'end') => caps === 'both' || caps === end;
 
 function loft(rings: Ring[], n: number, ends: Caps): Face[] {
-  const verts = rings.map(({ y, x = 0, z = 0, rx, rz = rx }) => Array.from({ length: n }, (_, i) => {
-    const a = (i / n) * Math.PI * 2;
-    return [x + Math.sin(a) * rx, y, z + Math.cos(a) * rz];
-  }));
+  const verts = rings.map(({ y, x = 0, z = 0, rx, rz = rx, outline }) => (outline
+    ? outline.map(([ox, oz]) => [x + ox, y, z + oz])
+    : Array.from({ length: n }, (_, i) => {
+      const a = (i / n) * Math.PI * 2;
+      return [x + Math.sin(a) * rx, y, z + Math.cos(a) * rz];
+    })));
   // (The rings go up or down; either way the caps face outward.)
   const up = rings.at(-1)!.y >= rings[0].y;
   const caps = [...(closes(ends, 'start') && rings[0].rx > 0 ? [[...verts[0]].reverse()] : []), ...(closes(ends, 'end') && rings.at(-1)!.rx > 0 ? [verts.at(-1)!] : [])];
@@ -343,6 +353,13 @@ export function trs(pos: Vec3, [x, y, z, w]: Quat, [kx, ky, kz]: Vec3): Mat {
     2 * (x * y + z * w) * kx, (1 - 2 * (x * x + z * z)) * ky, 2 * (y * z - x * w) * kz, pos[1],
     2 * (x * z - y * w) * kx, 2 * (y * z + x * w) * ky, (1 - 2 * (x * x + y * y)) * kz, pos[2],
   ];
+}
+
+/** A colour of its own for every shape: hues a golden turn apart, so shapes written one after the other are far apart in colour. */
+export function loud(n: number): number[] {
+  const h = (n * 0.618034) % 1, s = 0.75, l = n % 2 ? 0.6 : 0.48;
+  const k = (m: number) => (m + h * 12) % 12, a = s * Math.min(l, 1 - l);
+  return [0, 8, 4].map((m) => l - a * Math.max(-1, Math.min(k(m) - 3, 9 - k(m), 1)));
 }
 
 export function hexToRgb(hex: string): [number, number, number] {

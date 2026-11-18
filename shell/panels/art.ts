@@ -6,6 +6,7 @@
 import type { Event } from '../../core/events.ts';
 import { run } from '../api.ts';
 import type { App, Panel } from '../app.ts';
+import { sketchesIn } from '../../art/model/draft.ts';
 import { isModel } from '../../art/model/format.ts';
 import { drawArt, drawModel, drawProfile, type Mesh, type Showing } from '../artview.ts';
 import { clear, h, prose } from '../dom.ts';
@@ -33,6 +34,10 @@ interface Seen {
   draft?: string;
   /** What it said the thing is and which parts it is made of, before it made anything. */
   described?: string;
+  /** What it is thinking: the end of its last thought, as it came in (Claude often keeps it to itself). */
+  thinking?: string;
+  /** Since when it does what it does now: a long think shows how long. */
+  since?: number;
   /** The last render it looked at, as it saw it. */
   looked?: string;
   /** A 3D model: as the engine last built it, and the text that was. */
@@ -47,16 +52,43 @@ export function artPanel(): Panel {
   const seen = new Map<string, Seen>();
   const workersEl = h('div.workers');
   /** The parts of the worker view that change while it is open. */
-  let live: { id: string; canvas: HTMLCanvasElement; rest: HTMLElement; looks: HTMLElement; model?: { canvas: HTMLCanvasElement; profiles: HTMLElement; show: Showing } } | undefined;
+  let live: { id: string; canvas: HTMLCanvasElement; rest: HTMLElement; looks: HTMLElement; model?: { canvas: HTMLCanvasElement; profiles: HTMLElement; sketches: HTMLElement; show: Showing } } | undefined;
+
+  /** The drawings a model's round parts were made from: each part's front and side, as it was drawn. */
+  const profilesOf = (mesh: Mesh) => mesh.profiles.length > 0 && [
+    h('h3', {}, mesh.profiles.length === 1 ? 'Drawn from' : `Drawn from: ${mesh.profiles.length} drawings`),
+    h('p.t-hint', {}, 'Every round part, from the front and from the side; a ring per row where the shape turns.'),
+    mesh.profiles.map((p, i) => {
+      const front = h<'canvas'>('canvas.live', { 'aria-label': `${p.name ?? `part ${i + 1}`}, from the front` }), side = h<'canvas'>('canvas.live', { 'aria-label': `${p.name ?? `part ${i + 1}`}, from the side` });
+      drawProfile(front, p.rows ? p.front.slice(p.rows[0], p.rows[1] + 1) : p.front);
+      drawProfile(side, p.rows ? p.side.slice(p.rows[0], p.rows[1] + 1) : p.side);
+      return h('figure.profile', {}, h('div.t-row', {}, front, side), h('figcaption', {}, `${p.name ?? `part ${i + 1}`}: front · side`));
+    })];
+
+  /** What a worker is doing, and how long it has been thinking: what it thinks it does not always say, so the time is all there is to see. */
+  const doingWords = (w: Seen) => {
+    const secs = w.since ? Math.round((Date.now() - w.since) / 1000) : 0;
+    return w.doing === 'thinking' && secs >= 5 ? `thinking, ${secs < 120 ? `${secs} s` : `${Math.round(secs / 60)} min`}` : w.doing || 'starting';
+  };
+  // (While a worker is watched thinking, its time goes on.)
+  setInterval(() => {
+    if (!live || !body) return;
+    const w = seen.get(live.id), el = body.querySelector('.worker-rest .working .doing');
+    if (w?.state === 'running' && el) el.textContent = doingWords(w);
+  }, 1000);
 
   /** A worker's model as the engine builds it from its text: not more often than every second and a half, and the last text wins. */
-  /** Whether a model is shown with its wireframe: one switch, kept from model to model. */
-  let wire = false;
-  const wireSwitch = (changed: () => void) => {
-    const chip = h('span.t-chip.tap.toggle', { role: 'switch', 'aria-checked': String(wire), title: 'Show the lines of its faces' }, 'Wireframe');
-    chip.onclick = () => { wire = !wire; chip.setAttribute('aria-checked', String(wire)); changed(); };
+  /** How a model is shown: with its wireframe, and as a heatmap of where it clips. Two switches, kept from model to model. */
+  let wire = false, heat = false;
+  const toggle = (label: string, title: string, on: () => boolean, flip: () => void, changed: () => void) => {
+    const chip = h('span.t-chip.tap.toggle', { role: 'switch', 'aria-checked': String(on()), title }, label);
+    chip.onclick = () => { flip(); chip.setAttribute('aria-checked', String(on())); changed(); };
     return chip;
   };
+  const wireSwitch = (changed: () => void) => toggle('Wireframe', 'Show the lines of its faces', () => wire, () => { wire = !wire; }, changed);
+  const heatSwitch = (changed: () => void) => toggle('Clipping', 'A heatmap: grey, with what pokes out through another shape glowing', () => heat, () => { heat = !heat; }, changed);
+  /** How the engine is asked to colour a model: by its own colours, or as a heatmap of what pokes through. */
+  const colouring = () => (heat ? { heat: true } : {});
 
   const building = new Map<string, { at: number; timer?: ReturnType<typeof setTimeout>; text?: string }>();
   function buildLive(w: Seen, text?: string) {
@@ -67,28 +99,50 @@ export function artPanel(): Panel {
     b.timer = setTimeout(async () => {
       b.timer = undefined;
       b.at = Date.now();
-      const t = b.text;
-      if (t !== undefined && t === w.built) return;
+      const t = b.text, key = `${heat}\n${t}`;
+      if (t !== undefined && key === w.built) return;
       // (Half typed, it cannot be built: what was built last stays.)
       // (Quietly: a text that is half written is no news.)
-      const got = await run<Mesh>('art.mesh', t !== undefined ? { name: w.name, text: t } : { name: w.name, worker: w.id }).catch(() => undefined);
+      const got = await run<Mesh>('art.mesh', { ...(t !== undefined ? { name: w.name, text: t, draft: true } : { name: w.name, worker: w.id }), ...colouring() }).catch(() => undefined);
       if (!got) return;
       w.mesh = got;
-      if (t !== undefined) w.built = t;
+      if (t !== undefined) w.built = key;
       if (live?.id === w.id) showModel(w);
     }, Math.max(0, 1500 - (Date.now() - b.at)));
   }
 
   /** A worker's model in its view: turning, with the silhouettes its tubes were made from beside it. */
+  /** The parts of the view a model is watched in: its canvas, and under it the drawings it is made from. */
+  function modelView() {
+    if (!live) return undefined;
+    if (!live.model) {
+      const canvas = h<'canvas'>('canvas.live', { 'aria-label': 'the model, as the worker has it' });
+      live.model = { canvas, profiles: h('div.profiles'), sketches: h('div.profiles.sketches'), show: { wire } };
+      live.canvas.replaceWith(canvas);
+      live.looks.after(live.model.sketches);
+      live.model.sketches.after(live.model.profiles);
+    }
+    return live.model;
+  }
+
+  /** The drawings in a model's text as it is typed: each one row by row, before the model is there. */
+  function sketchLive(text: string) {
+    const m = modelView(), found = sketchesIn(text);
+    if (!m) return;
+    m.profiles.hidden = found.length > 0;
+    clear(m.sketches, found.length > 0 && [
+      h('h3', {}, 'Its drawings'),
+      h('p.t-hint', {}, 'The round parts, drawn from the front and the side; a ring per row where the shape turns.'),
+      found.map((s) => {
+        const c = h<'canvas'>('canvas.live', { 'aria-label': `the drawing ${s.name}` });
+        drawProfile(c, s.rows);
+        return h('figure.profile', {}, c, h('figcaption', {}, s.name));
+      })]);
+  }
+
   function showModel(w: Seen) {
     if (!live || live.id !== w.id || !w.mesh) return;
-    if (!live.model) {
-      const canvas = h<'canvas'>('canvas.live', { 'aria-label': `${w.name || 'the model'}, as the worker has it` });
-      live.model = { canvas, profiles: h('div.profiles'), show: { wire } };
-      live.canvas.replaceWith(canvas);
-      live.looks.after(live.model.profiles);
-    }
-    const m = live.model, mesh = w.mesh;
+    const m = modelView()!, mesh = w.mesh;
     const anims = Object.keys(mesh.anims);
     if (m.show.anim && !anims.includes(m.show.anim)) m.show.anim = undefined;
     void drawModel(m.canvas, mesh, m.show).then((ok) => {
@@ -97,22 +151,16 @@ export function artPanel(): Panel {
         ok && h('span.chips', {},
           h('span.t-chip.tap', { onclick: () => { m.show.anim = undefined; showModel(w); } }, 'at rest'),
           anims.map((a) => h('span.t-chip.tap', { onclick: () => { m.show.anim = a; showModel(w); } }, a)),
-          wireSwitch(() => { m.show.wire = wire; showModel(w); })));
+          wireSwitch(() => { m.show.wire = wire; showModel(w); }),
+          heatSwitch(() => { showModel(w); buildLive(w, w.draft && isModel(w.draft) ? w.draft : undefined); })));
     });
-    clear(m.profiles, mesh.profiles.length > 0 && [
-      h('p.t-hint', {}, 'Drawn from: front and side, a ring per row where the shape turns.'),
-      mesh.profiles.map((p) => {
-        const front = h<'canvas'>('canvas.live'), side = h<'canvas'>('canvas.live');
-        drawProfile(front, p.rows ? p.front.slice(p.rows[0], p.rows[1] + 1) : p.front);
-        drawProfile(side, p.rows ? p.side.slice(p.rows[0], p.rows[1] + 1) : p.side);
-        return h('div.t-row', {}, front, side);
-      })]);
+    clear(m.profiles, profilesOf(mesh));
   }
 
   /** Draw a worker's drawing as it is now, and say which looks are which. */
   function drawLive(text: string) {
     if (!live) return;
-    if (isModel(text)) { const w = seen.get(live.id); if (w) buildLive(w, text); return; }
+    if (isModel(text)) { const w = seen.get(live.id); sketchLive(text); if (w) buildLive(w, text); return; }
     const looks = drawArt(live.canvas, text);
     if (looks) live.looks.textContent = looks.length > 1 ? `Every look, top to bottom: ${looks.join(' · ')}` : '';
   }
@@ -172,13 +220,14 @@ export function artPanel(): Panel {
     const mine = () => open && 'drawing' in open && open.drawing === d.name;
     // A model can be turned by hand, above the sheet of its sides; one with animations moves in its first.
     const turn = h<'canvas'>('canvas.live', { 'aria-label': `${d.name}, to turn` });
+    const drawn = h('div.profiles');
     let mesh: Mesh | undefined, showing: Showing = { anim: Object.keys(d.anims)[0], wire };
     // (What the sheet below shows; the wireframe switch draws it again with or without.)
     let asked: Record<string, unknown> = {};
     const showAs = (change: Showing) => { showing = { ...showing, ...change }; if (mesh) void drawModel(turn, mesh, showing); };
     const show = async (input: Record<string, unknown> = {}) => {
       asked = input;
-      const got = await app.act<{ url: string }>('art.look', { name: d.name, ...input, ...(d.model && wire && { wire: true }) });
+      const got = await app.act<{ url: string }>('art.look', { name: d.name, ...input, ...(d.model && wire && { wire: true }), ...(d.model && colouring()) });
       if (!body || !mine() || !got) return;
       clear(pic, h<'img'>('img', { src: got.url, alt: `${d.name}${input.anim ? `, ${input.anim}` : ''}`, onclick: () => app.zoom(got.url) }));
     };
@@ -189,8 +238,14 @@ export function artPanel(): Panel {
         h('div.chips', {},
           h('span.t-chip.tap', { onclick: () => showAs({ anim: undefined }) }, 'at rest'),
           Object.keys(d.anims).map((a) => h('span.t-chip.tap', { onclick: () => showAs({ anim: a }) }, a)),
-          wireSwitch(() => { showAs({ wire }); void show(asked); })),
-        h('p.t-hint', {}, 'Drag over it to turn it. Below, the pictures the agent and the workers see.')],
+          wireSwitch(() => { showAs({ wire }); void show(asked); }),
+          heatSwitch(async () => {
+            void show(asked);
+            mesh = await app.act<Mesh>('art.mesh', { name: d.name, ...colouring() }) ?? mesh;
+            if (mesh && mine()) void drawModel(turn, mesh, showing);
+          })),
+        h('p.t-hint', {}, 'Drag over it to turn it. Below, the pictures the agent and the workers see.'),
+        drawn],
       pic,
       d.model
         ? h('div.chips', {},
@@ -206,8 +261,8 @@ export function artPanel(): Panel {
       h('p.t-hint', {}, 'A change to it is asked for in the chat.'));
     void show();
     if (d.model && !d.error) {
-      mesh = await app.act<Mesh>('art.mesh', { name: d.name }) ?? undefined;
-      if (mesh && mine()) void drawModel(turn, mesh, showing);
+      mesh = await app.act<Mesh>('art.mesh', { name: d.name, ...colouring() }) ?? undefined;
+      if (mesh && mine()) { void drawModel(turn, mesh, showing); clear(drawn, profilesOf(mesh)); }
     }
   }
 
@@ -217,11 +272,12 @@ export function artPanel(): Panel {
   function paintWorker(w: Seen, rest: HTMLElement) {
     const pic = (url: string | undefined, label: string) => url && h('figure', { onclick: () => app.zoom(url) }, h<'img'>('img', { src: url, alt: `${w.name}, ${label}` }), h('figcaption', {}, label));
     clear(rest,
-      w.state === 'running' && h('div.working', {}, h('i.spin'), h('span', {}, w.doing || 'starting'), h<'button'>('button', { onclick: () => void app.act('art.stop', { worker: w.id }) }, 'Stop')),
+      w.state === 'running' && h('div.working', {}, h('i.spin'), h('span.doing', {}, doingWords(w)), h<'button'>('button', { onclick: () => void app.act('art.stop', { worker: w.id }) }, 'Stop')),
       w.decided && h(`div.${w.decided === 'accepted' ? 'pass' : 'fail'}`, {}, w.decided === 'accepted' ? 'Accepted: it is in the game.' : 'Rejected: the game was left as it is.'),
       !w.decided && w.state === 'failed' && h('div.fail', {}, `It failed: ${w.doing}`),
       !w.decided && w.state === 'stopped' && h('p.t-hint', {}, 'It was stopped. The agent decides what happens with it.'),
       !w.decided && w.state === 'waiting' && h('p.t-hint.judged', {}, w.phase === 'silhouette' ? 'The agent looks at the silhouette: it approves it, or sends the worker round again.' : 'The agent looks at the drawing: it takes it into the project, or sends the worker round again.'),
+      w.state === 'running' && w.thinking && [h('h3', {}, 'Thinking'), h('div.said.thinking', {}, prose(w.thinking.length >= 900 ? w.thinking.replace(/^[^\n]*?[.!?]\s+/, '… ') : w.thinking))],
       w.described && [h('h3', {}, 'What it is'), h('div.said.described', {}, prose(w.described))],
       w.said && w.state !== 'failed' && h('div.said', {}, prose(w.said)),
       // A drawing with looks is compared look by look: the change may be in any of them.
@@ -255,7 +311,7 @@ export function artPanel(): Panel {
     if (w.draft) drawLive(w.draft);
     else if (!w.decided && w.name) {
       const got = await app.act<{ text: string }>('art.get', { name: w.name, worker: id });
-      if (got?.text && live?.id === id && !w.draft) { if (isModel(got.text)) buildLive(w); else drawLive(got.text); }
+      if (got?.text && live?.id === id && !w.draft) { if (isModel(got.text)) { sketchLive(got.text); buildLive(w); } else drawLive(got.text); }
     }
   }
 
@@ -302,6 +358,7 @@ export function artPanel(): Panel {
         }
         case 'art.status': {
           const w = know(String(ev.worker), String(ev.name));
+          if (String(ev.doing ?? '') !== w.doing) w.since = Date.now();
           Object.assign(w, { state: String(ev.state), phase: String(ev.phase), doing: String(ev.doing ?? '') });
           if (w.state === 'closed') w.decided ??= 'rejected';
           refresh(w);
@@ -312,6 +369,12 @@ export function artPanel(): Panel {
           if (ev.depth) break;                    // the depth map is not what is being watched
           w.draft = String(ev.text);
           if (live?.id === w.id) drawLive(w.draft);
+          break;
+        }
+        case 'art.thinking': {
+          const w = know(String(ev.worker), String(ev.name));
+          w.thinking = String(ev.text);
+          refresh(w);
           break;
         }
         case 'art.described': {

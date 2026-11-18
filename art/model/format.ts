@@ -12,7 +12,8 @@
 //   { shape: 'cylinder', radiusTop, radiusBottom, height, segments }   radiusTop 0 is a cone
 //   { shape: 'sphere',   radius, detail }         a low poly ball; detail 0 to 3 makes it rounder
 //   { shape: 'loft',     rings: [{ y, x, z, rx, rz }], segments }
-//                        one tube through rings stacked along y (rings() makes them from silhouettes)
+//                        one tube through rings stacked along y (rings() makes them from silhouettes);
+//                        a ring may have an outline [[x, z], ...] instead: any shape, so a ridge or a groove is in it
 //   { shape: 'tube',     path: [[x, y, z]], radii: [r], segments }
 //                        a tube along a bent path, a ring at every point (toes, tails, horns,
 //                        a hat from its brim to its tip); a radius 0 ends it in a point
@@ -33,7 +34,12 @@
 
 export type Vec3 = [number, number, number];
 
-export interface Ring { y: number; x?: number; z?: number; rx: number; rz?: number }
+/**
+ * A ring of a loft: an ellipse rx wide and rz deep round (x, z) at height y; or, with outline, any shape: its points
+ * [x, z] round that middle, from the front (+z) going to the right (+x), the same number in every ring of the loft.
+ * So a ridge, a groove, a brow or the edge of a visor is in the surface itself.
+ */
+export interface Ring { y: number; x?: number; z?: number; rx: number; rz?: number; outline?: [number, number][] }
 
 interface Placed { pos?: Vec3; rot?: Vec3; scale?: Vec3; color?: string; name?: string }
 export type Shape =
@@ -51,15 +57,18 @@ export interface Anim { seconds: number; keys: Record<string, Key[]> }
 export interface Model { parts: Part[]; anims: Record<string, Anim> }
 
 /** A pair of silhouettes rings() was given: shown beside the model, so who watches sees what the tube was made from. */
-export interface Profile { front: string[]; side: string[]; rows?: [number, number] }
+export interface Profile { front: string[]; side: string[]; rows?: [number, number]; name?: string }
 
 export const isModel = (text: string) => /^\s*\/\/\s*@model\b/.test(text);
 
 const SHAPES = ['box', 'wedge', 'cylinder', 'sphere', 'loft', 'tube', 'extrude'];
 const NAME = /^[a-z][a-z0-9-]*$/;
 
-/** What a model's program gave back, checked: a model, or an error that says where it is wrong. */
-export function checkModel(raw: unknown): Model {
+/**
+ * What a model's program gave back, checked: a model, or an error that says where it is wrong. Lenient (a model as
+ * it is being typed): a part or an animation that is not right yet is left out, and the rest is the model so far.
+ */
+export function checkModel(raw: unknown, lenient = false): Model {
   const fail = (at: string, what: string): never => { throw new Error(`${at}: ${what}`); };
   const obj = (v: unknown, at: string) => (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : fail(at, 'is not an object'));
   const num = (v: unknown, at: string) => (typeof v === 'number' && Number.isFinite(v) ? v : fail(at, `is not a number (${JSON.stringify(v)})`));
@@ -82,7 +91,7 @@ export function checkModel(raw: unknown): Model {
         bones.add(b);
         out.bone = b;
       }
-      out.group = list(p.group, `${at}.group`).map((q, i) => part(q, `${at}.group[${i}]`));
+      out.group = parts(p.group, `${at}.group`);
       return out as unknown as Part;
     }
     const shape = typeof p.shape === 'string' && SHAPES.includes(p.shape) ? p.shape : fail(`${at}.shape`, `is not one of ${SHAPES.join(', ')} (${JSON.stringify(p.shape)}), and there is no group`);
@@ -97,12 +106,24 @@ export function checkModel(raw: unknown): Model {
       const rings = list(p.rings, `${at}.rings`);
       if (rings.length < 2) fail(`${at}.rings`, 'a loft needs at least two rings');
       caps();
+      let points = 0;
       out.rings = rings.map((r, i) => {
-        const o = obj(r, `${at}.rings[${i}]`), ring: Ring = { y: num(o.y, `${at}.rings[${i}].y`), rx: num(o.rx, `${at}.rings[${i}].rx`) };
-        for (const k of ['x', 'z', 'rz'] as const) if (o[k] !== undefined) ring[k] = num(o[k], `${at}.rings[${i}].${k}`);
+        const o = obj(r, `${at}.rings[${i}]`), here = `${at}.rings[${i}]`;
+        let outline: [number, number][] | undefined;
+        if (o.outline !== undefined) {
+          outline = list(o.outline, `${here}.outline`).map((q, j) => (Array.isArray(q) && q.length === 2 ? [num(q[0], `${here}.outline[${j}][0]`), num(q[1], `${here}.outline[${j}][1]`)] : fail(`${here}.outline[${j}]`, 'is not [x, z]')));
+          if (outline.length < 3) fail(`${here}.outline`, 'an outline needs at least three points');
+          if (points && outline.length !== points) fail(`${here}.outline`, `has ${outline.length} points, and the rings before it ${points}: every ring of a loft has the same number`);
+          points = outline.length;
+        }
+        const ring: Ring = { y: num(o.y, `${here}.y`), rx: outline && o.rx === undefined ? Math.max(...outline.map(([x, z]) => Math.hypot(x, z))) : num(o.rx, `${here}.rx`) };
+        for (const k of ['x', 'z', 'rz'] as const) if (o[k] !== undefined) ring[k] = num(o[k], `${here}.${k}`);
+        if (outline) ring.outline = outline;
         return ring;
       });
       segments();
+      // (Rings with an outline say how many points round every ring has.)
+      if (points) out.segments = points;
     } else if (shape === 'tube') {
       out.path = list(p.path, `${at}.path`).map((q, i) => vec(q, `${at}.path[${i}]`));
       if ((out.path as Vec3[]).length < 2) fail(`${at}.path`, 'a tube needs at least two points');
@@ -119,11 +140,17 @@ export function checkModel(raw: unknown): Model {
     return out as unknown as Part;
   }
 
+  function parts(v: unknown, at: string): Part[] {
+    return list(v, at).flatMap((q, i) => {
+      if (!lenient) return [part(q, `${at}[${i}]`)];
+      try { return [part(q, `${at}[${i}]`)]; } catch { return []; }
+    });
+  }
   const m = obj(raw, 'the model (export default)');
-  const parts = list(m.parts, 'parts').map((q, i) => part(q, `parts[${i}]`));
-  if (!parts.length) fail('parts', 'there are none');
+  const all = parts(m.parts, 'parts');
+  if (!all.length) fail('parts', 'there are none');
   const anims: Record<string, Anim> = {};
-  if (m.anims !== undefined) for (const [name, a] of Object.entries(obj(m.anims, 'anims'))) {
+  if (m.anims !== undefined) for (const [name, a] of Object.entries(obj(m.anims, 'anims'))) try {
     const at = `anims.${name}`;
     if (!NAME.test(name)) fail(at, 'an animation is named in lower-case words with dashes');
     const o = obj(a, at);
@@ -142,8 +169,8 @@ export function checkModel(raw: unknown): Model {
       if (!keys[bone].length) fail(`${at}.keys.${bone}`, 'has no keys');
     }
     anims[name] = { seconds, keys };
-  }
-  return { parts, anims };
+  } catch (e) { if (!lenient) throw e; }
+  return { parts: all, anims };
 }
 
 /** The bones of a model, in the order they are written. */

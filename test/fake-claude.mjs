@@ -46,6 +46,10 @@ if (process.env.PIXEL_WORKER) {
     const c = text.match(/^(\S) = #/m)[1];
     content = `${text.trimEnd()}\n@rect 0 0 1 1 ${c}\n`;
   }
+  // It thinks first, and who watches reads along.
+  say({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'thinking' } } });
+  say({ type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: `A ${name}: what is it made of? ` } } });
+  say({ type: 'stream_event', event: { type: 'content_block_stop', index: 0 } });
   // The Write call as it streams in: its input in pieces, so whoever watches sees the drawing grow.
   const input = JSON.stringify({ file_path: `${process.cwd()}/${file}`, content });
   const cutAt = model ? input.indexOf('parts') + 9 : input.lastIndexOf('@rect') + 9;

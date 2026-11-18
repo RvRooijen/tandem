@@ -64,7 +64,7 @@ export function drawArt(canvas: HTMLCanvasElement, text: string, maxWidth = 480)
 // for who looks without one: the agent and the workers.
 
 /** A model as the engine gives it (art.mesh). */
-export interface Mesh { glb: string; profiles: { front: string[]; side: string[]; rows?: [number, number] }[]; bones: string[]; anims: Record<string, number>; triangles: number }
+export interface Mesh { glb: string; profiles: { front: string[]; side: string[]; rows?: [number, number]; name?: string }[]; bones: string[]; anims: Record<string, number>; triangles: number }
 /** How it is shown: in which animation it moves (none: at rest), with the outlines of its faces. */
 export interface Showing { anim?: string; wire?: boolean }
 

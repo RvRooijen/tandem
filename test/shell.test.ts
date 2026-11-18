@@ -698,19 +698,23 @@ test('art: the drawings are listed, one is looked at and locked, and a worker\'s
 });
 
 test('art: a 3D model is listed with its box, and one switch shows its wireframe, turning and on the sheet', async () => {
-  await host.run('art.set', { name: 'post', text: "// @model\nexport default { parts: [{ shape: 'box', size: [0.2, 1, 0.2], pos: [0, 0.5, 0] }] };\n" }, 'me');
+  await host.run('art.set', { name: 'post', text: "// @model\nconst leg = rings(['.#.', '###'], ['.#.', '###'], { pixel: 0.1, name: 'foot' });\nexport default { parts: [{ shape: 'box', size: [0.2, 1, 0.2], pos: [0, 0.5, 0] }, { shape: 'loft', rings: leg }] };\n" }, 'me');
   try {
     tab('Art');
     if ($('#t-body .bar button.link')) click($('#t-body .bar button.link'));
     await until(() => all('#t-body .item.drawing').some((d) => /post/.test(d.textContent!)), 'the model, listed');
     const item = all('#t-body .item.drawing').find((d) => /post/.test(d.textContent!))!;
-    assert.match(item.textContent!, /post.*0\.2×1×0\.2.*3D model · 1 shape/);
+    assert.match(item.textContent!, /post.*0\.3×1×0\.3.*3D model · 2 shapes/);
     click(item);
     await until(() => $('.sheet img'), 'its sides', 90000);
     const toggle = $('.t-chip.toggle[role=switch]');
     assert.equal(toggle.textContent, 'Wireframe');
     assert.equal(toggle.getAttribute('aria-checked'), 'false');
     assert.ok(gave.some(([n, i]) => n === 'art.mesh' && i.name === 'post'), 'the model to turn was asked for');
+    // Every drawing its round parts were made from, named, from the front and the side.
+    await until(() => $('.profiles figure.profile'), 'the drawings it was made from');
+    assert.equal($('.profiles figure.profile figcaption').textContent, 'foot: front · side');
+    assert.equal(all('.profiles figure.profile canvas').length, 2);
     const before = ($('.sheet img') as HTMLImageElement).src;
     click(toggle);
     assert.equal(toggle.getAttribute('aria-checked'), 'true');
@@ -718,6 +722,16 @@ test('art: a 3D model is listed with its box, and one switch shows its wireframe
     assert.deepEqual(gave.filter(([n]) => n === 'art.look').at(-1)![1], { name: 'post', wire: true });
     click(toggle);
     assert.equal(toggle.getAttribute('aria-checked'), 'false');
+    // And as a heatmap of where it clips: the sheet and the model to turn, asked for again that way.
+    const clipping = all('.t-chip.toggle[role=switch]').find((c) => c.textContent === 'Clipping')!;
+    const was = ($('.sheet img') as HTMLImageElement).src;
+    click(clipping);
+    assert.equal(clipping.getAttribute('aria-checked'), 'true');
+    await until(() => ($('.sheet img') as HTMLImageElement).src !== was, 'the sheet as a heatmap', 90000);
+    assert.deepEqual(gave.filter(([n]) => n === 'art.look').at(-1)![1], { name: 'post', heat: true });
+    await until(() => gave.some(([n, i]) => n === 'art.mesh' && i.heat === true), 'the model as a heatmap');
+    assert.ok(!all('.t-chip.toggle').some((c) => c.textContent === 'Parts'), 'no Parts switch any more');
+    click(clipping);
   } finally {
     rmSync(join(dir, 'art', 'post.txt'), { force: true });
     if ($('#t-body .bar button.link')) click($('#t-body .bar button.link'));

@@ -45,7 +45,7 @@ test('commands over HTTP: the list, a run, who is asking, what goes wrong', asyn
   const denied = await post('proposals.decide', { accept: true }, { 'x-tandem-by': 'agent:main' });
   assert.equal(denied.status, 400);
   assert.equal(denied.code, 'permission');
-  const bad = await fetch(`${base}/run/concepts.get`, { method: 'POST', body: '{nope' });
+  const bad = await fetch(`${base}/run/concepts.get`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{nope' });
   assert.equal(bad.status, 400);
   assert.equal((await fetch(`${base}/elsewhere`)).status, 404);
 });

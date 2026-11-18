@@ -1878,6 +1878,82 @@ test('what is said in the chat is markdown, and nothing in it is taken for HTML'
   assert.equal(html('```js\nconst a = `**not bold**` < 2\n```\nthen'), '<pre>const a = `**not bold**` &lt; 2</pre><p>then</p>');
 });
 
+test('views: a tab over the stage for each; a view asks only for what a view may, and what is in it is pointed at', async () => {
+  app.close();
+  await host.run('project.configure', { views: [{ name: 'Logs', kind: 'logs' }, { name: 'Notes', kind: 'data', file: 'notes.db' }] }, 'me');
+  await until(() => !$('#t-views').hidden && all('#t-views .t-vtab').length === 3, 'the tabs to be there');
+  assert.deepEqual(all('#t-views .t-vtab').map((b) => b.textContent), ['Page', 'Logs', 'Notes']);
+  assert.equal($('#t-views .t-vtab.on').textContent, 'Page', 'the page is what is shown');
+  assert.ok(!$('iframe.t-view'), 'a view\'s frame is made when it is first shown');
+
+  click(all('#t-views .t-vtab')[1]);
+  const view = $('iframe.t-view') as HTMLIFrameElement;
+  assert.equal(view.getAttribute('sandbox'), 'allow-scripts allow-forms allow-modals allow-popups', 'in a sandbox: it cannot reach tandem by itself');
+  assert.match(view.getAttribute('src')!, /^\/api\/view\/Logs$/);
+  assert.equal(app.stage.tab, 'Logs');
+  assert.ok($('#root').classList.contains('t-on-view'));
+
+  // It asks through tandem's page, and only for what a view may.
+  const toView: any[] = [];
+  view.contentWindow!.postMessage = ((m: unknown) => { toView.push(m); }) as never;
+  const fromView = (data: Record<string, unknown>) => w.dispatchEvent(new w.MessageEvent('message', { data: { tandem: 1, ...data }, source: view.contentWindow }));
+  ran.length = 0;
+  fromView({ type: 'run', id: 1, name: 'logs.read', input: {} });
+  fromView({ type: 'run', id: 2, name: 'proposals.decide', input: { accept: true } });
+  await until(() => toView.filter((m) => m.type === 'ran').length === 2, 'both to be answered');
+  assert.equal(toView.find((m) => m.id === 1).ok, true);
+  assert.deepEqual([toView.find((m) => m.id === 2).ok, toView.find((m) => m.id === 2).code], [false, 'permission']);
+  assert.deepEqual(ran, ['logs.read'], 'what a view may not ask for is not asked of the core');
+
+  // Pointed at: what is under the finger in the view, and which view goes with it.
+  fromView({ type: 'page', can: { find: true } });
+  view.getBoundingClientRect = () => ({ left: 0, top: 36, width: 360, height: 600, right: 360, bottom: 636, x: 0, y: 36, toJSON() {} });
+  const fab = $('#t-fab');
+  const pointer = (type: string, x: number, y: number) => { const ev = new w.MouseEvent(type, { bubbles: true, clientX: x, clientY: y }); Object.defineProperty(ev, 'pointerId', { value: 1 }); fab.dispatchEvent(ev); };
+  const line = { x: 0, y: 64, w: 360, h: 18, words: 'fail: broke', tag: 'div', selector: 'main > div:nth-child(3)', path: '/api/view/Logs' };
+  const answer = async () => {
+    await until(() => toView.some((m) => m.type === 'pick'), 'the view to be asked what is there');
+    const asked = toView.filter((m) => m.type === 'pick');
+    toView.length = 0;
+    for (const m of asked) fromView({ type: 'picked', id: m.id, ...line });
+    return asked.at(-1);
+  };
+  app.refs.length = 0;
+  pointer('pointerdown', 340, 60);
+  pointer('pointermove', 100, 136);
+  assert.deepEqual([(await answer()).x, 100], [100, 100]);
+  pointer('pointerup', 100, 136);
+  await answer();
+  await until(() => app.refs.length === 1, 'the line to go with the next message');
+  assert.deepEqual(JSON.parse(app.refs[0].slice('page:'.length)), { words: 'fail: broke', tag: 'div', selector: 'main > div:nth-child(3)', path: '/api/view/Logs', view: 'Logs' });
+  assert.match($('.t-chip.ref[data-kind=page]').textContent!, /in Logs: "fail: broke"/);
+  app.refs.length = 0;
+  app.close();
+
+  // The agent looks at a view as the person sees it: its tab is shown for that.
+  const looking = host.run('page.look', { view: 'Notes' }, AGENT) as Promise<any>;
+  await until(() => app.stage.tab === 'Notes', 'the view to be shown');
+  const notes = all('iframe.t-view').find((f) => f.title === 'Notes') as HTMLIFrameElement;
+  const toNotes: any[] = [];
+  notes.contentWindow!.postMessage = ((m: unknown) => { toNotes.push(m); }) as never;
+  const fromNotes = (data: Record<string, unknown>) => w.dispatchEvent(new w.MessageEvent('message', { data: { tandem: 1, ...data }, source: notes.contentWindow }));
+  fromNotes({ type: 'page', can: { find: true } });
+  await until(() => toNotes.some((m) => m.type === 'do'), 'the view to be asked');
+  fromNotes({ type: 'did', id: toNotes.find((m) => m.type === 'do').id, path: '/api/view/Notes', title: 'Data', lines: ['notes 2'] });
+  const seen = await looking;
+  assert.equal(seen.view, 'Notes');
+  assert.match(seen.page, /notes 2/);
+
+  // Back to the page; and the views taken away again, the tabs go with them.
+  click(all('#t-views .t-vtab')[0]);
+  assert.equal(app.stage.tab, null);
+  assert.ok(view.hidden);
+  await host.run('project.configure', { views: [] }, 'me');
+  await until(() => $('#t-views').hidden, 'the tabs to go');
+  assert.ok(!$('iframe.t-view'));
+  assert.ok(!w.document.body.classList.contains('t-viewed'));
+});
+
 test('parity: everything the shell does is a command the agent could name', async () => {
   const known = new Set((await host.run('commands.list', {}, 'me') as { name: string }[]).map((c) => c.name));
   for (const c of s.runner!.commands) known.add(c.name);

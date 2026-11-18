@@ -11,6 +11,23 @@ body { overflow: hidden; -webkit-tap-highlight-color: transparent; }
 #t-nopage b { color: #ecebf2; font-size: 17px; }
 #t-nopage .spin { width: 22px; height: 22px; border-radius: 50%; border: 3px solid #34323f; border-top-color: #f2b84b; animation: t-spin 0.8s linear infinite; justify-self: center; }
 #t-nopage p { margin: 0; max-width: 34em; }
+/* The tabs over the stage when the project has views (stage.ts): the page and each view, and project or working copy
+   for all of them. The frames are below them; a view's frame lies over the page's, which keeps what it shows. */
+#t-views { position: absolute; z-index: 2; top: 0; left: 0; right: 0; height: 36px; box-sizing: border-box; display: flex; align-items: center; gap: 12px; padding: 0 70px 0 8px; background: #1e1d27; border-bottom: 1px solid #34323f; font: 13px system-ui, sans-serif; overflow-x: auto; scrollbar-width: none; }
+#t-views .tabs, #t-views .which { display: flex; gap: 2px; flex: none; }
+#t-views button { border: 0; background: none; color: #9c9aae; font: inherit; padding: 5px 10px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+#t-views button:hover { color: #ecebf2; background: #25242e; }
+#t-views button.on { color: #ecebf2; background: #2f2e3a; box-shadow: inset 0 -2px 0 #f2b84b; }
+#t-views button.proposed { color: #bca6ff; }
+#t-views button i { font-style: normal; font-size: 10px; margin-left: 5px; padding: 0 4px; border: 1px solid currentColor; border-radius: 4px; opacity: 0.8; }
+#t-views .which { background: #17161c; border-radius: 7px; padding: 2px; }
+#t-views .which button { padding: 3px 9px; font-size: 12px; }
+#t-views .which button.on { background: #f2b84b; color: #20170a; box-shadow: none; }
+body.t-viewed #t-frame, body.t-viewed #t-nopage, #root .t-view { position: absolute; box-sizing: border-box; top: 36px; left: 0; width: 100%; height: calc(100% - 36px); }
+#root .t-view { display: block; border: 0; background: #17161c; z-index: 1; }
+#root.t-on-view #t-frame, #root.t-on-view #t-nopage { visibility: hidden; }
+body.t-viewed #t-marks { top: 36px; }
+
 /* Nothing in the tools has a margin or padding it was not given (every rule below wins over this one). */
 :where(#tandem *) { margin: 0; padding: 0; }
 :where(#tandem button, #tandem input, #tandem textarea, #tandem select) { font: inherit; }
@@ -190,6 +207,7 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
   padding: 10px 12px; width: 100%; min-height: 44px; user-select: text; -webkit-user-select: text;
 }
 #tandem textarea { resize: none; display: block; }
+#tandem details.file summary { cursor: pointer; color: var(--t-soft); font-size: var(--t-xs); padding: 2px 0; }
 #tandem input:focus, #tandem textarea:focus, #tandem select:focus, #tandem button:focus-visible { outline: 2px solid var(--t-accent); outline-offset: 1px; }
 #tandem h2 { font-size: var(--t-l); margin: 4px 0 10px; word-break: break-all; }
 #tandem h3 { font-size: var(--t-xs); color: var(--t-soft); margin: 16px 0 8px; font-weight: 600; }

@@ -61,6 +61,40 @@ project that wants tandem out of its history ignores `.tandem` and that is all:
 - **art**: drawings live in `art/` (depth maps in `depth/`) as text, in pixeldraw's format. `build` is the step that turns them into what the project loads: the project's own, or tandem's, `tandem export <folder>`, which writes a sprite sheet per drawing (`<name>.png`, `<name>.depth.png`) and one `sprites.json` that says where each frame of each animation of each look is, where the tiles and strips of a tilesheet are, and which drawings are characters (a drawing with attachments also gets `<name>.character.png` and `.json`, drawn with any outfit by `art/runtime/pixeldraw.js`; `--runtime=<file>` copies that into the project).
 - **adapter**: a module that lets tandem see inside the running project (see below).
 - **edit**: what the agent may change, as patterns; everything but `.tandem`, `art` and `depth` by default.
+- **views**: what there is to see besides the page, each a tab over the stage (see below).
+
+## Views
+
+Besides its page a project has more to see: what its server says, its endpoints, its database. Each is a view: a
+tab over the stage, in a frame of its own, where things can be pointed at like on the page. The agent proposes them
+when it sets tandem up; they are in `views`:
+
+    "views": [
+      { "name": "Logs", "kind": "logs" },
+      { "name": "API", "kind": "api", "endpoints": [{ "method": "POST", "path": "/api/answer", "about": "…" }] },
+      { "name": "Index", "kind": "data", "file": "data/index.db" },
+      { "name": "Evals", "view": "evals.html" }
+    ]
+
+- **logs**: what the page says while it runs. Tandem keeps it in `.tandem/data/page.log` (the working copy's in
+  `copy-page.log`) and still writes it to the terminal.
+- **api**: the endpoints of the project's server, listed or read from its OpenAPI document (`openapi`), each to
+  call the way another device would.
+- **data**: a SQLite file, read-only: its tables, their rows, a query of your own.
+- **view**: a page made for the project, `.tandem/views/<file>.html`.
+
+A view gets what it shows only through commands, the same the agent has: `logs.read`, `data.tables`,
+`data.query`, `api.endpoints`, `page.request`, and the project's own commands, from `.tandem/commands.ts`
+(`project.commands`, `project.run`). That module exports `commands`, a list of
+`{ name, about, kind: 'read' | 'write', input, run(input, t) }`; `t` has the folder it runs in, `request` to the
+project's server, `query` on a SQLite file and `sh` for a command line. They run in a process of their own. One
+that does something (`write`) is a proposal when the agent asks for it, run when you accept it.
+
+A view is in a sandbox: it asks tandem's page for what it shows (`tandem.run(name, input)`, bridge/view.js), and
+only for those commands. An answer that comes in a piece at a time (server-sent events, an answer streamed as it is
+written) is followed live with `tandem.stream(path, { method, body }, onPiece)`: `page.request` with `stream: true`
+answers at once with a stream id, and `page.read` gives what came since the last read. Project or working copy, chosen beside the tabs, goes for the page and every view. While
+a change to how the project is run waits, the views are as it would make them, marked as proposed, to try first.
 
 ## A new project, and one that exists already
 

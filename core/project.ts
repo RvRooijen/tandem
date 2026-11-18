@@ -39,6 +39,12 @@ export interface ProjectConfig {
   adapter?: string;
   /** Drawings: where they are (art, with depth maps in depth), and how they are built into the project. */
   art?: { dir?: string; depth?: string; build?: string };
+  /**
+   * What there is to see of the project besides its page, each a tab over the stage: what its page says while it
+   * runs (logs), its server's endpoints (api), a SQLite file (data), or a page made for this project (view: a file
+   * in {tandem}/views). The project's own commands (its module, {tandem}/commands.ts) are what such a page asks.
+   */
+  views?: ViewDef[];
   /** What the agent may change in its working copy; everything but tandem's own folder and the drawings if not said. */
   edit?: string[];
   /**
@@ -47,6 +53,19 @@ export interface ProjectConfig {
    */
   commit?: boolean;
   push?: boolean;
+}
+
+/** One tab of what there is to see: one of tandem's own kinds, or a page of the project's (view). */
+export interface ViewDef {
+  name: string;
+  kind?: 'logs' | 'api' | 'data';
+  /** data: the SQLite file, in the project's folder. */
+  file?: string;
+  /** api: the endpoints, or where the server says them (an OpenAPI document, a path on its page). */
+  endpoints?: { method: string; path: string; about?: string; body?: unknown }[];
+  openapi?: string;
+  /** A page of the project's own: a file in {tandem}/views. */
+  view?: string;
 }
 
 export interface Project {
@@ -61,6 +80,10 @@ export interface Project {
   /** Where how the project is run is written down by tandem, and the script that starts its page when a line is not enough. */
   configFile: string;
   pageScript: string;
+  /** The project's own views (pages in {tandem}/views), its own commands, and what its page says while it runs. */
+  viewsDir: string;
+  commandsModule: string;
+  pageLog: string;
   /** The page command, with a port filled in; undefined when the project has no page to show. */
   pageCommand(port: number): string | undefined;
   /** The paths the agent may edit, as patterns relative to the project. */
@@ -114,6 +137,9 @@ export function loadProject(dir: string, opts: { data?: string; tandem?: string;
     locksFile: join(tandem, 'locks.json'),
     configFile: join(ours, 'tandem.json'),
     pageScript: join(ours, 'page.sh'),
+    viewsDir: join(ours, 'views'),
+    commandsModule: join(ours, 'commands.ts'),
+    pageLog: join(data, 'page.log'),
     pageCommand: (port) => page()?.replaceAll('{port}', String(port)).replaceAll('{project}', home).replaceAll('{tandem}', ours),
     editable: config.edit ?? ['**'],
     at: (other) => loadProject(other, { ...opts, as: project }),
@@ -124,8 +150,8 @@ export function loadProject(dir: string, opts: { data?: string; tandem?: string;
 /** How the core ends when how the project is run was changed: whoever looks after it starts it again, and the project's page with it. */
 export const SETUP = 77;
 
-/** Where one of a started command's streams goes: ours, nowhere, or a file that is open. */
-type Out = 'inherit' | 'ignore' | number;
+/** Where one of a started command's streams goes: ours, nowhere, a file that is open, or to be read by us. */
+type Out = 'inherit' | 'ignore' | 'pipe' | number;
 
 /**
  * Start a page with a command line, in a process group of its own (see stopTree) that does not outlive this

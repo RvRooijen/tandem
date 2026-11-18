@@ -1,0 +1,126 @@
+<!doctype html>
+<!-- Tandem's data view: a SQLite file of the project, read-only. Its tables, the rows of one, and a question of
+     your own. Every row and cell is a thing on the page, so one can be pointed at. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data</title>
+<style>
+  html, body { margin: 0; height: 100%; background: var(--t-bg); color: var(--t-ink); font: 13px/1.45 system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  header { padding: 8px 10px; background: var(--t-plane); border-bottom: 1px solid var(--t-line); display: grid; gap: 8px; }
+  .file { color: var(--t-soft); font-size: 12px; }
+  .file b { color: var(--t-ink); font-family: var(--t-mono); font-weight: 600; }
+  .tables { display: flex; flex-wrap: wrap; gap: 5px; }
+  .tables button { background: var(--t-raise); color: var(--t-ink-2); border: 1px solid var(--t-line); border-radius: 6px; padding: 3px 8px; font: 12px var(--t-mono); cursor: pointer; }
+  .tables button.on { background: var(--t-accent); color: var(--t-accent-ink); border-color: var(--t-accent); }
+  .tables button i { font-style: normal; opacity: 0.65; margin-left: 4px; }
+  .ask { display: flex; gap: 6px; align-items: flex-start; }
+  textarea { flex: 1; min-width: 0; min-height: 34px; height: 34px; resize: vertical; background: var(--t-well); color: var(--t-ink); border: 1px solid var(--t-line); border-radius: 6px; padding: 6px 8px; font: 12px/1.4 var(--t-mono); }
+  .ask button { background: var(--t-accent); color: var(--t-accent-ink); border: 0; border-radius: 6px; padding: 8px 12px; font: 600 13px system-ui, sans-serif; cursor: pointer; }
+  .said { color: var(--t-soft); font-size: 12px; }
+  .said.bad { color: var(--t-bad); }
+  main { flex: 1; overflow: auto; }
+  table { border-collapse: collapse; font: 12px/1.4 var(--t-mono); min-width: 100%; }
+  th { position: sticky; top: 0; background: var(--t-raise); color: var(--t-ink-2); text-align: left; font-weight: 600; padding: 5px 8px; border-bottom: 1px solid var(--t-line-2); white-space: nowrap; }
+  th small { display: block; color: var(--t-soft); font-weight: 400; }
+  td { padding: 4px 8px; border-bottom: 1px solid var(--t-line); vertical-align: top; max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td.null { color: var(--t-soft); font-style: italic; }
+  td.num { text-align: right; color: var(--t-blue); }
+  tr:hover td { background: var(--t-plane); }
+  td.open { white-space: pre-wrap; word-break: break-word; }
+  .empty { padding: 24px; color: var(--t-soft); font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="file">SQLite, read-only: <b id="file"></b><span id="where"></span></div>
+  <div class="tables" id="tables"></div>
+  <div class="ask">
+    <textarea id="sql" spellcheck="false" aria-label="SQL" placeholder="SELECT … (Ctrl+Enter)"></textarea>
+    <button id="go">Run</button>
+  </div>
+  <div class="said" id="said"></div>
+</header>
+<main id="out"><div class="empty">Opening the file…</div></main>
+<script>
+  const file = tandem.view.file;
+  const $ = (id) => document.getElementById(id);
+  $('file').textContent = file ?? '(no file named)';
+  $('where').textContent = tandem.copy ? ' · in the working copy' : '';
+  let columns = {};
+  const quote = (n) => `"${String(n).replaceAll('"', '""')}"`;
+
+  async function tablesOf() {
+    try {
+      const list = await tandem.run('data.tables', { file });
+      columns = Object.fromEntries(list.map((t) => [t.name, t.columns]));
+      $('tables').replaceChildren(...list.map((t) => {
+        const b = document.createElement('button');
+        b.dataset.table = t.name;
+        b.append(t.name);
+        const n = document.createElement('i');
+        n.textContent = t.rows;
+        b.append(n);
+        b.onclick = () => { $('sql').value = `SELECT * FROM ${quote(t.name)} LIMIT 200`; ask(t.name); };
+        return b;
+      }));
+      if (!list.length) $('out').innerHTML = '<div class="empty">There are no tables in it.</div>';
+      else if (!$('sql').value) list[0] && $('tables').firstChild.click();
+    } catch (e) {
+      $('out').innerHTML = '';
+      const d = document.createElement('div');
+      d.className = 'empty';
+      d.textContent = `It could not be opened: ${e.message ?? e}`;
+      $('out').append(d);
+    }
+  }
+
+  async function ask(table) {
+    for (const b of $('tables').children) b.classList.toggle('on', b.dataset.table === table);
+    const sql = $('sql').value.trim();
+    if (!sql) return;
+    $('said').className = 'said';
+    $('said').textContent = 'Asking…';
+    const t0 = performance.now();
+    try {
+      const got = await tandem.run('data.query', { file, sql });
+      $('said').textContent = `${got.rows.length}${got.more ? '+' : ''} rows · ${Math.round(performance.now() - t0)} ms`;
+      show(got, table);
+    } catch (e) {
+      $('said').className = 'said bad';
+      $('said').textContent = e.message ?? String(e);
+    }
+  }
+
+  function show(got, table) {
+    const types = Object.fromEntries((columns[table] ?? []).map((c) => [c.name, c.type]));
+    const t = document.createElement('table');
+    const head = t.createTHead().insertRow();
+    for (const c of got.columns) {
+      const th = document.createElement('th');
+      th.textContent = c;
+      if (types[c]) { const s = document.createElement('small'); s.textContent = types[c]; th.append(s); }
+      head.append(th);
+    }
+    const body = t.createTBody();
+    for (const row of got.rows) {
+      const tr = body.insertRow();
+      row.forEach((v) => {
+        const td = tr.insertCell();
+        if (v === null) { td.textContent = 'null'; td.className = 'null'; }
+        else { td.textContent = typeof v === 'object' ? JSON.stringify(v) : String(v); if (typeof v === 'number') td.className = 'num'; }
+        td.title = td.textContent.length > 60 ? td.textContent.slice(0, 2000) : '';
+        td.ondblclick = () => td.classList.toggle('open');
+      });
+    }
+    $('out').replaceChildren(got.rows.length ? t : Object.assign(document.createElement('div'), { className: 'empty', textContent: 'No rows.' }));
+  }
+
+  $('go').onclick = () => ask();
+  $('sql').onkeydown = (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); ask(); } };
+  tablesOf();
+</script>
+</body>
+</html>

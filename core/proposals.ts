@@ -14,9 +14,12 @@ export interface Proposal {
   id: string;
   round: string;
   by: string;
-  /** What kind of thing it changes: a concept, a drawing, the project's code (the agent's working copy), or how tandem runs the project. */
-  kind: 'concept' | 'drawing' | 'code' | 'setup';
-  /** The concept's id or the drawing's name; for code, 'working copy'; for setup, 'how it is run'. */
+  /**
+   * What kind of thing it changes: a concept, a drawing, the project's code (the agent's working copy), how tandem
+   * runs the project, or one of the project's own commands that does something (run: done when it is accepted).
+   */
+  kind: 'concept' | 'drawing' | 'code' | 'setup' | 'run';
+  /** The concept's id or the drawing's name; for code, 'working copy'; for setup, 'how it is run'; for run, the command. */
   path: string;
   /** The fields as they were (undefined for something new) and as they would be. */
   before?: RecordValue;

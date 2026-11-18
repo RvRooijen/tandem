@@ -1,0 +1,103 @@
+<!doctype html>
+<!-- Tandem's logs view: what the project's page (its server) says while it runs, as it comes. Each line is a thing
+     of its own on the page, so one can be pointed at. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Logs</title>
+<style>
+  html, body { margin: 0; height: 100%; background: var(--t-bg); color: var(--t-ink); font: 13px/1.45 system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  header { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 10px; background: var(--t-plane); border-bottom: 1px solid var(--t-line); }
+  header input { flex: 1 1 160px; min-width: 0; background: var(--t-well); color: var(--t-ink); border: 1px solid var(--t-line); border-radius: 6px; padding: 5px 8px; font: inherit; }
+  header button { background: var(--t-raise); color: var(--t-ink-2); border: 1px solid var(--t-line); border-radius: 6px; padding: 4px 9px; font: inherit; cursor: pointer; }
+  header button.on { background: var(--t-accent); color: var(--t-accent-ink); border-color: var(--t-accent); }
+  header .count { color: var(--t-soft); font-size: 12px; margin-left: auto; }
+  main { flex: 1; overflow: auto; padding: 6px 0 24px; font: 12px/1.5 var(--t-mono); }
+  .line { padding: 0 10px; white-space: pre-wrap; word-break: break-word; }
+  .line:hover { background: var(--t-plane); }
+  .line.warn { color: #f5d38a; }
+  .line.error { color: var(--t-bad); background: rgba(255, 122, 112, 0.06); }
+  .line.debug { color: var(--t-soft); }
+  .gap { margin: 8px 10px; padding: 4px 8px; color: var(--t-soft); border-top: 1px dashed var(--t-line); font: 12px system-ui, sans-serif; }
+  .empty { padding: 24px; color: var(--t-soft); font: 14px/1.5 system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<header>
+  <input id="find" type="search" placeholder="Find in the lines" aria-label="Find in the lines">
+  <button id="all" class="on">All</button>
+  <button id="warn">Warnings</button>
+  <button id="error">Errors</button>
+  <button id="follow" class="on" title="Keep the newest line in view">Follow</button>
+  <button id="clear" title="Start the view empty from here on">Clear</button>
+  <span class="count" id="count"></span>
+</header>
+<main id="lines"><div class="empty">Reading what the page says…</div></main>
+<script>
+  const lines = document.getElementById('lines');
+  const find = document.getElementById('find');
+  const count = document.getElementById('count');
+  const MAX = 5000;
+  let next, level = 'all', follow = true, kept = [], rest = '';
+
+  /** How bad a line is, as servers say it: dotnet's info/warn/fail/crit, and the words most logs use. */
+  const levelOf = (text) => /^\s*(fail|crit)\b|\b(error|exception|fatal|unhandled)\b/i.test(text) ? 'error'
+    : /^\s*warn\b|\bwarn(ing)?\b/i.test(text) ? 'warn'
+    : /^\s*(dbug|trce)\b|\bdebug\b/i.test(text) ? 'debug' : 'info';
+  const shown = (l) => (level === 'all' || (level === 'warn' ? l.level !== 'info' && l.level !== 'debug' : l.level === 'error'))
+    && (!find.value || l.text.toLowerCase().includes(find.value.toLowerCase()));
+
+  function el(l) {
+    const d = document.createElement('div');
+    d.className = `line ${l.level}`;
+    d.textContent = l.text;
+    return d;
+  }
+  function paint() {
+    lines.replaceChildren(...kept.filter(shown).map(el));
+    if (!kept.length) lines.innerHTML = '<div class="empty">Nothing said yet.</div>';
+    counted();
+    if (follow) lines.scrollTop = lines.scrollHeight;
+  }
+  const counted = () => { count.textContent = `${kept.length} lines${tandem.copy ? ' · the working copy' : ''}`; };
+  function add(text) {
+    const at = lines.scrollHeight - lines.scrollTop - lines.clientHeight < 40;
+    const fresh = (rest + text).split('\n');
+    rest = fresh.pop();
+    const add = fresh.filter((t) => t.trim()).map((t) => ({ text: t, level: levelOf(t) }));
+    if (!add.length) return;
+    if (!kept.length) lines.replaceChildren();
+    kept.push(...add);
+    for (const l of add) if (shown(l)) lines.append(el(l));
+    if (kept.length > MAX) { kept = kept.slice(-MAX); paint(); }
+    counted();
+    if (follow && at) lines.scrollTop = lines.scrollHeight;
+  }
+
+  async function poll() {
+    try {
+      const got = await tandem.run('logs.read', next === undefined ? {} : { after: next });
+      if (got.none && next === undefined) { lines.innerHTML = `<div class="empty">${got.none}.</div>`; }
+      if (got.reset) { kept = []; rest = ''; lines.replaceChildren(); const g = document.createElement('div'); g.className = 'gap'; g.textContent = 'The page was started again.'; lines.append(g); }
+      next = got.next;
+      if (got.text) add(got.text);
+    } catch (e) {
+      lines.innerHTML = `<div class="empty">The logs could not be read: ${String(e.message ?? e)}</div>`;
+    }
+    setTimeout(poll, 1000);
+  }
+
+  for (const id of ['all', 'warn', 'error']) document.getElementById(id).onclick = () => {
+    level = id;
+    for (const b of ['all', 'warn', 'error']) document.getElementById(b).classList.toggle('on', b === id);
+    paint();
+  };
+  document.getElementById('follow').onclick = (e) => { follow = !follow; e.target.classList.toggle('on', follow); if (follow) lines.scrollTop = lines.scrollHeight; };
+  document.getElementById('clear').onclick = () => { kept = []; paint(); };
+  find.oninput = paint;
+  poll();
+</script>
+</body>
+</html>

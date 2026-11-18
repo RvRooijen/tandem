@@ -2,8 +2,11 @@
 //   GET  /api/commands          every command there is
 //   POST /api/run/<name>        run one; the body is its input
 //   GET  /api/events?since=n    the event log, then everything as it happens (SSE)
-// and the pictures under /api/file/. Who is asking comes in the x-tandem-by
-// header (the page sends nothing and is the person).
+// and the pictures under /api/file/, and the views under /api/view/. Who is
+// asking comes in the x-tandem-by header (the page sends nothing and is the
+// person). A command is only run when it is said to be JSON: a page in a frame
+// (a view the agent made, the project's own) cannot send that to another
+// address without the browser asking here first, and nothing here says yes.
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createReadStream, existsSync } from 'node:fs';
 import { join, normalize } from 'node:path';
@@ -66,6 +69,7 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
         });
 
       if (req.method === 'POST' && url.pathname.startsWith('/api/run/')) {
+        if (!/^application\/json\b/.test(String(req.headers['content-type'] ?? ''))) return send(res, 415, { ok: false, code: 'input', error: 'a command is sent as JSON (content-type: application/json)' });
         const name = url.pathname.slice('/api/run/'.length);
         const by = String(req.headers['x-tandem-by'] ?? 'me');
         const round = req.headers['x-tandem-round'] ? String(req.headers['x-tandem-round']) : undefined;
@@ -88,6 +92,14 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
         const beat = setInterval(() => write({ n: 0, type: 'beat' }), 4000);
         req.on('close', () => { off(); clearInterval(beat); });
         return;
+      }
+
+      // A view's page, for its frame on the stage: in a sandbox of its own, whoever made it.
+      if (req.method === 'GET' && url.pathname.startsWith('/api/view/')) {
+        const html = host.views.page(decodeURIComponent(url.pathname.slice('/api/view/'.length)), url.searchParams.get('copy') === '1');
+        if (html === undefined) return send(res, 404, { ok: false, error: 'there is no such view' });
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': 'sandbox allow-scripts allow-forms allow-modals allow-popups' });
+        return void res.end(html);
       }
 
       if (req.method === 'GET' && url.pathname.startsWith('/api/file/looks/')) {
@@ -133,6 +145,7 @@ export async function startLobby(opts: { port?: number } = {}) {
       if (req.method === 'GET' && url.pathname === '/api/commands') return send(res, 200, registry.list());
       if (req.method === 'GET' && url.pathname === '/api/info') return send(res, 200, { project: null, name: 'tandem', last: 0, page: null, senses: false, copy: false });
       if (req.method === 'POST' && url.pathname.startsWith('/api/run/')) {
+        if (!/^application\/json\b/.test(String(req.headers['content-type'] ?? ''))) return send(res, 415, { ok: false, code: 'input', error: 'a command is sent as JSON (content-type: application/json)' });
         try {
           return send(res, 200, { ok: true, result: await registry.run(url.pathname.slice('/api/run/'.length), await readBody(req), { by: String(req.headers['x-tandem-by'] ?? 'me') }) ?? null });
         } catch (e) {

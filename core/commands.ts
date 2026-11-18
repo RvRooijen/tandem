@@ -39,7 +39,8 @@ export class CommandError extends Error {
 
 export const isAgent = (by: By) => by.startsWith('agent');
 
-function check(def: CommandDef, input: Record<string, unknown>) {
+/** Whether an input is what a command takes: every field it needs, of its type, and nothing else. */
+export function check(def: Pick<CommandDef, 'name' | 'input'>, input: Record<string, unknown>) {
   const spec = def.input ?? {};
   for (const key in spec) {
     const optional = spec[key].endsWith('?');

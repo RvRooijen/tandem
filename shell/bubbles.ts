@@ -109,6 +109,7 @@ export function createBubbles(el: HTMLElement, app: BubbleHost) {
       ? `A change to the project · ${files} ${files === 1 ? 'file' : 'files'}${changes.length > 1 ? ` · ${changes.length - 1} more` : ''}`
       : changes.length > 1 ? `A proposal · ${changes.length} changes`
         : first.kind === 'setup' ? 'A proposal · how tandem runs the project'
+        : first.kind === 'run' ? `A proposal · run the project's ${first.path}`
         // A concept goes by its name, as the person knows it.
         : first.kind === 'concept' ? (first.before ? `A change to the concept ${conceptName(first)}` : `A new concept · ${conceptName(first)}`)
           : `A proposal · ${first.kind} ${first.path}${first.before ? '' : ', new'}`;

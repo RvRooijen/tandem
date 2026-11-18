@@ -38,6 +38,8 @@ test('every module of the page is served as a module, and /api/ reaches the core
 
   const info = await (await fetch(`${base}/api/info`)).json() as { project: string };
   assert.equal(info.project, 'fixture');
-  const run = await (await fetch(`${base}/api/run/art.get`, { method: 'POST', body: '{"name":"gnome"}' })).json() as { ok: boolean };
+  const run = await (await fetch(`${base}/api/run/art.get`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"name":"gnome"}' })).json() as { ok: boolean };
   assert.equal(run.ok, true);
+  // Without saying it is JSON it is not run: a page in another frame can send that without asking first.
+  assert.equal((await fetch(`${base}/api/run/art.get`, { method: 'POST', body: '{"name":"gnome"}' })).status, 415);
 });

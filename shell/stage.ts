@@ -5,7 +5,13 @@
 // found by the words on it. A page that uses the bridge
 // (bridge/tandem.bridge.ts) also tells tandem the world being played and where
 // things in that world are.
-import { reachable, type Info } from './api.ts';
+//
+// Beside the page there can be views (core/views.ts): what the project's server
+// says, its endpoints, a database, a page made for the project. Each is a tab
+// over the stage and a frame of its own, in a sandbox: a view asks for what it
+// shows through here (bridge/view.js), and only for what a view may ask. What
+// is pointed at, looked at or tapped is in the frame of the tab that is shown.
+import { reachable, run, type Info } from './api.ts';
 import { clear, h } from './dom.ts';
 
 /** Something on the project's page, as the page says it is: where, what is written on it, and how the code would name it. */
@@ -18,9 +24,25 @@ export interface Picked {
   image?: string;
 }
 
+/** A view, as views.list says it. */
+export interface ViewInfo { name: string; kind: string; url: string; proposed?: boolean }
+
+/** What a view may ask for, and whether it is asked of the working copy when the stage shows that. */
+export const VIEW_ASKS: Record<string, boolean> = {
+  'views.list': false, 'logs.read': true, 'data.tables': true, 'data.query': true, 'api.endpoints': true,
+  'page.request': true, 'page.read': false, 'project.commands': false, 'project.run': true,
+};
+
 export interface Stage {
   /** What the frame shows now. */
   showing: 'project' | 'copy';
+  /** The view whose tab is shown; null for the page. */
+  tab: string | null;
+  views: ViewInfo[];
+  /** The views there are now: their tabs. `anew` loads the ones that are open again (one of them may have changed). */
+  setViews(list: ViewInfo[], anew?: boolean): void;
+  /** Show a view's tab, or the page's (null). False when there is no such view. */
+  showTab(name: string | null): boolean;
   /** The copy is shown by an example of its change set (a page made to show it), not from where the app opens. */
   example: boolean;
   /** How many times a page in the frame has said it is there: one more each time a page is loaded in it. */
@@ -54,10 +76,18 @@ export interface Stage {
   pick(x: number, y: number, image?: boolean): Promise<Picked | null>;
 }
 
-export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapshot: unknown): void; changed(): void }): Stage {
+type Can = { snapshot: boolean; point: boolean; find: boolean };
+/** A frame on the stage: the page's, or a view's. */
+interface Pane { frame: HTMLIFrameElement; can: Can; view: string | null }
+
+export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapshot: unknown): void; changed(): void; copy?(want: boolean): void }): Stage {
   const frame = h<'iframe'>('iframe#t-frame', { title: info.name, allow: 'autoplay; fullscreen; vibrate', hidden: true });
   const none = h('div#t-nopage');
-  root.append(frame, none);
+  const bar = h<'nav'>('nav#t-views', { hidden: true, 'aria-label': 'What there is to see' });
+  root.append(frame, none, bar);
+  const main: Pane = { frame, can: { snapshot: false, point: false, find: false }, view: null };
+  const panes = new Map<string, Pane>();
+  let active = main;
 
   /** Point the frame at a page, once that page answers: it is started when tandem is, and may take a moment. */
   let wanted = '';
@@ -101,31 +131,98 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
   const picking = new Map<number, (got: Picked | null) => void>();
   const acting = new Map<number, (got: Record<string, unknown> | null) => void>();
   const finding = new Map<number, (at: { x: number; y: number; w: number; h: number } | 'missing' | null) => void>();
-  const send = (msg: Record<string, unknown>) => frame.contentWindow?.postMessage({ tandem: 1, ...msg }, '*');
+  const send = (msg: Record<string, unknown>) => active.frame.contentWindow?.postMessage({ tandem: 1, ...msg }, '*');
+  const viewUrl = (v: ViewInfo) => `${v.url}${stage.showing === 'copy' ? '?copy=1' : ''}`;
+  /** Where the page and the views are seen: a tab for each, and project or working copy for all of them. */
+  function paintBar() {
+    bar.hidden = !stage.views.length;
+    document.body.classList.toggle('t-viewed', !bar.hidden);
+    if (bar.hidden) return;
+    const tab = (name: string | null, label: string, v?: ViewInfo) => h<'button'>(`button.t-vtab${stage.tab === name ? '.on' : ''}${v?.proposed ? '.proposed' : ''}`,
+      { onclick: () => stage.showTab(name), title: v?.proposed ? 'Proposed: as the change to how the project is run would make it' : v ? `${v.kind === 'view' ? 'A page made for this project' : v.kind}` : 'The project\'s page' },
+      label, v?.proposed && h('i', {}, 'proposed'));
+    clear(bar,
+      h('div.tabs', {}, tab(null, 'Page'), stage.views.map((v) => tab(v.name, v.name, v))),
+      info.copy && on.copy && h('div.which', {},
+        h<'button'>(`button${stage.showing === 'project' ? '.on' : ''}`, { onclick: () => on.copy!(false), title: 'The project as it is' }, 'Project'),
+        h<'button'>(`button${stage.showing === 'copy' ? '.on' : ''}`, { onclick: () => on.copy!(true), title: 'The agent\'s working copy' }, 'Copy')));
+  }
+  /** A view's frame, made when its tab is first shown; in a sandbox, so it cannot reach tandem by itself. */
+  function paneFor(v: ViewInfo): Pane {
+    let pane = panes.get(v.name);
+    if (!pane) {
+      const f = h<'iframe'>('iframe.t-view', { title: v.name, hidden: true, sandbox: 'allow-scripts allow-forms allow-modals allow-popups', src: viewUrl(v) });
+      root.insertBefore(f, bar);
+      pane = { frame: f, can: { snapshot: false, point: false, find: false }, view: v.name };
+      panes.set(v.name, pane);
+    }
+    return pane;
+  }
+  /** A view asks for something: only what a view may, and of the working copy when that is what is shown. */
+  async function ask(pane: Pane, m: { id?: number; name?: string; input?: Record<string, unknown> }) {
+    const answer = (out: Record<string, unknown>) => pane.frame.contentWindow?.postMessage({ tandem: 1, type: 'ran', id: m.id, ...out }, '*');
+    const name = String(m.name ?? '');
+    if (!(name in VIEW_ASKS)) return answer({ ok: false, code: 'permission', error: `a view cannot ask for ${name}; it may ask for ${Object.keys(VIEW_ASKS).join(', ')}` });
+    const input = { ...(m.input && typeof m.input === 'object' ? m.input : {}) };
+    if (VIEW_ASKS[name] && input.copy === undefined && stage.showing === 'copy') input.copy = true;
+    try { answer({ ok: true, result: await run(name, input) }); } catch (e) { answer({ ok: false, code: (e as { code?: string }).code ?? 'error', error: e instanceof Error ? e.message : String(e) }); }
+  }
 
+  /** The views follow the page to the working copy and back: what is open of them is loaded again for that. */
+  const viewsFollow = () => { for (const [name, pane] of panes) { const v = stage.views.find((x) => x.name === name); if (v) { pane.can = { snapshot: false, point: false, find: false }; pane.frame.src = viewUrl(v); } } };
   const stage: Stage = {
     showing: 'project',
     example: false,
     loads: 0,
-    can: { snapshot: false, point: false, find: false },
+    tab: null,
+    views: [],
+    get can() { return active.can; },
+    set can(can: Can) { active.can = can; },
+    setViews(list, anew = false) {
+      stage.views = list;
+      for (const [name, pane] of panes) {
+        const v = list.find((x) => x.name === name);
+        if (!v) { pane.frame.remove(); panes.delete(name); } else if (anew) { pane.can = { snapshot: false, point: false, find: false }; pane.frame.src = viewUrl(v); }
+      }
+      if (stage.tab !== null && !panes.has(stage.tab)) stage.showTab(null);
+      paintBar();
+    },
+    showTab(name) {
+      const v = name === null ? undefined : stage.views.find((x) => x.name === name);
+      if (name !== null && !v) return false;
+      active = v ? paneFor(v) : main;
+      stage.tab = v ? v.name : null;
+      for (const pane of [main, ...panes.values()]) if (pane !== main) pane.frame.hidden = pane !== active;
+      // (The page's frame keeps what it shows behind a view: it is only out of sight.)
+      root.classList.toggle('t-on-view', active !== main);
+      paintBar();
+      on.changed();
+      return true;
+    },
     showCopy(url, example = false) {
+      const was = stage.showing;
       stage.showing = 'copy';
       stage.example = example;
-      stage.can = { snapshot: false, point: false, find: false };
+      main.can = { snapshot: false, point: false, find: false };
       void show(url, 'the working copy');
+      if (was !== 'copy') viewsFollow();
+      paintBar();
       on.changed();
     },
     showProject(anew = false) {
       if (stage.showing === 'project' && !anew) return;
+      const was = stage.showing;
       stage.showing = 'project';
       stage.example = false;
-      stage.can = { snapshot: false, point: false, find: false };
+      main.can = { snapshot: false, point: false, find: false };
       if (info.page) void show(info.page, info.name); else if (info.project) nothing();
+      if (was !== 'project') viewsFollow();
+      paintBar();
       on.changed();
     },
     rect() {
-      if (frame.hidden) return null;
-      const r = frame.getBoundingClientRect();
+      if (active.frame.hidden) return null;
+      const r = active.frame.getBoundingClientRect();
       return r.width > 0 && r.height > 0 ? { x: r.left, y: r.top, w: r.width, h: r.height } : null;
     },
     again() {
@@ -153,7 +250,7 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
     pick(x, y, image = false) {
       if (!stage.can.find) return Promise.resolve(null);
       const id = ++asked;
-      const r = frame.getBoundingClientRect();
+      const r = active.frame.getBoundingClientRect();
       return new Promise((resolve) => {
         picking.set(id, resolve);
         send({ type: 'pick', id, x: x - r.left, y: y - r.top, ...(image && { image: true }) });
@@ -173,10 +270,18 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
   };
 
   window.addEventListener('message', (ev) => {
-    const m = ev.data as { tandem?: number; type?: string; id?: number; x?: number; y?: number; w?: number; h?: number; missing?: boolean; snapshot?: unknown; loaded?: boolean; can?: Partial<Stage['can']> } | null;
-    if (!m || m.tandem !== 1 || ev.source !== frame.contentWindow) return;
+    const m = ev.data as { tandem?: number; type?: string; id?: number; x?: number; y?: number; w?: number; h?: number; missing?: boolean; snapshot?: unknown; loaded?: boolean; can?: Partial<Stage['can']>; name?: string; input?: Record<string, unknown> } | null;
+    if (!m || m.tandem !== 1) return;
+    const pane = ev.source === frame.contentWindow ? main : [...panes.values()].find((p) => p.frame.contentWindow === ev.source);
+    if (!pane) return;
+    const frameOf = pane.frame;
+    if (pane !== main) {
+      if (m.type === 'run') void ask(pane, m);
+      else if (m.type === 'page') { pane.can = { ...pane.can, find: !!m.can?.find }; if (pane === active) stage.loads++; }
+    }
+    if (pane !== main && !['did', 'picked', 'found'].includes(String(m.type))) return;
     if (m.type === 'hello') {
-      stage.can = { ...stage.can, snapshot: !!m.can?.snapshot, point: !!m.can?.point };
+      main.can = { ...main.can, snapshot: !!m.can?.snapshot, point: !!m.can?.point };
       // The working copy is played from where the person is in the project, and keeps nothing.
       if (stage.showing === 'copy' && !m.loaded && world !== undefined) send({ type: 'load', snapshot: world });
       // Back in the project: if this page was once asked to start from a world, it is its own again.
@@ -187,22 +292,22 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
       if (stage.showing === 'project') { world = m.snapshot; on.snapshot(m.snapshot); }
     } else if (m.type === 'page') {
       // Tandem's own lines in the page: what is on it can be found.
-      stage.can = { ...stage.can, find: !!m.can?.find };
+      main.can = { ...main.can, find: !!m.can?.find };
       stage.loads++;
     } else if (m.type === 'did' && m.id !== undefined) {
-      const r = frame.getBoundingClientRect();
+      const r = frameOf.getBoundingClientRect();
       const { tandem: _t, type: _y, id: _i, ...got } = m as Record<string, unknown>;
       // A place on the page is a place on this screen, moved by where the frame is.
       if (typeof got.x === 'number' && typeof got.y === 'number') { got.x += r.left; got.y += r.top; }
       acting.get(m.id)?.(got);
       acting.delete(m.id);
     } else if (m.type === 'picked' && m.id !== undefined) {
-      const r = frame.getBoundingClientRect();
+      const r = frameOf.getBoundingClientRect();
       const p = m as unknown as Picked;
       picking.get(m.id)?.(m.missing ? null : { x: r.left + Number(p.x), y: r.top + Number(p.y), w: Number(p.w), h: Number(p.h), words: String(p.words ?? ''), near: String(p.near ?? ''), tag: String(p.tag ?? ''), selector: String(p.selector ?? ''), path: String(p.path ?? ''), ...(p.three && typeof p.three === 'object' && { three: p.three }), ...(typeof p.image === 'string' && p.image.startsWith('data:image/') && { image: p.image }) });
       picking.delete(m.id);
     } else if (m.type === 'found' && m.id !== undefined) {
-      const r = frame.getBoundingClientRect();
+      const r = frameOf.getBoundingClientRect();
       finding.get(m.id)?.(m.missing ? 'missing' : { x: r.left + Number(m.x), y: r.top + Number(m.y), w: Number(m.w), h: Number(m.h) });
       finding.delete(m.id);
     } else if (m.type === 'screen' && m.id !== undefined) {

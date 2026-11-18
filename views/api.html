@@ -1,0 +1,110 @@
+<!doctype html>
+<!-- Tandem's api view: the endpoints of the project's server, and one of them called the way another device would
+     (page.request: nothing of what the browser keeps goes along). What it answers is shown line by line, so a part
+     of it can be pointed at. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API</title>
+<style>
+  html, body { margin: 0; height: 100%; background: var(--t-bg); color: var(--t-ink); font: 13px/1.45 system-ui, sans-serif; }
+  body { display: grid; grid-template-columns: minmax(220px, 34%) 1fr; height: 100%; }
+  @media (max-width: 640px) { body { grid-template-columns: 1fr; grid-template-rows: minmax(140px, 38%) 1fr; } }
+  nav { overflow: auto; border-right: 1px solid var(--t-line); background: var(--t-plane); padding: 6px 0 20px; }
+  nav input { display: block; box-sizing: border-box; width: calc(100% - 16px); margin: 2px 8px 6px; background: var(--t-well); color: var(--t-ink); border: 1px solid var(--t-line); border-radius: 6px; padding: 5px 8px; font: inherit; }
+  nav h4 { margin: 10px 10px 2px; color: var(--t-soft); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .ep { display: flex; gap: 6px; align-items: baseline; padding: 3px 10px; cursor: pointer; }
+  .ep:hover { background: var(--t-raise); }
+  .ep.on { background: var(--t-raise-2); }
+  .ep code { font: 12px var(--t-mono); color: var(--t-ink-2); word-break: break-all; }
+  .m { flex: none; width: 46px; font: 600 10px var(--t-mono); text-align: center; border-radius: 4px; padding: 1px 0; background: var(--t-raise-2); color: var(--t-soft); }
+  .m.GET { color: var(--t-good); } .m.POST { color: var(--t-blue); } .m.PUT, .m.PATCH { color: var(--t-violet); } .m.DELETE { color: var(--t-bad); }
+  section { overflow: auto; padding: 10px 12px 24px; display: grid; gap: 10px; align-content: start; }
+  .about { color: var(--t-soft); }
+  .call { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .call code { font: 13px var(--t-mono); }
+  .params { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; }
+  .params label { font: 12px var(--t-mono); color: var(--t-ink-2); }
+  input.p, textarea, .as input { background: var(--t-well); color: var(--t-ink); border: 1px solid var(--t-line); border-radius: 6px; padding: 5px 8px; font: 12px/1.4 var(--t-mono); min-width: 0; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 90px; resize: vertical; }
+  .as { display: flex; gap: 6px; align-items: center; color: var(--t-soft); font-size: 12px; }
+  button.send { background: var(--t-accent); color: var(--t-accent-ink); border: 0; border-radius: 6px; padding: 7px 14px; font: 600 13px system-ui, sans-serif; cursor: pointer; }
+  .status { font: 600 12px var(--t-mono); padding: 2px 7px; border-radius: 4px; background: var(--t-raise-2); }
+  .status.ok { color: var(--t-good); } .status.bad { color: var(--t-bad); }
+  .answer { background: var(--t-well); border: 1px solid var(--t-line); border-radius: 8px; padding: 8px 0; font: 12px/1.5 var(--t-mono); overflow: auto; }
+  .answer div { padding: 0 10px; white-space: pre-wrap; word-break: break-word; }
+  .answer div:hover { background: var(--t-plane); }
+  .empty { padding: 24px; color: var(--t-soft); font-size: 14px; }
+</style>
+</head>
+<body>
+<nav><input id="find" type="search" placeholder="Find an endpoint" aria-label="Find an endpoint"><div id="list"><div class="empty">Reading the endpoints…</div></div></nav>
+<section id="one"><div class="empty">Choose an endpoint.</div></section>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const make = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids.filter((k) => k != null && k !== false)); return e; };
+  let all = [], chosen, failed = '';
+
+  async function load() {
+    try { all = await tandem.run('api.endpoints', { view: tandem.view.name }); }
+    catch (e) { failed = `The endpoints could not be read: ${e.message ?? e}`; }
+    paint();
+  }
+  function paint() {
+    const f = $('find').value.toLowerCase();
+    const shown = all.filter((e) => !f || `${e.method} ${e.path} ${e.about ?? ''}`.toLowerCase().includes(f));
+    const groups = new Map();
+    for (const e of shown) {
+      const g = e.path.split('/').filter((p) => p && !p.startsWith('{') && p !== 'api')[0] ?? '/';
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(e);
+    }
+    $('list').replaceChildren(...(all.length ? [] : [make('div', { className: 'empty', textContent: failed || 'No endpoints are said for this view.' })]),
+      ...[...groups].flatMap(([g, list]) => [make('h4', { textContent: g }), ...list.map((e) => {
+        const row = make('div', { className: `ep${e === chosen ? ' on' : ''}`, title: e.about ?? '', onclick: () => choose(e) }, make('span', { className: `m ${e.method.toUpperCase()}`, textContent: e.method.toUpperCase() }), make('code', { textContent: e.path }));
+        return row;
+      })]));
+  }
+
+  function choose(e) {
+    chosen = e;
+    paint();
+    const method = e.method.toUpperCase();
+    const names = [...e.path.matchAll(/\{([^}:*]+)(?::[^}]*)?\}|\{\*\*?([^}]+)\}/g)].map((m) => m[1] ?? m[2]);
+    const inputs = Object.fromEntries(names.map((n) => [n, make('input', { className: 'p', placeholder: n })]));
+    const body = method === 'GET' || method === 'DELETE' ? null : make('textarea', { spellcheck: false, value: e.body === undefined ? '' : typeof e.body === 'string' ? e.body : JSON.stringify(e.body, null, 2), placeholder: 'The body, as JSON or text' });
+    const as = make('input', { value: 'visitor', size: 10 });
+    const answer = make('div');
+    const send = make('button', { className: 'send', textContent: 'Send' });
+    send.onclick = async () => {
+      let path = e.path;
+      for (const n of names) path = path.replace(new RegExp(`\\{\\*{0,2}${n}(:[^}]*)?\\}`), encodeURIComponent(inputs[n].value));
+      let sent;
+      if (body && body.value.trim()) { try { sent = JSON.parse(body.value); } catch { sent = body.value; } }
+      answer.replaceChildren(make('div', { className: 'about', textContent: `${method} ${path}…` }));
+      try {
+        const got = await tandem.run('page.request', { path, method, ...(sent !== undefined && { body: sent }), as: as.value.trim() || 'visitor' });
+        let text = got.body;
+        try { text = JSON.stringify(JSON.parse(got.body), null, 2); } catch { /* as it came */ }
+        answer.replaceChildren(
+          make('div', { className: 'call' }, make('span', { className: `status ${got.status < 400 ? 'ok' : 'bad'}`, textContent: got.status }), make('span', { className: 'about', textContent: got.type || '' })),
+          make('div', { className: 'answer' }, ...String(text).split('\n').map((l) => make('div', { textContent: l || ' ' }))));
+      } catch (err) {
+        answer.replaceChildren(make('div', { className: 'about', textContent: err.message ?? String(err) }));
+      }
+    };
+    $('one').replaceChildren(
+      make('div', { className: 'call' }, make('span', { className: `m ${method}`, textContent: method }), make('code', { textContent: e.path })),
+      e.about ? make('div', { className: 'about', textContent: e.about }) : null,
+      names.length ? make('div', { className: 'params' }, ...names.flatMap((n) => [make('label', { textContent: n }), inputs[n]])) : null,
+      body,
+      make('div', { className: 'as' }, 'as', as, send, tandem.copy ? 'to the working copy' : ''),
+      answer);
+  }
+
+  $('find').oninput = paint;
+  load();
+</script>
+</body>
+</html>

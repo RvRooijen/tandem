@@ -56,19 +56,24 @@ interface Round {
 export function refChip(app: App, ref: string, onRemove?: () => void): HTMLElement {
   const [kind, rest] = [ref.slice(0, ref.indexOf(':')), ref.slice(ref.indexOf(':') + 1)];
   // Something on the project's page: what is written on it, or what kind of thing it is.
-  let onPage: { words?: string; near?: string; tag?: string; selector?: string; three?: { uuid?: string } } = {};
+  let onPage: { words?: string; near?: string; tag?: string; selector?: string; three?: { uuid?: string }; view?: string } = {};
   if (kind === 'page') { try { onPage = JSON.parse(rest); } catch { /* shown as it is */ } }
   const open = () => {
     if (kind === 'concept') app.open('concepts', rest);
     else if (kind === 'thought') app.open('concepts');
     else if (kind === 'drawing') app.open('art', rest);
     else if (kind === 'point') { const [x, y] = rest.split(',').map(Number); app.point(x, y); }
-    else if (kind === 'page' && (onPage.three?.uuid || onPage.selector)) { app.reveal(); app.point(0, 0, '', onPage.three?.uuid ? `three:${onPage.three.uuid}` : onPage.selector); }
+    else if (kind === 'page' && (onPage.three?.uuid || onPage.selector)) {
+      app.reveal();
+      // (In a view: its tab is shown first, and a moment is given for it to be there.)
+      const shown = app.stage.tab === (onPage.view ?? null) || app.stage.showTab(onPage.view ?? null);
+      if (shown) setTimeout(() => app.point(0, 0, '', onPage.three?.uuid ? `three:${onPage.three.uuid}` : onPage.selector), app.stage.can.find ? 0 : 900);
+    }
   };
   const short = (text: string) => (text.length > 40 ? `${text.slice(0, 39)}…` : text);
   // (The picture that goes with it, while it is not sent yet.)
   const picture = onRemove ? app.pictures.get(ref) : undefined;
-  const label = kind === 'page' && onPage.three ? `in the scene: ${short(onPage.words ?? 'something')}` : kind === 'page' ? `on the page: ${onPage.words ? `"${short(onPage.words)}"` : `${onPage.tag ?? 'something'}${onPage.near ? ` by "${short(onPage.near)}"` : ''}`}` : kind === 'thought' ? 'a loose thought' : `${kind} ${rest}`;
+  const label = kind === 'page' && onPage.three ? `in the scene: ${short(onPage.words ?? 'something')}` : kind === 'page' ? `${onPage.view ? `in ${onPage.view}` : 'on the page'}: ${onPage.words ? `"${short(onPage.words)}"` : `${onPage.tag ?? 'something'}${onPage.near ? ` by "${short(onPage.near)}"` : ''}`}` : kind === 'thought' ? 'a loose thought' : `${kind} ${rest}`;
   return h('span.t-chip.ref', { data: { kind } },
     picture && h<'img'>('img', { src: picture.url, alt: 'A picture of it', onclick: () => app.zoom(picture.url) }),
     h('span', { onclick: open }, label),
@@ -354,10 +359,17 @@ export function chatPanel(): Panel {
 
   /** How tandem runs the project: each field in full, and the script that starts its page as it is written. */
   function setupLines(c: Change): HTMLElement[] {
-    const say = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v));
-    return Object.keys(c.after ?? {}).flatMap((k) => k === 'script'
-      ? [h('div.field', {}, h('span.k', {}, 'page.sh'), !(c.before && k in c.before) && h('span.was.new', {}, 'new')),
-        h('pre.diff', {}, String(c.after![k]).replace(/\n$/, '').split('\n').map((l) => h('span', { data: { how: 'same' } }, l || ' ')))]
+    // (The views by their names, with what each is: the rest of what says them is in the json.)
+    const say = (v: unknown) => (typeof v === 'string' ? v
+      : Array.isArray(v) && v.every((x) => x && typeof x === 'object' && 'name' in x) ? v.map((x: { name: string; kind?: string; file?: string; view?: string }) => `${x.name} (${x.kind ? `${x.kind}${x.file ? ` ${x.file}` : ''}` : x.view})`).join(', ')
+      : JSON.stringify(v));
+    // A file of tandem's folder (the page's script, a view's page, the project's commands) is shown as it would be;
+    // a long one folded, to be opened.
+    const file = (k: string) => k === 'script' || k === 'commands.ts' || k.startsWith('views/');
+    const lines = (k: string) => h('pre.diff', {}, String(c.after![k]).replace(/\n$/, '').split('\n').map((l) => h('span', { data: { how: 'same' } }, l || ' ')));
+    return Object.keys(c.after ?? {}).flatMap((k) => file(k)
+      ? [h('div.field', {}, h('span.k', {}, k === 'script' ? 'page.sh' : k), !(c.before && k in c.before) ? h('span.was.new', {}, 'new') : !c.after![k] && h('span.now', {}, '(taken away)')),
+        ...(c.after![k] ? [String(c.after![k]).split('\n').length > 24 ? h('details.file', {}, h('summary', {}, `${String(c.after![k]).split('\n').length} lines`), lines(k)) : lines(k)] : [])]
       : [h('div.field.whole', {},
         h('span.k', {}, k),
         c.before && k in c.before ? h('span.was', {}, say(c.before[k])) : h('span.was.new', {}, 'new'),
@@ -619,6 +631,8 @@ export function chatPanel(): Panel {
         return h('div.sys', {}, icon('page'), ev.allow ? ' you let the agent use the page' : ev.by === 'me' ? ' you said not now' : ' the agent\'s asking for the page went unanswered');
       case 'page.released':
         return h('div.sys', {}, icon('page'), ev.by === 'me' ? ' you took the page back' : ` the page is yours again${ev.why ? `: ${ev.why}` : ''}`);
+      case 'project.ran':
+        return h(`div.sys${ev.error ? '.fail' : ''}`, {}, icon(ev.error ? 'close' : 'yes'), ` ${ev.by === 'me' ? 'you ran' : 'ran'} the project's ${String(ev.name)}${ev.copy ? ' in the working copy' : ''}${ev.error ? `, and it failed: ${String(ev.error).slice(0, 300)}` : ev.result && ev.result !== 'null' ? `: ${String(ev.result).slice(0, 300)}` : ''}`);
       case 'setup.changed':
         return h('div.sys', {}, icon('yes'), ` how tandem runs the project was changed (${(ev.fields as string[]).join(', ')})${ev.restarting ? '. Its page starts again with it' : ''}`);
       case 'remote.changed':

@@ -3,7 +3,7 @@
 // here knows about pages or agents beyond who is asking (`by`).
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SCRATCH, createCode, forConcepts, type Code, type FileChange } from './code.ts';
 import { CommandError, createRegistry, isAgent, type By, type CommandDef, type Registry } from './commands.ts';
@@ -16,6 +16,7 @@ import { createThoughts, type Thoughts } from './thoughts.ts';
 import { find, put, unfit, type Tweak, type TweakValue } from './tweaks.ts';
 import { COPY_PORT, createPreview, type Preview } from './preview.ts';
 import { innerPort } from './through.ts';
+import { checkViews, createViews, isSetupFile, type Views } from './views.ts';
 import { encodePng } from './png.ts';
 import { SETUP, loadProject, prepare, type Project } from './project.ts';
 import { createProposals, type Json, type Proposal, type Proposals, type RecordValue } from './proposals.ts';
@@ -45,6 +46,8 @@ export interface Host {
   code?: Code;
   /** The page of the working copy, for playing it. */
   preview?: Preview;
+  /** What there is to see of the project besides its page (core/views.ts). */
+  views: Views;
   /** After the agent worked: what its copy differs from the project becomes (or stops being) a proposal. */
   proposeCode(by: By, note: string): void;
   /** What the person turned of the values the agent exposed, since the agent last heard: said once, at its next turn. */
@@ -157,6 +160,26 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   /** The working copy's change set, when it waits: there is one copy, so one change set at a time. */
   const waitingCode = () => proposals.list({ status: 'pending' }).find((p) => p.kind === 'code');
 
+  // ------------------------------------------------------------ views: what there is to see besides the page
+  const views = createViews({
+    project, dataDir, events,
+    copyLog: join(dataDir, 'copy-page.log'),
+    copyRoot: () => { if (!code) return undefined; bringUp(); return code.work; },
+    async pageAt(copy) {
+      if (!copy) return project.pageCommand(0) ? `http://127.0.0.1:${innerPort(Number(process.env.TANDEM_PAGE_PORT ?? 5210))}/` : undefined;
+      if (!preview || !copyPage()) return undefined;
+      await preview.url();
+      return `http://127.0.0.1:${innerPort(COPY_PORT, true)}/`;
+    },
+    pendingSetup: () => waiting().find((p) => p.kind === 'setup'),
+    request: (by, i) => request(by, i),
+    proposeRun(by, after, note) {
+      const p = proposals.add({ round: SET, by, kind: 'run', path: String(after.name), after, note });
+      events.add({ type: 'proposal', by, round: SET, id: p.id, kind: 'run', path: p.path, after: p.after, note: p.note });
+      return { proposed: p.id, says: 'it does something, so it is the person\'s to accept; it is run when they do, and how it went is said in the chat' };
+    },
+  });
+
   // ------------------------------------------------------------ worlds
 
   const rooms = new Map<string, Room>();
@@ -261,7 +284,8 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     return file;
   }
   async function onPage(by: By, what: Record<string, unknown>) {
-    if (!project.pageCommand(0)) throw new CommandError('unsupported', 'this project has no page set up in tandem (project.configure: page)');
+    if (typeof what.view === 'string') views.find(what.view);
+    else if (!project.pageCommand(0)) throw new CommandError('unsupported', 'this project has no page set up in tandem (project.configure: page)');
     if (takenBack && isAgent(by)) throw new CommandError('permission', 'the person took the page back, so leave it alone. If you still need it, ask again with page.take; otherwise say what you could not see');
     const mine = !!held && held.by === by;
     if (mine) { hold(by); what = { ...what, picture: true }; }
@@ -274,7 +298,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     });
     if (!result) throw new CommandError('unavailable', 'the person\'s screen did not answer: tandem has to be open on their device for this. Ask them to open it, or go by the code');
     if (result.ok === false) throw new CommandError('failed', String(result.error ?? 'it did not work'));
-    if (what.do !== 'look') events.add({ type: 'page.did', by, what: what.do, ...(what.at !== undefined && { at: what.at }), ...(what.x !== undefined && { at: `${what.x}, ${what.y}` }), ...(what.path !== undefined && { path: what.path }), did: result.did ?? '', showing: result.showing });
+    if (what.do !== 'look') events.add({ type: 'page.did', by, what: what.do, ...(what.at !== undefined && { at: what.at }), ...(what.x !== undefined && { at: `${what.x}, ${what.y}` }), ...(what.path !== undefined && { path: what.path }), did: result.did ?? '', showing: result.showing, ...(typeof what.view === 'string' && { view: what.view }) });
     const { ok: _ok, lines, image, size, ...rest } = result;
     const picture = mine ? keepPicture(image) : undefined;
     return {
@@ -289,7 +313,39 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
    * copy's. A visitor with a name keeps its cookies from one call to the next.
    */
   const visitors = new Map<string, Map<string, string>>();
-  async function request(by: By, i: { method?: string; path: string; body?: unknown; headers?: unknown; as?: string; copy?: boolean }) {
+  /**
+   * Answers that come in a piece at a time (a stream of events, an answer written as it is thought), kept while they
+   * come: page.read gives what came after where the reader was. The last ones are kept a while after they ended.
+   */
+  const streams = new Map<string, { text: string; done: boolean; status: number; type: string; error?: string; ended?: number; stop: AbortController }>();
+  let streamN = 0;
+  const STREAM_MAX = 8_000_000;
+  function keepStream(res: Response, stop: AbortController): string {
+    for (const [id, st] of streams) if (st.ended && Date.now() - st.ended > 10 * 60_000) streams.delete(id);
+    const id = `s${Date.now().toString(36)}${++streamN}`;
+    const st = { text: '', done: false, status: res.status, type: res.headers.get('content-type') ?? '', stop } as { text: string; done: boolean; status: number; type: string; error?: string; ended?: number; stop: AbortController };
+    streams.set(id, st);
+    void (async () => {
+      const decoder = new TextDecoder();
+      try {
+        const reader = res.body?.getReader();
+        if (reader) for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          st.text += decoder.decode(value, { stream: true });
+          if (st.text.length > STREAM_MAX) { st.error = `the answer grew past ${STREAM_MAX / 1e6} million characters and was cut off there`; stop.abort(); break; }
+        }
+        st.text += decoder.decode();
+      } catch (e) {
+        if (!st.error) st.error = stop.signal.aborted ? 'stopped' : e instanceof Error ? e.message : String(e);
+      }
+      st.done = true;
+      st.ended = Date.now();
+    })();
+    return id;
+  }
+
+  async function request(by: By, i: { method?: string; path: string; body?: unknown; headers?: unknown; as?: string; copy?: boolean; stream?: boolean }) {
     if (!(i.copy ? copyPage() : project.pageCommand(0))) throw new CommandError('unsupported', 'this project has no page set up in tandem (project.configure: page)');
     const method = (i.method ?? (i.body === undefined ? 'GET' : 'POST')).toUpperCase();
     if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'].includes(method)) throw new CommandError('input', 'method is GET, POST, PUT, PATCH, DELETE or HEAD');
@@ -313,21 +369,25 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     }
     if (jar.size) headers.cookie = [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
     let res: Response;
-    try { res = await fetch(`http://127.0.0.1:${port}${i.path}`, { method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(20_000) }); }
+    // (A stream may take as long as the answer takes to be written; it is stopped with page.read when no longer wanted.)
+    const stop = new AbortController();
+    const signal = i.stream ? AbortSignal.any([stop.signal, AbortSignal.timeout(30 * 60_000)]) : AbortSignal.timeout(20_000);
+    try { res = await fetch(`http://127.0.0.1:${port}${i.path}`, { method, headers, body, redirect: 'manual', signal }); }
     catch (e) { throw new CommandError('failed', `the project's server did not answer ${method} ${i.path}: ${e instanceof Error ? e.message : e}`); }
     for (const c of res.headers.getSetCookie()) {
       const [pair] = c.split(';');
       const at = pair.indexOf('=');
       if (at > 0) jar.set(pair.slice(0, at).trim(), pair.slice(at + 1).trim());
     }
-    const text = await res.text();
     const type = res.headers.get('content-type') ?? '';
     // What changes something is kept as something that happened: the person sees what was done with their project.
     if (method !== 'GET' && method !== 'HEAD') events.add({ type: 'page.did', by, what: 'request', did: `sent ${method} ${i.path} to ${i.copy ? 'the working copy\'s' : 'the project\'s'} server as ${who}: ${res.status}`, showing: i.copy ? 'copy' : 'project' });
-    return {
-      status: res.status, type, as: who, ...(res.headers.get('location') && { location: res.headers.get('location') }),
-      body: text.length > 8000 ? `${text.slice(0, 8000)}\n… (${text.length - 8000} more characters)` : text,
-    };
+    const head = { status: res.status, type, as: who, ...(res.headers.get('location') && { location: res.headers.get('location') }) };
+    if (i.stream) return { ...head, stream: keepStream(res, stop) };
+    const text = await res.text();
+    // (The agent reads it; a view shows it, and is given all of it.)
+    const most = isAgent(by) ? 8000 : 4_000_000;
+    return { ...head, body: text.length > most ? `${text.slice(0, most)}\n… (${text.length - most} more characters)` : text };
   }
 
   /**
@@ -368,12 +428,21 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   }
 
   /** How the project is run, as tandem keeps it: in its own folder in the project, not among the project's files. */
-  const SETUP_FIELDS = ['name', 'page', 'rebuild', 'test', 'check', 'run', 'adapter', 'art', 'edit'] as const;
+  const SETUP_FIELDS = ['name', 'page', 'rebuild', 'test', 'check', 'run', 'adapter', 'art', 'edit', 'views'] as const;
+  /** Whether a change to these fields of how the project is run needs its page started again: the views and what they show are read as they are. */
+  const restarts = (fields: string[]) => fields.some((k) => k !== 'views' && k !== 'name' && !isSetupFile(k));
   function writeSetup(after: RecordValue) {
     mkdirSync(project.dirs.tandem, { recursive: true });
     const { script, ...fields } = after;
+    // (A view's page and the project's commands are files of tandem's folder, not fields of its tandem.json.)
+    for (const key of Object.keys(fields).filter(isSetupFile)) {
+      const text = fields[key];
+      delete fields[key];
+      const at = join(project.dirs.tandem, key);
+      if (typeof text === 'string' && text) { mkdirSync(dirname(at), { recursive: true }); writeFileSync(at, text.endsWith('\n') ? text : text + '\n'); } else rmSync(at, { force: true });
+    }
     const now: Record<string, unknown> = { ...project.config, ...fields };
-    for (const k of Object.keys(now)) if (now[k] === null || now[k] === '' || (k === 'rebuild' && now[k] === false)) delete now[k];
+    for (const k of Object.keys(now)) if (now[k] === null || now[k] === '' || (k === 'rebuild' && now[k] === false) || (k === 'views' && Array.isArray(now[k]) && !(now[k] as unknown[]).length)) delete now[k];
     writeFileSync(project.configFile, JSON.stringify(now, null, 2) + '\n');
     if (typeof script === 'string') { if (script.trim()) writeFileSync(project.pageScript, script.endsWith('\n') ? script : script + '\n'); else rmSync(project.pageScript, { force: true }); }
     for (const k of Object.keys(project.config)) delete (project.config as Record<string, unknown>)[k];
@@ -907,25 +976,45 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'project.configure', kind: 'write', agent: 'proposes',
-      about: 'Say how tandem runs this project. It is kept in tandem\'s own folder in the project (.tandem), not among the project\'s files. Fields, all optional: name; page (the command that starts its page, with {port} where the port goes; {project} is the project\'s folder, {tandem} tandem\'s folder in it); rebuild (true when the page only takes in changed code when it is started: dotnet run, a server without a watcher; the project\'s page is then started again after an accept, and the copy\'s after you changed it); test and check (commands the agent may run); run (a list of more commands it may run); adapter; art ({build}); edit. script is the text of a shell script for when starting the page takes more than one command: it is kept as {tandem}/page.sh, so page is then "sh {tandem}/page.sh {port}". An empty value takes a field away. The agent\'s becomes a proposal.',
-      input: { name: 'string?', page: 'string?', rebuild: 'boolean?', test: 'string?', check: 'string?', run: 'json?', adapter: 'string?', art: 'json?', edit: 'json?', script: 'string?', note: 'string?' },
+      about: 'Say how tandem runs this project. It is kept in tandem\'s own folder in the project (.tandem), not among the project\'s files. Fields, all optional: name; page (the command that starts its page, with {port} where the port goes; {project} is the project\'s folder, {tandem} tandem\'s folder in it); rebuild (true when the page only takes in changed code when it is started: dotnet run, a server without a watcher; the project\'s page is then started again after an accept, and the copy\'s after you changed it); test and check (commands the agent may run); run (a list of more commands it may run); adapter; art ({build}); edit. script is the text of a shell script for when starting the page takes more than one command: it is kept as {tandem}/page.sh, so page is then "sh {tandem}/page.sh {port}". views is what there is to see besides the page, each a tab over the person\'s stage: a list of { name, kind } with kind logs (what the page says while it runs), api (its server: endpoints, a list of { method, path, about?, body? }, or openapi, the path of its OpenAPI document) or data (a SQLite file: file, its path in the project), or { name, view: "<file>.html" } for a page of the project\'s own in {tandem}/views. Your own pages are the default: designed for what someone working on this project wants to see, in the look of the project\'s own page, getting what they show with tandem.run(command, input) (logs.read, data.query, api.endpoints, page.request, project.run), with tandem\'s kinds only where they already say enough. files brings files of tandem\'s folder: a view\'s page ("views/<file>.html") and the project\'s own commands ("commands.ts"), each named with where it is now (a file in your working copy, its scratchpad; the person\'s in the project), or "" to take it away. An empty value takes a field away. The agent\'s becomes a proposal; while it waits, the views are as it would make them, to try.',
+      input: { name: 'string?', page: 'string?', rebuild: 'boolean?', test: 'string?', check: 'string?', run: 'json?', adapter: 'string?', art: 'json?', edit: 'json?', script: 'string?', views: 'json?', files: 'json?', note: 'string?' },
       run(c, i) {
         if (i.page && !i.page.includes('{port}')) throw new CommandError('input', 'page needs {port} where the port goes: tandem starts the page on a port of its choosing, and a second time for the working copy');
         for (const k of ['run', 'edit'] as const) if (i[k] !== undefined && i[k] !== null && !(Array.isArray(i[k]) && (i[k] as unknown[]).every((x) => typeof x === 'string'))) throw new CommandError('input', `${k} is a list of strings`);
+        if (i.views !== undefined) i.views = checkViews(i.views);
         const was: Record<string, unknown> = { ...project.config, script: existsSync(project.pageScript) ? readFileSync(project.pageScript, 'utf8') : undefined };
         const after: Record<string, unknown> = {};
         for (const k of [...SETUP_FIELDS, 'script'] as const) if (i[k] !== undefined && !same(i[k], was[k] ?? '')) after[k] = i[k];
+        // A file is brought from where it is now: the agent's from its working copy, the person's from the project.
+        if (i.files !== undefined) {
+          if (typeof i.files !== 'object' || i.files === null || Array.isArray(i.files)) throw new CommandError('input', 'files is an object: { "views/<file>.html": "<where it is now>", "commands.ts": "…" }');
+          const from = isAgent(c.by) ? code?.work : project.root;
+          for (const [key, where] of Object.entries(i.files as Record<string, unknown>)) {
+            if (!isSetupFile(key)) throw new CommandError('input', `${key} is not a file tandem keeps: a view's page is "views/<name>.html" (letters, digits, - and _), the project's commands "commands.ts"`);
+            if (typeof where !== 'string') throw new CommandError('input', `files: where ${key} is now, as a path (or "" to take it away)`);
+            const at = join(project.dirs.tandem, key);
+            if (existsSync(at)) was[key] = readFileSync(at, 'utf8');
+            let text = '';
+            if (where) {
+              const file = from && resolve(from, where);
+              if (!file || !existsSync(file) || relative(from, file).startsWith('..') || isAbsolute(relative(from, file))) throw new CommandError('missing', `there is no file ${where}${isAgent(c.by) ? ' in your working copy' : ' in the project'}`);
+              text = readFileSync(file, 'utf8');
+            }
+            if (!same(text, was[key] ?? '')) after[key] = text;
+          }
+        }
         if (!Object.keys(after).length) return { changed: false };
         if (isAgent(c.by)) {
           const round = SET;
           const before = Object.fromEntries(Object.keys(after).filter((k) => was[k] !== undefined).map((k) => [k, was[k]]));
           const p = proposals.add({ round, by: c.by, kind: 'setup', path: 'how it is run', ...(Object.keys(before).length && { before: before as RecordValue }), after: after as RecordValue, note: i.note ?? '' });
           events.add({ type: 'proposal', by: c.by, round, id: p.id, kind: 'setup', path: 'how it is run', before: p.before, after: p.after, note: p.note });
-          return { proposed: p.id, round, says: 'it is the person\'s to accept; the project\'s page is started again with it when they do' };
+          return { proposed: p.id, round, says: `it is the person's to accept${restarts(Object.keys(after)) ? '; the project\'s page is started again with it when they do' : ''}${Object.keys(after).some((k) => k === 'views' || isSetupFile(k)) ? '. Until then the views are as it makes them, for you and the person to try (page.look with view)' : ''}` };
         }
         writeSetup(after as RecordValue);
-        events.add({ type: 'setup.changed', by: c.by, fields: Object.keys(after), restarting: !!process.env.TANDEM_SUPERVISED });
-        restart(SETUP);
+        const again = restarts(Object.keys(after));
+        events.add({ type: 'setup.changed', by: c.by, fields: Object.keys(after), restarting: again && !!process.env.TANDEM_SUPERVISED });
+        if (again) restart(SETUP);
         return { changed: true };
       },
     },
@@ -1027,10 +1116,13 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
               placed(p.thought, c.by);
             }
             if (p.kind === 'setup') writeSetup(p.after);
+            // (Done after the answer: what the project's command does can take a while, and is said when it is done.)
+            if (p.kind === 'run') setTimeout(() => void views.accepted(p, c.by), 0);
           }
         }
-        const setup = i.accept && set.some((p) => p.kind === 'setup');
-        if (setup) events.add({ type: 'setup.changed', by: c.by, fields: set.filter((p) => p.kind === 'setup').flatMap((p) => Object.keys(p.after)), restarting: !!process.env.TANDEM_SUPERVISED });
+        const fields = i.accept ? set.filter((p) => p.kind === 'setup').flatMap((p) => Object.keys(p.after)) : [];
+        const setup = restarts(fields);
+        if (fields.length) events.add({ type: 'setup.changed', by: c.by, fields, restarting: setup && !!process.env.TANDEM_SUPERVISED });
         const installed = taken.length ? await install(taken) : undefined;
         // (A page that is built sees the new code only when it is started again.)
         const anew = installed === true || (taken.length > 0 && project.config.rebuild === true);
@@ -1492,25 +1584,25 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     // ---- the project's page, used as a person would: asked of the person's own screen, where they see it happen
     {
       name: 'page.look', kind: 'read',
-      about: 'What is on the project\'s page on the person\'s screen now, as lines: headings, text, and what can be tapped or filled in. copy: true looks at the page of your working copy instead (false: the project\'s own), and their screen switches to it. Works while tandem is open on their device.',
-      input: { copy: 'boolean?' },
-      run: (c, i) => onPage(c.by, { do: 'look', ...(i.copy !== undefined && { copy: i.copy }) }),
+      about: 'What is on the project\'s page on the person\'s screen now, as lines: headings, text, and what can be tapped or filled in. copy: true looks at the page of your working copy instead (false: the project\'s own), and their screen switches to it. view: one of the project\'s views (views.list) instead of its page, as the person sees it (with copy: that view of the working copy). Works while tandem is open on their device.',
+      input: { copy: 'boolean?', view: 'string?' },
+      run: (c, i) => onPage(c.by, { do: 'look', ...(i.copy !== undefined && { copy: i.copy }), ...(i.view !== undefined && { view: i.view }) }),
     },
     {
       name: 'page.tap', kind: 'write', agent: 'free',
-      about: 'Tap something on the project\'s page on the person\'s screen: at is the words on it (a button, a link, a checkbox by its label) or a CSS selector. Or x and y: a place in the picture of the page you got while you have the page (page.take), in pixels of that picture; that is how something drawn on a canvas is tapped. They see it happen. Answers with what is on the page afterwards. copy as in page.look.',
-      input: { at: 'string?', x: 'number?', y: 'number?', copy: 'boolean?' },
+      about: 'Tap something on the project\'s page on the person\'s screen: at is the words on it (a button, a link, a checkbox by its label) or a CSS selector. Or x and y: a place in the picture of the page you got while you have the page (page.take), in pixels of that picture; that is how something drawn on a canvas is tapped. They see it happen. Answers with what is on the page afterwards. copy and view as in page.look.',
+      input: { at: 'string?', x: 'number?', y: 'number?', copy: 'boolean?', view: 'string?' },
       run(c, i) {
         const place = typeof i.x === 'number' && typeof i.y === 'number';
         if (!place && !i.at?.trim()) throw new CommandError('input', 'page.tap needs at (the words on it, or a selector), or x and y (a place in the picture of the page)');
-        return onPage(c.by, { do: 'tap', ...(place ? { x: i.x, y: i.y } : { at: i.at }), ...(i.copy !== undefined && { copy: i.copy }) });
+        return onPage(c.by, { do: 'tap', ...(place ? { x: i.x, y: i.y } : { at: i.at }), ...(i.copy !== undefined && { copy: i.copy }), ...(i.view !== undefined && { view: i.view }) });
       },
     },
     {
       name: 'page.type', kind: 'write', agent: 'free',
-      about: 'Fill in a field on the project\'s page on the person\'s screen: at is what the field is called (its label, or what it shows when empty) or a CSS selector; text is what goes in it (for a list of choices: the choice). submit: true sends the form it is in afterwards, as Enter would. Answers with what is on the page afterwards. copy as in page.look.',
-      input: { at: 'string', text: 'string', submit: 'boolean?', copy: 'boolean?' },
-      run: (c, i) => onPage(c.by, { do: 'type', at: i.at, text: i.text, submit: !!i.submit, ...(i.copy !== undefined && { copy: i.copy }) }),
+      about: 'Fill in a field on the project\'s page on the person\'s screen: at is what the field is called (its label, or what it shows when empty) or a CSS selector; text is what goes in it (for a list of choices: the choice). submit: true sends the form it is in afterwards, as Enter would. Answers with what is on the page afterwards. copy and view as in page.look.',
+      input: { at: 'string', text: 'string', submit: 'boolean?', copy: 'boolean?', view: 'string?' },
+      run: (c, i) => onPage(c.by, { do: 'type', at: i.at, text: i.text, submit: !!i.submit, ...(i.copy !== undefined && { copy: i.copy }), ...(i.view !== undefined && { view: i.view }) }),
     },
     {
       name: 'page.go', kind: 'write', agent: 'free',
@@ -1520,9 +1612,21 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'page.request', kind: 'write', agent: 'free',
-      about: 'Call the project\'s own server the way another device would: nothing of what the person\'s browser keeps goes along, so it is someone new. path starts with / and is asked at the address the project\'s page is served from (its API, if the page reaches that through the same address). method is GET unless there is a body, then POST; body is text, or JSON to send as JSON; headers is an object. as names a visitor ("bob"): one name keeps its cookies from call to call. copy: true calls the working copy\'s server. Answers with the status and the body.',
-      input: { path: 'string', method: 'string?', body: 'json?', headers: 'json?', as: 'string?', copy: 'boolean?' },
+      about: 'Call the project\'s own server the way another device would: nothing of what the person\'s browser keeps goes along, so it is someone new. path starts with / and is asked at the address the project\'s page is served from (its API, if the page reaches that through the same address). method is GET unless there is a body, then POST; body is text, or JSON to send as JSON; headers is an object. as names a visitor ("bob"): one name keeps its cookies from call to call. copy: true calls the working copy\'s server. Answers with the status and the body; with stream: true at once with the status and a stream id, for an answer that comes in a piece at a time (events, an answer written as it comes), read with page.read.',
+      input: { path: 'string', method: 'string?', body: 'json?', headers: 'json?', as: 'string?', copy: 'boolean?', stream: 'boolean?' },
       run: (c, i) => request(c.by, i),
+    },
+    {
+      name: 'page.read', kind: 'read',
+      about: 'Read an answer of the project\'s server that comes in a piece at a time (page.request with stream: true, which answers at once with the status and a stream id): what came after `after` (the next you got last time), next for the call after this one, and done once it has ended (with error when it broke off). stop: true stops it.',
+      input: { stream: 'string', after: 'number?', stop: 'boolean?' },
+      run(_c, i) {
+        const st = streams.get(i.stream);
+        if (!st) throw new CommandError('missing', `there is no stream ${i.stream} (any more): one is kept for ten minutes after it ended`);
+        if (i.stop && !st.done) st.stop.abort();
+        const from = Math.max(0, Math.min(i.after ?? 0, st.text.length));
+        return { text: st.text.slice(from), next: st.text.length, done: st.done, status: st.status, type: st.type, ...(st.error && { error: st.error }) };
+      },
     },
     {
       name: 'page.take', kind: 'write', agent: 'free',
@@ -1626,10 +1730,11 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     ...core.filter((c) => hasGame || !SENSES.test(c.name)),
     ...(hasGame ? [...guarded(game.commands(world)), ...ecsCommands(world, game, sandboxOnly)] : []),
     ...art.commands,
+    ...views.commands,
   );
 
   return {
-    project, game: hasGame ? game : undefined, registry, events, proposals, concepts, thoughts, locks, art, code, preview, proposeCode, tweaked, onStop, busy,
+    project, game: hasGame ? game : undefined, registry, events, proposals, concepts, thoughts, locks, art, code, preview, views, proposeCode, tweaked, onStop, busy,
     turnOver() { release('engine', 'the agent\'s turn is over'); takenBack = false; wantExample(); },
     dirs: { project: project.root, data: dataDir, looks: looksDir, files: filesDir },
     run: (name, input, by, round) => registry.run(name, input, { by, round }),

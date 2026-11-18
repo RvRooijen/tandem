@@ -34,6 +34,8 @@ export async function boot() {
   const stage = createStage(root, info, {
     snapshot: (snapshot) => { if (info.senses) run('world.push', { snapshot }).catch(() => {}); },
     changed: () => app.stageChanged(),
+    // (Project or working copy, chosen over the views: the page goes along, and the views with it.)
+    copy: (want) => { if (want) void app.playCopy(); else app.playProject(); },
   });
   // With no project open there is one thing to do: choose one.
   const app = createApp(layer, info, stage, info.project ? [chatPanel(), conceptsPanel(), artPanel(), gitPanel(), projectsPanel(), settingsPanel()] : [projectsPanel(), settingsPanel()]);

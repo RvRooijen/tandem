@@ -10,10 +10,15 @@ const ENGINE = fileURLToPath(new URL('..', import.meta.url));
 
 /** Run a job in a copy of the project: the project itself, or the agent's working copy. */
 export function runJob<T>(spec: JobSpec, opts: { root: string; timeoutMs?: number }): Promise<T> {
+  return runScript<T>('core/job.ts', spec, opts);
+}
+
+/** Run one of the engine's scripts that reads a spec from stdin and says its result as job.ts does (`do` names it in what goes wrong). */
+export function runScript<T>(script: string, spec: { do: string; [field: string]: unknown }, opts: { root: string; timeoutMs?: number }): Promise<T> {
   const timeoutMs = opts.timeoutMs ?? 10 * 60_000;
   return new Promise((resolve, reject) => {
     // The job is the engine's; what it loads (the adapter, and through it the project) is the copy's.
-    const child = spawn(process.execPath, ['--no-warnings', join(ENGINE, 'core/job.ts')], { cwd: opts.root, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, ['--no-warnings', join(ENGINE, script)], { cwd: opts.root, stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '', err = '';
     const timer = setTimeout(() => { child.kill(); reject(new Error(`the ${spec.do} job took more than ${timeoutMs / 1000}s and was stopped`)); }, timeoutMs);
     child.stdout.on('data', (d) => { out += d; });

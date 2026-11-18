@@ -198,6 +198,12 @@ export function createRunner(host: Host) {
       `${project.name}, in ${project.root}.`,
       host.game ? 'It offers a way to see inside it: the game.*, world.*, ecs.* and playtest.* commands.' : 'It does not offer a way to see inside it while it runs: there are no game.*, ecs.* or playtest.* commands here. You read its code, run its tests, and the person plays it.',
       project.pageCommand(0) ? 'It has a page the person plays in tandem; they can switch it to your working copy.' : 'It has no page yet. When your change set gives it one that tandem starts by itself (Vite, see below), the person can play your copy before they accept it; a page that is started some other way is said with project.configure (page).',
+      (() => {
+        const views = host.views.list();
+        if (!views.length) return 'It has no views yet: what there is to see besides its page (its logs, its server\'s endpoints, a database, a page made for it) is said with project.configure (views).';
+        const say = (v: (typeof views)[number]) => `${v.name} (${v.kind ? `${v.kind}${v.file ? `: ${v.file}` : ''}` : `its own page, ${v.view}`})`;
+        return `It has views besides its page, each a tab on the person's stage: ${views.map(say).join(', ')}. What they show you get with the same commands (logs.read, data.query, api.endpoints, project.run); page.look with view looks at one as the person sees it.`;
+      })(),
       host.code ? `In your working copy you may run: ${can || 'nothing but the tandem commands; tandem was not told how its tests are run (project.configure: test, check, run)'}` : '',
       host.code && project.config.commit === false ? 'Nothing is committed for this project, and it is not pushed: the person does both themselves. When they accept, your change set is written in the project\'s files and left there uncommitted. Your copy follows the project\'s files as they are, so it also has what the person has not committed yet.' : '',
       host.code && project.config.commit !== false && project.config.push === false ? 'Tandem does not push this project: an accepted change set is committed, and pushing is the person\'s.' : '',
@@ -226,7 +232,14 @@ export function createRunner(host: Host) {
           const t = host.thoughts.get(rest);
           out.push(t ? `A loose thought of theirs (${t.id}), which is not part of any concept yet:\n${t.text}` : `A loose thought (${rest}) that is no longer there.`);
         } else if (kind === 'page') {
-          const p = JSON.parse(rest) as { words?: string; near?: string; tag?: string; selector?: string; path?: string; three?: Record<string, any> };
+          const p = JSON.parse(rest) as { words?: string; near?: string; tag?: string; selector?: string; path?: string; three?: Record<string, any>; view?: string; copy?: boolean };
+          // Something in one of the project's views: what it shows comes from the commands the view asks.
+          if (p.view) {
+            const v = host.views.list().find((x) => x.name === p.view);
+            const what = !v ? 'a view that is no longer there' : v.kind === 'logs' ? 'what the project\'s page says while it runs (logs.read)' : v.kind === 'data' ? `the SQLite file ${v.file} (data.query)` : v.kind === 'api' ? 'the endpoints of the project\'s server (api.endpoints, page.request)' : `a page made for this project, ${v.view} in tandem's folder`;
+            out.push(`Something in the view "${p.view}"${p.copy ? ' of your working copy' : ''} that the person pointed at; the view shows ${what}. It is a <${p.tag ?? '?'}>${p.words ? ` that says "${p.words}"` : ''}${p.near ? `, with around it: "${p.near}"` : ''}${p.selector ? `, in the view as ${p.selector}` : ''}. Look at the view as they see it with page.look and view "${p.view}".`);
+            continue;
+          }
           // A thing in a scene three.js draws: it has no words, so it is told by what it is and where.
           if (p.three) {
             const t = p.three, g = t.geometry ?? {}, m = t.material;

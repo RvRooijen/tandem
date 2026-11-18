@@ -15,8 +15,8 @@
 // run was changed, and its page is started again with that). Tandem's page stays up.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:http';
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SETUP, loadProject, startTree, stopTree } from './project.ts';
 import { SWITCH, opening, readState, writeState } from './projects.ts';
@@ -47,7 +47,8 @@ function startProject() {
     // The page itself runs on an inner port; it is shown through tandem, on the port it is known at (see below).
     const command = project?.pageCommand(innerPort(PAGE_PORT));
     if (project && command) {
-      const mine = startTree(command, { cwd: project.root, env });
+      const mine = startTree(command, { cwd: project.root, env, stdio: ['inherit', 'pipe', 'pipe'] });
+      keepLog(mine, project.pageLog);
       page = mine;
       mine.on('exit', (code) => { if (!stopping && page === mine) console.log(`the project's page stopped (${code}): ${command}`); });
     } else if (project) console.log('the project has no page to show: say how it is started in tandem.json ("page"), with {port} where the port goes');
@@ -65,6 +66,33 @@ function startProject() {
     console.log(`the core stopped (${code})`);
     stop(code ?? 1);
   });
+}
+
+/**
+ * What the page says goes to the terminal as before, and into a file in the project's data (the logs a view shows).
+ * Started anew with the page; when it grows past a few megabytes only its last part is kept.
+ */
+function keepLog(child: ChildProcess, file: string) {
+  const MAX = 4_000_000, KEEP = 1_000_000;
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, '');
+  let size = 0;
+  const take = (to: NodeJS.WriteStream) => (d: Buffer) => {
+    to.write(d);
+    try {
+      appendFileSync(file, d);
+      size += d.length;
+      if (size > MAX) {
+        const all = readFileSync(file);
+        const nl = all.indexOf(10, all.length - KEEP);
+        const from = nl < 0 ? all.length - KEEP : nl + 1;
+        writeFileSync(file, all.subarray(from));
+        size = all.length - from;
+      }
+    } catch { /* the terminal still has it */ }
+  };
+  child.stdout?.on('data', take(process.stdout));
+  child.stderr?.on('data', take(process.stderr));
 }
 
 function stop(code = 0) {

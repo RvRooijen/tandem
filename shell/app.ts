@@ -10,7 +10,7 @@ import * as capture from './capture.ts';
 import { clear, h } from './dom.ts';
 import { icon } from './icons.ts';
 import type { Mascot } from './mascot.ts';
-import type { Picked, Stage } from './stage.ts';
+import type { Picked, Stage, ViewInfo } from './stage.ts';
 import { panelWidth, setPanelWidth, sound } from './prefs.ts';
 import { createTweaks, type Tweak } from './tweaks.ts';
 import { babble, mouth } from './voice.ts';
@@ -358,7 +358,9 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
         clearTimeout(kept);
         kept = window.setTimeout(() => fab.classList.remove('carrying'), lives === fab ? 3000 : 500);
       }
-      app.attach(`page:${JSON.stringify({ words: got.words, ...(got.near && { near: got.near }), tag: got.tag, selector: got.selector, path: got.path, ...(got.three && { three: got.three }) })}`, got.image);
+      // (Pointed at in a view: which one, and of the working copy or the project.)
+      const where = stage.tab ? { view: stage.tab, ...(stage.showing === 'copy' && { copy: true }) } : {};
+      app.attach(`page:${JSON.stringify({ words: got.words, ...(got.near && { near: got.near }), tag: got.tag, selector: got.selector, path: got.path, ...(got.three && { three: got.three }), ...where })}`, got.image);
     }));
   };
   fab.addEventListener('pointerup', drop);
@@ -576,6 +578,8 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       if (ev.type === 'page.taken') { takes.delete(String(ev.id)); if (ev.allow) held = true; paintTake(); }
       if (ev.type === 'page.released') { held = false; paintTake(); }
       bubbles.feed(ev, live);
+      // How the project is run was proposed, decided or changed: the views may be others now, or show something else.
+      if (live && (ev.type === 'setup.changed' || (ev.type === 'proposal' && ev.kind === 'setup') || (ev.type === 'proposal.decided' && Array.isArray(ev.paths) && (ev.paths as string[]).some((p) => p.startsWith('setup:'))))) views(true);
       // The change set that waits, and what of it is the person's to turn: over the copy's page while that is shown.
       if (ev.type === 'proposal' && ev.kind === 'code') { turning = (ev.tweaks as Tweak[] | undefined) ?? []; toy = ev.example as Example | undefined; paintTray(); paintBanner(); }
       // (The change set was decided, with what else waited, or withdrawn.)
@@ -626,12 +630,19 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     const answer = (result: Record<string, unknown>) => run('page.answer', { id: String(ev.id), result }).catch(() => {});
     const wait = async (what: () => unknown, ms: number) => { for (let t = 0; t < ms && !what(); t += 150) await new Promise((r) => setTimeout(r, 150)); return !!what(); };
     try {
-      if (!info.page) return void answer({ ok: false, error: 'this project has no page set up in tandem (project.configure: page)' });
+      const view = typeof ev.view === 'string' ? ev.view : null;
+      if (!info.page && !view) return void answer({ ok: false, error: 'this project has no page set up in tandem (project.configure: page)' });
       if (typeof ev.copy === 'boolean' && ev.copy !== (stage.showing === 'copy')) {
         if (ev.copy) { const got = await run<{ url: string }>('code.play'); stage.showCopy(got.url); } else stage.showProject();
         await new Promise((r) => setTimeout(r, 300));
       }
-      if (!(await wait(() => stage.can.find, 20000))) return void answer({ ok: false, error: 'the page on the person\'s screen does not answer: it is still starting, or it did not come up' });
+      // What is asked of a view is done in its tab, and what is asked of the page in the page's: the person sees where.
+      if (view !== stage.tab) {
+        if (view && !stage.views.some((v) => v.name === view)) stage.setViews(await run('views.list'));
+        if (!stage.showTab(view)) return void answer({ ok: false, error: `there is no view called ${view} on the person's screen` });
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      if (!(await wait(() => stage.can.find, 20000))) return void answer({ ok: false, error: view ? `the view ${view} on the person's screen does not answer` : 'the page on the person\'s screen does not answer: it is still starting, or it did not come up' });
       const what = String(ev.do);
       let did: Record<string, unknown> | null = { ok: true };
       if (what !== 'look') {
@@ -648,11 +659,17 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       if (!now) return void answer({ ok: false, error: 'the page did not answer', showing: stage.showing });
       // While the agent has the page, a picture of it goes along: what a canvas draws is not in the lines.
       const pic = ev.picture ? await pictureOfPage() : null;
-      void answer({ ok: true, did: did?.did ?? (did ? undefined : 'done, as far as can be told: the page loaded anew'), showing: stage.showing, path: now.path, title: now.title, lines: now.lines, ...(pic?.ok ? { image: pic.image, size: pic.size } : {}) });
+      void answer({ ok: true, did: did?.did ?? (did ? undefined : 'done, as far as can be told: the page loaded anew'), showing: stage.showing, ...(stage.tab && { view: stage.tab }), path: now.path, title: now.title, lines: now.lines, ...(pic?.ok ? { image: pic.image, size: pic.size } : {}) });
     } catch (e) {
       void answer({ ok: false, error: e instanceof Error ? e.message : String(e) });
     }
   }
+
+  /** The views of the project, as tabs over the stage; `anew` loads the open ones again. */
+  function views(anew = false) {
+    if (info.project) run<ViewInfo[]>('views.list').then((list) => stage.setViews(list, anew), () => {});
+  }
+  views();
 
   /** Wait for the core to be gone and back, then load this page again on what it is now. */
   async function again() {

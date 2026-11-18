@@ -5,12 +5,14 @@
 // pixeldraw's render script (art/scripts/render.js), which works on the folder
 // it is run in, so a look has a workspace too.
 //   <work>/<id>/art, depth   the copies; out/ the renders; scratch/ a worker's own analysis scripts
-//   <work>/<id>/scripts, src links to the engine's art/scripts and art/src, as the guide names them
+//   <work>/<id>/scripts, src links to the engine's art/scripts and art/src, as the guide names them;
+//                            model to art/model, whose render.ts pictures a 3D model (a drawing that says // @model)
 //   <work>/<id>/base.json    { [path]: content } of the real files when they were copied
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isModel } from './model/format.ts';
 
 const ART = fileURLToPath(new URL('.', import.meta.url));
 const DIRS = ['art', 'depth'] as const;
@@ -40,7 +42,7 @@ export function createWorkspaces(gameDir: string, workDir: string) {
     if (existsSync(join(root, 'base.json')) && !fresh) return root;
     for (const d of DIRS) rmSync(join(root, d), { recursive: true, force: true });
     for (const d of [...DIRS, 'out', 'scratch']) mkdirSync(join(root, d), { recursive: true });
-    for (const [link, to] of [['scripts', join(ART, 'scripts')], ['src', join(ART, 'src')]])
+    for (const [link, to] of [['scripts', join(ART, 'scripts')], ['src', join(ART, 'src')], ['model', join(ART, 'model')]])
       if (!existsSync(join(root, link))) symlinkSync(to, join(root, link));
     const base = filesIn(gameDir);
     for (const path in base) writeFileSync(join(root, path), base[path]);
@@ -64,12 +66,17 @@ export function createWorkspaces(gameDir: string, workDir: string) {
 
   /**
    * Render a drawing of a workspace (file is art/<name>.txt or depth/<name>.txt) with pixeldraw's render script.
-   * Gives the picture's path. flags: --anim=, --frame=, --recolor=, --crop=, --grid.
+   * Gives the picture's path. flags: --anim=, --frame=, --recolor=, --crop=, --grid. A 3D model is pictured with
+   * tandem's own (art/model/render.ts): flags --views=, --turn=, --wire, --form, --anim=, --at=.
    */
   function render(id: string, file: string, flags: string[] = []): Promise<string> {
     const root = dir(id);
+    let model = false;
+    try { model = isModel(readFileSync(join(root, file), 'utf8')); } catch { /* no such file: the render says so */ }
+    // (A workspace from before there were models has no link to their tools.)
+    if (model && !existsSync(join(root, 'model'))) symlinkSync(join(ART, 'model'), join(root, 'model'));
     return new Promise((ok, fail) => {
-      execFile(process.execPath, ['scripts/render.js', file, ...flags], { cwd: root, timeout: 60_000, env: { ...process.env, PIXEL_WORKER: '' } }, (err, stdout, stderr) => {
+      execFile(process.execPath, model ? ['--no-warnings', 'model/render.ts', file, ...flags] : ['scripts/render.js', file, ...flags], { cwd: root, timeout: model ? 120_000 : 60_000, env: { ...process.env, PIXEL_WORKER: '' } }, (err, stdout, stderr) => {
         const name = file.slice(file.indexOf('/') + 1, -4);
         const png = join(root, 'out', file.startsWith('depth/') ? 'depth' : '', `${name}.png`);
         if (err || !existsSync(png)) fail(new Error((stderr || stdout || err?.message || 'no picture came out').trim().split('\n').filter((l) => !/^\s+at |^node:|^Node\.js/.test(l)).slice(-2).join(' ')));

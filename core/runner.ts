@@ -227,7 +227,7 @@ export function createRunner(host: Host) {
           const e = host.game ? entityView(host.world(), host.game, Number(rest)) : undefined;
           out.push(e ? `Entity ${rest} in the world being played: ${JSON.stringify(e.components)}` : `Entity ${rest} (no longer there)`);
         } else if (kind === 'drawing') {
-          out.push(`Drawing ${rest}${host.locks.has(`drawing:${rest}`) ? ' (LOCKED)' : ''}: one of the game's drawings, made in pixeldraw. See it with art.look.`);
+          out.push(`Drawing ${rest}${host.locks.has(`drawing:${rest}`) ? ' (LOCKED)' : ''}: one of the game's drawings, made in pixeldraw, or a 3D model (art.list says which). See it with art.look.`);
         } else if (kind === 'thought') {
           const t = host.thoughts.get(rest);
           out.push(t ? `A loose thought of theirs (${t.id}), which is not part of any concept yet:\n${t.text}` : `A loose thought (${rest}) that is no longer there.`);

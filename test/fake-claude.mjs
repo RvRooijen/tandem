@@ -22,9 +22,20 @@ if (process.env.PIXEL_WORKER) {
   }
   const isNew = prompt.startsWith('The user wants a new project');
   const approved = prompt.includes('approves phase "silhouette"');
+  // A 3D model: its form in one tone, then the same parts in colour with a bone that turns. It renders with the model's tools.
+  const model = prompt.startsWith('The user wants a new 3D model') ? 'form' : prompt.includes('approves phase "form"') ? 'color' : existsSync(file) && /^\/\/ @model/.test(readFileSync(file, 'utf8')) ? 'change' : '';
+  const render = model ? ['--no-warnings', 'model/render.ts'] : ['scripts/render.js'];
+  const leg = "const leg = rings(['.##.', '####', '.##.'], ['.##.', '.##.', '####'], { pixel: 0.25 });\n";
   let phase = 'color';
   let content;
-  if (isNew) {
+  if (model === 'form') {
+    phase = 'form';
+    content = `// @model\n${leg}export default {\n  parts: [\n    // post\n    { shape: 'cylinder', radiusTop: 0.1, radiusBottom: 0.1, height: 1, pos: [0, 0.5, 0] },\n    // sign\n    { shape: 'box', size: [1, 0.5, 0.1], pos: [0, 1.2, 0] },\n  ],\n};\n`;
+  } else if (model === 'color') {
+    content = `// @model\n${leg}export default {\n  parts: [\n    // post\n    { shape: 'cylinder', radiusTop: 0.1, radiusBottom: 0.1, height: 1, pos: [0, 0.5, 0], color: '#6b4a2b' },\n    // sign\n    { bone: 'sign', pos: [0, 1, 0], group: [{ shape: 'box', size: [1, 0.5, 0.1], pos: [0, 0.2, 0], color: '#e8d9b0' }] },\n    { shape: 'loft', rings: leg, pos: [0.6, 0, 0], color: '#6b4a2b' },\n  ],\n  anims: { swing: { seconds: 2, keys: { sign: [{ t: 0, rot: [0, 0, 10] }, { t: 0.5, rot: [0, 0, -10] }] } } },\n};\n`;
+  } else if (model === 'change') {
+    content = readFileSync(file, 'utf8').replace('  ],\n', "    { shape: 'sphere', radius: 0.1, pos: [0, 1.6, 0], color: '#ffcc00' },\n  ],\n");
+  } else if (isNew) {
     phase = 'silhouette';
     content = '3 = #5a6988\n4 = #7d90ab\n\n@size 8 8\n// body\n@rect 2 3 4 5 3\n// head\n@rect 3 1 2 2 4\n';
   } else if (approved) {
@@ -37,7 +48,7 @@ if (process.env.PIXEL_WORKER) {
   }
   // The Write call as it streams in: its input in pieces, so whoever watches sees the drawing grow.
   const input = JSON.stringify({ file_path: `${process.cwd()}/${file}`, content });
-  const cutAt = input.lastIndexOf('@rect') + 9;
+  const cutAt = model ? input.indexOf('parts') + 9 : input.lastIndexOf('@rect') + 9;
   say({ type: 'stream_event', event: { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', name: 'Write' } } });
   say({ type: 'stream_event', event: { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: input.slice(0, cutAt) } } });
   await new Promise((r) => setTimeout(r, 350));
@@ -45,9 +56,12 @@ if (process.env.PIXEL_WORKER) {
   say({ type: 'stream_event', event: { type: 'content_block_stop', index: 1 } });
   writeFileSync(file, content);
   const tool = (...args) => spawnSync(process.execPath, args, { encoding: 'utf8' });
+  if (model === 'form') tool('scripts/event.js', 'describe', name, 'A post with a sign on a joint, and a leg drawn from two silhouettes.');
   const sent = tool('scripts/event.js', 'round', name, 'round 1: block it out', '+', 'phase', name, phase);
-  const rendered = tool('scripts/render.js', file);
-  const text = `${approved ? 'Coloured' : isNew ? 'Blocked out' : 'Changed'} ${name}. Render ${rendered.status === 0 && existsSync(`out/${name}.png`) ? 'ok' : rendered.stderr.trim().split('\n').pop()}, events ${sent.status === 0 ? 'ok' : 'failed'}. Depth kept: ${existsSync(`depth/${name}.txt`)}. Tools: ${args.slice(args.indexOf('--allowedTools') + 1).filter((t) => t.startsWith('Write(art')).join(' ')}.`;
+  const rendered = tool(...render, file, ...(model === 'form' ? ['--form'] : []));
+  // It looks at what it rendered (the Read of the picture is what who watches sees too).
+  if (rendered.status === 0) say({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read', input: { file_path: `${process.cwd()}/out/${name}.png` } }] } });
+  const text = `${approved || model === 'color' ? 'Coloured' : isNew || model === 'form' ? 'Blocked out' : 'Changed'} ${name}. Render ${rendered.status === 0 && existsSync(`out/${name}.png`) ? 'ok' : rendered.stderr.trim().split('\n').pop()}, events ${sent.status === 0 ? 'ok' : 'failed'}. Depth kept: ${existsSync(`depth/${name}.txt`)}. Tools: ${args.slice(args.indexOf('--allowedTools') + 1).filter((t) => t.startsWith('Write(art')).join(' ')}.`;
   say({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Write', input: { file_path: `${process.cwd()}/${file}` } }] } });
   say({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
   say({ type: 'result', is_error: false, result: text, session_id: 'sess-w' });
@@ -69,7 +83,7 @@ if (prompt.includes('The person accepted')) {
 // a drawing in colour it takes into the project, and a worker that failed or was stopped it closes.
 if (prompt.includes('The drawing worker ')) {
   const id = prompt.match(/The drawing worker (w[a-z0-9]+),/)[1];
-  const does = prompt.includes('has a silhouette ready') ? 'art.approve' : prompt.includes('ready in colour') ? 'art.accept' : 'art.close';
+  const does = prompt.includes('has a silhouette ready') || prompt.includes('has the form of the model ready') ? 'art.approve' : prompt.includes('ready in colour') ? 'art.accept' : 'art.close';
   const looked = does === 'art.close' ? { status: 0 } : spawnSync('tandem', ['run', 'art.look', JSON.stringify({ name: prompt.match(/, on ([\w-]+),/)[1], worker: id })], { encoding: 'utf8' });
   const out = spawnSync('tandem', ['run', does, JSON.stringify({ worker: id })], { encoding: 'utf8' });
   const text = `Worker ${id}: looked (${looked.status === 0 ? 'ok' : looked.stderr.trim()}), ${does} (${out.status === 0 ? 'ok' : out.stderr.trim()}).`;

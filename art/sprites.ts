@@ -2,6 +2,8 @@
 // on one sheet, with a list of where each frame is. This is pixeldraw's sprite
 // export as a function, straight from the drawing's text: no files in between.
 // A game's own tool turns the sheet into whatever it loads.
+import { describeModel, type ModelDescribed } from './model/describe.ts';
+import { isModel } from './model/format.ts';
 import { looksOf, parseArt } from './src/parse.js';
 import { recolor } from './src/attach.js';
 
@@ -86,8 +88,12 @@ export function spriteSheet(name: string, text: string, depthText?: string, icon
   return { name, width: w, height: h, looks: where, sheetW, sheetH, rgba, depthRgba, ...(tiles && { tiles, strips }) };
 }
 
-/** What a drawing is, without drawing it: its size, its looks, and per animation how many frames. */
-export function describeDrawing(name: string, text: string) {
+export interface DrawingDescribed { name: string; w: number; h: number; looks: string[]; anims: Record<string, number>; model?: undefined }
+export type Described = DrawingDescribed | ModelDescribed;
+
+/** What a drawing is, without drawing it: its size, its looks, and per animation how many frames. A 3D model: the box it stands in, its shapes, bones and animations (with their seconds). */
+export function describeDrawing(name: string, text: string): Described {
+  if (isModel(text)) return describeModel(name, text);
   const art = parseArt(text) as Art;
   const named = looksOf(art) as string[];
   return {

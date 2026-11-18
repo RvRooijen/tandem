@@ -12,12 +12,21 @@
 //                     outfit; --runtime copies that file into the project
 //   an attachment     is in its base's character; a pinned one (a sword, a
 //                     helmet) also has a sheet of its upright image, its picture
+//   a 3D model        <name>.glb: its parts as meshes with their colours in their
+//                     corners, its bones as the file's tree of nodes and its
+//                     animations under their names; <folder>/models.json says
+//                     which there are
 // A project names this as its build (tandem.json: art.build), so it is run
 // again when a drawing changes. It is pixeldraw's sprite and game export.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { encodePng } from '../core/png.ts';
+import { describeModel } from './model/describe.ts';
+import { isModel } from './model/format.ts';
+import { toGlb } from './model/glb.ts';
+import { readModel } from './model/run.ts';
+import { buildModel } from './model/shapes.ts';
 import { attachmentsOf } from './src/attach.js';
 import { buildGame } from './src/gamekit.js';
 import { parseArt } from './src/parse.js';
@@ -43,6 +52,9 @@ export interface Exported {
   attachment?: { base: string; slot: string };
 }
 
+/** What models.json says of one model: its file, the box it stands in (wide, high, deep, in its own units), how heavy it is, its bones and its animations with their seconds. */
+export interface ExportedModel { file: string; size: [number, number, number]; triangles: number; bones: string[]; animations: Record<string, number> }
+
 interface Parsed { base?: string; slot?: string; error?: string; frames?: { pin?: unknown }[] }
 
 /** A folder or file of the project, by a path from its root: never outside it, never among what is not the project's to load. */
@@ -54,7 +66,7 @@ function inside(root: string, path: string, what: string): string {
 }
 
 /** Export the drawings of the project in `root` to `out`, a folder in it. Says what it wrote, and what it left out. */
-export function exportArt(root: string, out: string, runtime?: string): { folder: string; drawings: string[]; characters: string[]; skipped: string[]; runtime?: string } {
+export function exportArt(root: string, out: string, runtime?: string): { folder: string; drawings: string[]; models: string[]; characters: string[]; skipped: string[]; runtime?: string } {
   const folder = inside(root, out, 'the sprites');
   const dir = join(root, folder);
   const texts = (sub: string) => {
@@ -64,7 +76,9 @@ export function exportArt(root: string, out: string, runtime?: string): { folder
   const parsed = (all: Record<string, string>): Record<string, Parsed> => Object.fromEntries(Object.entries(all).map(([n, text]) => {
     try { return [n, parseArt(text) as Parsed]; } catch (e) { return [n, { error: e instanceof Error ? e.message : String(e) }]; }
   }));
-  const art = texts('art'), depth = texts('depth');
+  const every = texts('art'), depth = texts('depth');
+  // A model is not a sheet of frames: it is built by itself, below.
+  const art = Object.fromEntries(Object.entries(every).filter(([, text]) => !isModel(text)));
   const arts = parsed(art), depths = parsed(depth);
   const index: Record<string, Exported> = {};
   const skipped: string[] = [], characters: string[] = [];
@@ -110,6 +124,27 @@ export function exportArt(root: string, out: string, runtime?: string): { folder
       if (f && !kept.has(f) && /^[\w-]+(\.depth|\.character)?\.(png|json)$/.test(f)) rmSync(join(dir, f), { force: true });
   writeFileSync(file, JSON.stringify(index, null, 1) + '\n');
 
+  // The models: a file each. The list is only there when there is, or was, a model.
+  const models: Record<string, ExportedModel> = {};
+  const list = join(dir, 'models.json');
+  let had: Record<string, ExportedModel> = {};
+  try { had = JSON.parse(readFileSync(list, 'utf8')) as Record<string, ExportedModel>; } catch { /* there was none */ }
+  for (const [name, text] of Object.entries(every)) {
+    if (!isModel(text)) continue;
+    try {
+      writeFileSync(join(dir, `${name}.glb`), toGlb(buildModel(readModel(text).model), name));
+      const d = describeModel(name, text);
+      models[name] = { file: `${name}.glb`, size: [d.w, d.h, d.d], triangles: d.triangles, bones: d.bones, animations: d.anims };
+    } catch (e) {
+      // A model that cannot be built keeps the file it was built as before: what a project loads is not taken away by a text that went wrong.
+      const kept = had[name] && existsSync(join(dir, had[name].file));
+      if (kept) models[name] = had[name];
+      skipped.push(`${name} (${e instanceof Error ? e.message : e}${kept ? `; ${had[name].file} is kept as it was built before` : ''})`);
+    }
+  }
+  for (const was of Object.values(had)) if (!Object.values(models).some((m) => m.file === was.file) && /^[\w-]+\.glb$/.test(was.file)) rmSync(join(dir, was.file), { force: true });
+  if (Object.keys(models).length || existsSync(list)) writeFileSync(list, JSON.stringify(models, null, 1) + '\n');
+
   let copied: string | undefined;
   if (runtime) {
     copied = inside(root, runtime, 'the runtime');
@@ -117,14 +152,14 @@ export function exportArt(root: string, out: string, runtime?: string): { folder
     mkdirSync(dirname(join(root, copied)), { recursive: true });
     copyFileSync(RUNTIME, join(root, copied));
   }
-  return { folder, drawings: Object.keys(index), characters, skipped, ...(copied && { runtime: copied }) };
+  return { folder, drawings: Object.keys(index), models: Object.keys(models), characters, skipped, ...(copied && { runtime: copied }) };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === import.meta.filename) {
   const args = process.argv.slice(2);
   const out = args.find((a) => !a.startsWith('-'));
   if (!out) {
-    console.error('usage: tandem export <folder> [--runtime=<file>]\n  in the project: its drawings in art/ become <folder>/<name>.png and <folder>/sprites.json;\n  --runtime copies the file that draws a character (a drawing with attachments) to <file>');
+    console.error('usage: tandem export <folder> [--runtime=<file>]\n  in the project: its drawings in art/ become <folder>/<name>.png and <folder>/sprites.json, its 3D models <folder>/<name>.glb and <folder>/models.json;\n  --runtime copies the file that draws a character (a drawing with attachments) to <file>');
     process.exit(1);
   }
   try {
@@ -132,6 +167,7 @@ if (process.argv[1] && resolve(process.argv[1]) === import.meta.filename) {
     for (const s of did.skipped) console.log(`left out: ${s}`);
     if (did.characters.length && !did.runtime) console.log(`${did.characters.join(', ')}: with attachments, so also a character; --runtime=<file> copies what draws one into the project`);
     if (did.runtime) console.log(`the runtime that draws a character is ${did.runtime}`);
+    if (did.models.length) console.log(`${did.models.length} ${did.models.length === 1 ? 'model' : 'models'} exported to ${did.folder}, a .glb each, listed in models.json: ${did.models.join(', ')}`);
     console.log(did.drawings.length ? `${did.drawings.length} ${did.drawings.length === 1 ? 'drawing' : 'drawings'} exported to ${did.folder}: ${did.drawings.join(', ')}` : `no drawings to export; ${did.folder}/sprites.json is empty`);
   } catch (e) {
     console.error(e instanceof Error ? e.message : String(e));

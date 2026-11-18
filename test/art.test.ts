@@ -130,6 +130,59 @@ test('a worker draws a new drawing: silhouette, approval, colour, and only then 
   assert.deepEqual((await me('art.list')).find((d: any) => d.name === 'garden-sign').depth, true);
 });
 
+test('a worker makes a 3D model: its form, approval, colour with a joint that swings, and who watches sees all of it', async () => {
+  const asked = await agent('art.ask', { name: 'gate-post', message: 'a post with a sign that swings, 1.5 high', new: true, model: true });
+  const w = asked.worker as string;
+  await refused(agent('art.ask', { name: 'other', message: 'x', model: true }), 'missing');
+
+  // Round one: the form, in one tone, rendered with the model's tool, from four sides.
+  await until(() => rounds(w).length === 1, 'the form');
+  const first = host.events.since(0).filter((e) => e.type === 'proposal' && e.round === w).at(-1)!;
+  assert.deepEqual([first.path, first.phase, first.isNew], ['gate-post', 'silhouette', true]);
+  assert.match(String(first.note), /Blocked out gate-post\. Render ok, events ok\./);
+  assert.match((first.pictures as any).after, /^\/api\/file\/looks\//);
+  const news = () => host.events.since(0).filter((e) => e.type === 'message' && e.by === 'engine' && e.kind === 'art' && e.worker === w);
+  assert.match(String(news()[0].text), /has the form of the model ready, in one tone.*art\.look with worker "w[a-z0-9]+": the model from four sides.*art\.approve when the form is right from every side/);
+  // It said first what it is and what it is made of: who watches sees that, and so does the agent, and art.workers keeps it.
+  assert.ok(told.some((e) => e.type === 'art.described' && e.worker === w && /a leg drawn from two silhouettes/.test(e.text)));
+  assert.match(String(news()[0].text), /What it made it as: "A post with a sign on a joint/);
+  assert.match((await me('art.workers')).find((x: any) => x.worker === w).described, /^A post with a sign/);
+  // Who watches saw it typed, and saw the render it looked at.
+  assert.ok(told.some((e) => e.type === 'art.draft' && e.worker === w && /^\/\/ @model/.test(e.text)));
+  const looked = told.filter((e) => e.type === 'art.looked' && e.worker === w);
+  assert.equal(looked.length, 1);
+  assert.match(looked[0].url, /^\/api\/file\/looks\//);
+  // As the Art tab gets it: built, with the silhouettes its tube was drawn from.
+  const mesh = await me('art.mesh', { name: 'gate-post', worker: w });
+  assert.equal(Buffer.from(mesh.glb, 'base64').subarray(0, 4).toString(), 'glTF');
+  assert.deepEqual([mesh.profiles.length, mesh.bones, mesh.anims], [1, [], {}]);
+  await refused(me('art.mesh', { text: '// @model\nexport default { parts: [{ shape: "blob" }] };' }), 'input');
+  assert.match((await me('art.mesh', { text: (await me('art.get', { name: 'gate-post', worker: w })).text })).glb, /^Z2xURg/);
+
+  await agent('art.approve', { worker: w });
+  await until(() => rounds(w).length === 2, 'the colour round');
+  assert.match(String(news()[1].text), /has the model ready in colour/);
+  const coloured = await me('art.mesh', { name: 'gate-post', worker: w });
+  assert.deepEqual([coloured.bones, coloured.anims], [['sign'], { swing: 2 }]);
+  const look = await me('art.look', { name: 'gate-post', worker: w, anim: 'swing', at: '0,0.5', views: 'front' });
+  assert.equal(readFileSync(look.file).subarray(1, 4).toString(), 'PNG');
+  await refused(me('art.look', { name: 'gate-post', worker: w, views: 'sideways' }), 'input');
+  await refused(me('art.look', { name: 'gate-post', worker: w, depth: true }), 'input');
+
+  await agent('art.accept', { worker: w });
+  assert.match(readFileSync(join(dir, 'art/gate-post.txt'), 'utf8'), /^\/\/ @model\n/);
+  assert.ok(!existsSync(join(dir, 'depth/gate-post.txt')), 'a model has no depth map');
+  const listed = (await me('art.list')).find((d: any) => d.name === 'gate-post');
+  assert.deepEqual([listed.model, listed.h, listed.bones, listed.anims, listed.depth], [true, 1.45, ['sign'], { swing: 2 }, false]);
+  // A change to it is a model again.
+  const again = (await agent('art.ask', { name: 'gate-post', message: 'a lamp on top' })).worker as string;
+  await until(() => rounds(again).length === 1, 'the change');
+  assert.match((await me('art.get', { name: 'gate-post', worker: again })).text, /shape: 'sphere'/);
+  await agent('art.close', { worker: again });
+  // One the person writes by hand that does not build is refused, with where it is wrong.
+  await assert.rejects(me('art.set', { name: 'broken-model', text: '// @model\nexport default {\n  parts: [{ shape: "box", pos: [0, 1] }],\n};\n' }), /parts\[0\]\.pos: is not \[x, y, z\]/);
+});
+
 test('feedback on a drawing there is: a round, more feedback, and a rejection that leaves it alone', async () => {
   const before = (await me('art.get', { name: 'gnome' })).text as string;
   const w = (await me('art.ask', { name: 'gnome', message: 'a taller hat' })).worker as string;

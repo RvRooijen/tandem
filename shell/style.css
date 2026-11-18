@@ -300,6 +300,7 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 #tandem .t-chip.mode[data-mode=js] { color: var(--t-bad); }
 /* A pill for what a message is about is never wider than the conversation: its words are cut short instead. */
 #tandem .t-chip.ref { max-width: 100%; min-width: 0; }
+#tandem .t-chip.toggle[aria-checked=true] { background: color-mix(in srgb, var(--t-accent) 22%, transparent); border-color: var(--t-accent); color: var(--t-accent); }
 #tandem .t-chip.ref > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 #tandem .t-chip.ref > img, #tandem .t-chip.ref > button { flex: none; }
 #tandem .t-chip.ref img { width: 26px; height: 26px; object-fit: cover; border-radius: 6px; margin: 2px 6px 2px -4px; cursor: zoom-in; }

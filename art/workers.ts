@@ -16,6 +16,8 @@ import type { PictureMaker, Pictures } from './pictures.ts';
 import type { Workspaces } from './workspace.ts';
 
 const GUIDE = fileURLToPath(new URL('./GUIDE.md', import.meta.url));
+/** The guide of a worker that makes a 3D model (art/model): the same way of working, in shapes with depth. */
+const MODEL_GUIDE = fileURLToPath(new URL('./MODEL.md', import.meta.url));
 
 /** A string of a tool call that is still being typed: as much of it as has arrived. (pixeldraw's.) */
 function partialString(json: string, key: string): { value: string; done: boolean } | null {
@@ -37,6 +39,8 @@ export interface Worker {
   /** The drawings it may change; the first is the one it was asked about. */
   names: string[];
   title: string;
+  /** What it makes, when that is not pixel art: a 3D model. Its first phase is then the model's form. */
+  kind?: 'model';
   by: string;
   session?: string;
   /** The phase its last run finished: after silhouette it waits for approval, after color for acceptance. */
@@ -46,6 +50,8 @@ export interface Worker {
   doing: string;
   said: string;
   started: number;
+  /** What it said the thing is and which parts it is made of, before it made anything (a model's worker does). */
+  described?: string;
   /** How many runs of it have ended: the silhouette, the colour, and every round of feedback after. */
   rounds?: number;
 }
@@ -56,6 +62,11 @@ As <name> in event.js calls, always use the name of the file you are working on 
 
 Work the way the guide describes (phases, rounds with round and feedback events, drawing by hand). Work on your own and don't ask questions: at the end of a phase send \`node scripts/event.js phase <name> <silhouette|color>\` and stop with a short summary, then the person gives feedback.`;
 
+const MODEL_NOTE = `You work in your own workspace: a copy of the project's drawings and models, paths like art/<name>.txt are relative to it. Only when it is accepted do your changes go into the project. So just work in the files it is about.
+As <name> in event.js calls, always use the name of the file you are working on at that moment (without art/ and .txt).
+
+Work the way the guide describes (phases, rounds with round and feedback events, shapes written by hand). Work on your own and don't ask questions: at the end of a phase send \`node scripts/event.js phase <name> <form|color>\` and stop with a short summary, then you get feedback.`;
+
 export interface WorkersOptions {
   spaces: Workspaces;
   events: EventLog;
@@ -63,6 +74,8 @@ export interface WorkersOptions {
   pictures: PictureMaker;
   /** A run of a worker ended, however it did: whoever judges its work is told. */
   ended?(w: Worker): void;
+  /** A worker looked at a render of its work (the picture's path in its workspace): who watches sees it too. */
+  looked?(w: Worker, png: string): void;
 }
 
 export function createWorkers(o: WorkersOptions) {
@@ -110,15 +123,16 @@ export function createWorkers(o: WorkersOptions) {
     const edit = w.names.flatMap((n) => [`Edit(art/${n}.txt)`, `Write(art/${n}.txt)`, `Edit(depth/${n}.txt)`, `Write(depth/${n}.txt)`]);
     const { model, effort } = modelFor('workers');
     const proc = spawn(process.env.CLAUDE_BIN ?? 'claude', [
-      '-p', prompt, '--append-system-prompt', readFileSync(GUIDE, 'utf8'),
+      '-p', prompt, '--append-system-prompt', readFileSync(w.kind === 'model' ? MODEL_GUIDE : GUIDE, 'utf8'),
       '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
       '--model', model, '--effort', effort,
       ...(w.session ? ['--resume', w.session] : []),
       // Only what is listed: reading the workspace, changing the drawings asked about, rendering and reporting.
       '--permission-mode', 'default', '--allowedTools',
       'Read(art/**)', 'Read(depth/**)', 'Read(out/**)', 'Read(scratch/**)', 'Edit(scratch/**)', 'Write(scratch/**)', ...edit,
-      'Bash(node scripts/render.js:*)', 'Bash(node scripts/event.js:*)', 'Bash(node scripts/scratch.js:*)',
-    ], { cwd: spaces.dir(w.id), stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PIXEL_WORKER: w.id } });
+      'Bash(node scripts/render.js:*)', 'Bash(node scripts/event.js:*)', 'Bash(node scripts/scratch.js:*)', ...(w.kind === 'model' ? ['Bash(node model/render.ts:*)'] : []),
+      // (The model's tools are TypeScript, which node runs as it is and warns about every time: not something a worker has to read.)
+    ], { cwd: spaces.dir(w.id), stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PIXEL_WORKER: w.id, ...(w.kind === 'model' && { NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --no-warnings`.trim() }) } });
     runs.set(w.id, proc);
     let buf = '', err = '', failed = '', lastCast = 0;
     const timer = setTimeout(() => { failed = 'it took more than forty minutes and was stopped'; proc.kill(); }, 40 * 60_000);
@@ -179,9 +193,11 @@ export function createWorkers(o: WorkersOptions) {
             if (block.type === 'tool_use') {
               const path = String(block.input?.file_path ?? ''), cmd = String(block.input?.command ?? '');
               const art = path.match(/\/(art|depth)\/([\w-]+)\.txt$/);
+              // A render it looks at is shown to who watches, as it sees it.
+              if (block.name === 'Read' && /\/out\/[\w./-]+\.png$/.test(path)) try { o.looked?.(w, path); } catch { /* it is not there (yet) */ }
               doing(block.name === 'Write' ? `draws ${art?.[2] ?? 'a file'}` : block.name === 'Edit' ? `changes ${art?.[2] ?? 'a file'}`
                 : block.name === 'Read' ? (/\.png$/.test(path) ? 'looks at a render' : `reads ${art?.[2] ?? 'a file'}`)
-                : cmd.includes('render.js') ? 'renders' : cmd.includes('event.js') ? 'reports' : 'runs a check');
+                : /render\.(js|ts)/.test(cmd) ? 'renders' : cmd.includes('event.js') ? 'reports' : 'runs a check');
             }
           }
         } else if (msg.type === 'result' && msg.is_error) failed = String(msg.result ?? msg.subtype ?? 'it failed');
@@ -196,7 +212,7 @@ export function createWorkers(o: WorkersOptions) {
       const wasStopped = stopped.delete(w.id);
       if (wasStopped) { w.state = 'stopped'; w.doing = 'stopped'; }
       else if (failed || code !== 0) { w.state = 'failed'; w.doing = failed || err.trim().split('\n').pop() || `claude ended with code ${code}`; }
-      else { w.state = 'waiting'; w.doing = w.phase === 'silhouette' ? 'silhouette done: the agent looks at it' : 'done: the agent looks at it'; }
+      else { w.state = 'waiting'; w.doing = w.phase === 'silhouette' ? `${w.kind === 'model' ? 'form' : 'silhouette'} done: the agent looks at it` : 'done: the agent looks at it'; }
       try { await propose(w); } catch (e) { w.doing = `could not make a proposal of it: ${e instanceof Error ? e.message : e}`; w.state = 'failed'; }
       w.rounds = (w.rounds ?? 0) + 1;
       save(w); cast(w);
@@ -221,15 +237,15 @@ export function createWorkers(o: WorkersOptions) {
     busy: (id: string) => runs.has(id),
 
     /** Start a worker on a drawing: a new one, or a change to one there is. */
-    start(input: { name: string; message: string; isNew: boolean; by: string; edit?: string[] }): Worker {
+    start(input: { name: string; message: string; isNew: boolean; by: string; edit?: string[]; model?: boolean }): Worker {
       const id = `w${Date.now().toString(36)}`;
       spaces.ensure(id, true);
-      const w: Worker = { id, names: [input.name, ...(input.edit ?? [])], title: input.name, by: input.by, phase: 'color', state: 'running', doing: '', said: '', started: Date.now() };
+      const w: Worker = { id, names: [input.name, ...(input.edit ?? [])], title: input.name, ...(input.model && { kind: 'model' as const }), by: input.by, phase: 'color', state: 'running', doing: '', said: '', started: Date.now() };
       const ask = input.isNew
-        ? `The user wants a new project art/${input.name}.txt: "${input.message}"`
-        : `The user gives feedback on art/${input.name}.txt: "${input.message}"\n\nChange that drawing based on the feedback, within the current phase.`;
-      const more = input.edit?.length ? `\n\nThis work also covers ${input.edit.map((n) => `art/${n}.txt`).join(', ')}: you may change those too (with their depth maps in depth/), render each to check.` : '';
-      run(w, `${ask}${more}\n\n${NOTE}`);
+        ? `The user wants a new ${input.model ? '3D model' : 'project'} art/${input.name}.txt: "${input.message}"`
+        : `The user gives feedback on art/${input.name}.txt: "${input.message}"\n\nChange that ${input.model ? 'model' : 'drawing'} based on the feedback, within the current phase.`;
+      const more = input.edit?.length ? `\n\nThis work also covers ${input.edit.map((n) => `art/${n}.txt`).join(', ')}: you may change those too${input.model ? '' : ' (with their depth maps in depth/)'}, render each to check.` : '';
+      run(w, `${ask}${more}\n\n${input.model ? MODEL_NOTE : NOTE}`);
       return w;
     },
 
@@ -238,7 +254,7 @@ export function createWorkers(o: WorkersOptions) {
       const w = get(id);
       if (!w) throw new Error(`there is no worker ${id}`);
       if (runs.has(id)) throw new Error(`${id} is still drawing; wait for its round, or stop it`);
-      run(w, `The user gives feedback on art/${w.names[0]}.txt: "${message}"\n\nChange that drawing based on the feedback, within the current phase.`);
+      run(w, `The user gives feedback on art/${w.names[0]}.txt: "${message}"\n\nChange that ${w.kind === 'model' ? 'model' : 'drawing'} based on the feedback, within the current phase.`);
     },
 
     /** The silhouette is good: it is kept as the depth map, and the worker goes on with colour. */
@@ -248,6 +264,11 @@ export function createWorkers(o: WorkersOptions) {
       if (runs.has(id)) throw new Error(`${id} is still drawing`);
       if (w.phase !== 'silhouette') throw new Error(`${id} is not waiting with a silhouette; it is in the ${w.phase} phase`);
       const root = spaces.dir(id);
+      // A model's form is not kept beside it: the model itself is what gets its colours.
+      if (w.kind === 'model') {
+        w.phase = 'color';
+        return run(w, `The user approves phase "form" of art/${w.names[0]}.txt.${message ? ` Their feedback: "${message}"` : ''} Go on with phase color.`);
+      }
       const done = w.names.filter((n) => existsSync(join(root, 'art', `${n}.txt`)));
       for (const n of done) copyFileSync(join(root, 'art', `${n}.txt`), join(root, 'depth', `${n}.txt`));
       const files = done.map((n) => `art/${n}.txt`).join(', '), depths = done.map((n) => `depth/${n}.txt`).join(', ');
@@ -259,7 +280,9 @@ export function createWorkers(o: WorkersOptions) {
     note(id: string, type: string, name: string, message: string) {
       const w = get(id);
       if (!w) return;
-      if (type === 'phase') { w.phase = /^sil/.test(message.trim()) ? 'silhouette' : 'color'; save(w); return; }
+      // (A model's first phase is its form, which is kept as the same thing: what is approved before colour.)
+      if (type === 'phase') { w.phase = /^(sil|form)/.test(message.trim()) ? 'silhouette' : 'color'; save(w); return; }
+      if (type === 'describe') { w.described = message.trim().slice(0, 2000); save(w); events.cast({ type: 'art.described', worker: w.id, name: w.names[0], text: w.described }); return; }
       if (['round', 'feedback', 'plan', 'step', 'done'].includes(type)) { w.doing = `${type}${message ? `: ${message}` : ''}`.slice(0, 200); cast(w); }
       void name;
     },

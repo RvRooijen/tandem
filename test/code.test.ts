@@ -4,7 +4,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SCRATCH, createCode, forConcepts } from '../core/code.ts';
@@ -215,6 +215,37 @@ test('a project that ignores tandem\'s folder keeps tandem out of its history', 
     assert.deepEqual(g('show', '--name-only', '--format=', 'HEAD').split('\n'), ['src/app.js']);
     rmSync(mine.work, { recursive: true, force: true });
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a project made anew gets a copy anew: the old one, of a repository that is gone, is put aside', () => {
+  const parent = mkdtempSync(join(tmpdir(), 'tandem-anew-'));
+  const dir = join(parent, 'p');
+  const g = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: dir, encoding: 'utf8' }).trim();
+  const make = (text: string) => {
+    mkdirSync(dir, { recursive: true });
+    g('init', '-q', '-b', 'main');
+    put('src/app.js', text, dir);
+    g('add', '-A');
+    g('commit', '-q', '-m', 'start');
+  };
+  try {
+    make('export const app = 1;\n');
+    const first = createCode({ root: dir, paths: [] });
+    first.sync();
+    put('src/half.js', 'half done\n', first.work);
+    // The folder is thrown away and made again, with a repository of its own.
+    rmSync(dir, { recursive: true, force: true });
+    make('export const app = 2;\n');
+    const again = createCode({ root: dir, paths: [] });
+    assert.deepEqual(again.changes(), [], 'a copy of something else is no change of this project\'s');
+    assert.equal(again.diff(), '');
+    assert.deepEqual(again.sync(), { conflicts: [] });
+    assert.equal(read('src/app.js', again.work), 'export const app = 2;\n');
+    assert.deepEqual(again.changes(), []);
+    const aside = readdirSync(parent).filter((f) => f.startsWith('.p-tandem-work-'));
+    assert.equal(aside.length, 1);
+    assert.equal(read('src/half.js', join(parent, aside[0])), 'half done\n', 'what it had is still there to look at');
+  } finally { rmSync(parent, { recursive: true, force: true }); }
 });
 
 test('after an accept the project\'s branch goes to its remote, when it has one, and a push that does not go says why', async () => {

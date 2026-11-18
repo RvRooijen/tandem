@@ -129,7 +129,19 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     ? createCode({ root: project.root, paths: ['.tandem/concepts', '.tandem/thoughts.json', '.tandem/locks.json', '.tandem/.gitignore', '.tandem/tandem.json', '.tandem/page.sh', 'art', 'depth'], commits: () => project.config.commit !== false }) : undefined;
   const code = opts.code ?? (candidate?.usable() ? candidate : undefined);
   // (Also for a project that has no page yet: the change set that gives it one is played from the copy.)
-  const preview = code ? createPreview(() => project.at(code.work), join(dataDir, 'copy-page.log')) : undefined;
+  const preview = code ? createPreview(() => project.at(code.work), join(dataDir, 'copy-page.log'), () => { built = written(); }) : undefined;
+  /** The copy's change set, each file with when it was last written: what a copy's page that is built was started with (`built`). */
+  const written = () => JSON.stringify((code?.changes() ?? []).map((f) => {
+    try { return [f.path, statSync(join(code!.work, f.path)).mtimeMs]; } catch { return [f.path, 0]; }
+  }));
+  let built = '', rebuilding = false;
+  /** A copy's page that only takes in changed code when it is started, started again when the copy changed since. */
+  function freshen() {
+    if (!project.config.rebuild || !preview?.running() || rebuilding || written() === built) return;
+    rebuilding = true;
+    void preview.restart().then(() => events.add({ type: 'copy.restarted', by: 'engine' }), () => { /* code.play says why when it is asked for */ })
+      .finally(() => { rebuilding = false; freshen(); });
+  }
   /** Whether the working copy has a page to play: the project's own, or one its change set brings. */
   const copyPage = () => {
     try { return !!code && !!preview && (!!project.pageCommand(0) || (existsSync(code.work) && !!project.at(code.work).pageCommand(0))); } catch { return false; }
@@ -356,12 +368,12 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   }
 
   /** How the project is run, as tandem keeps it: in its own folder in the project, not among the project's files. */
-  const SETUP_FIELDS = ['name', 'page', 'test', 'check', 'run', 'adapter', 'art', 'edit'] as const;
+  const SETUP_FIELDS = ['name', 'page', 'rebuild', 'test', 'check', 'run', 'adapter', 'art', 'edit'] as const;
   function writeSetup(after: RecordValue) {
     mkdirSync(project.dirs.tandem, { recursive: true });
     const { script, ...fields } = after;
     const now: Record<string, unknown> = { ...project.config, ...fields };
-    for (const k of Object.keys(now)) if (now[k] === null || now[k] === '') delete now[k];
+    for (const k of Object.keys(now)) if (now[k] === null || now[k] === '' || (k === 'rebuild' && now[k] === false)) delete now[k];
     writeFileSync(project.configFile, JSON.stringify(now, null, 2) + '\n');
     if (typeof script === 'string') { if (script.trim()) writeFileSync(project.pageScript, script.endsWith('\n') ? script : script + '\n'); else rmSync(project.pageScript, { force: true }); }
     for (const k of Object.keys(project.config)) delete (project.config as Record<string, unknown>)[k];
@@ -523,6 +535,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     const turn = tweaks();
     const toy = example();
     events.add({ type: 'proposal', by, round: p.round, id: p.id, kind: 'code', path: 'working copy', files, note, ...(copyPage() && { plays: true }), ...(show && { show }), ...(toy && { example: toy }), ...(turn.length && { tweaks: turn }), ...how, ...(of.length && { touches: of.map((c) => ({ id: c.id, name: c.name, stage: c.stage })) }) });
+    freshen();
   }
 
   // ------------------------------------------------------------ helpers
@@ -894,8 +907,8 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'project.configure', kind: 'write', agent: 'proposes',
-      about: 'Say how tandem runs this project. It is kept in tandem\'s own folder in the project (.tandem), not among the project\'s files. Fields, all optional: name; page (the command that starts its page, with {port} where the port goes; {project} is the project\'s folder, {tandem} tandem\'s folder in it); test and check (commands the agent may run); run (a list of more commands it may run); adapter; art ({build}); edit. script is the text of a shell script for when starting the page takes more than one command: it is kept as {tandem}/page.sh, so page is then "sh {tandem}/page.sh {port}". An empty value takes a field away. The agent\'s becomes a proposal.',
-      input: { name: 'string?', page: 'string?', test: 'string?', check: 'string?', run: 'json?', adapter: 'string?', art: 'json?', edit: 'json?', script: 'string?', note: 'string?' },
+      about: 'Say how tandem runs this project. It is kept in tandem\'s own folder in the project (.tandem), not among the project\'s files. Fields, all optional: name; page (the command that starts its page, with {port} where the port goes; {project} is the project\'s folder, {tandem} tandem\'s folder in it); rebuild (true when the page only takes in changed code when it is started: dotnet run, a server without a watcher; the project\'s page is then started again after an accept, and the copy\'s after you changed it); test and check (commands the agent may run); run (a list of more commands it may run); adapter; art ({build}); edit. script is the text of a shell script for when starting the page takes more than one command: it is kept as {tandem}/page.sh, so page is then "sh {tandem}/page.sh {port}". An empty value takes a field away. The agent\'s becomes a proposal.',
+      input: { name: 'string?', page: 'string?', rebuild: 'boolean?', test: 'string?', check: 'string?', run: 'json?', adapter: 'string?', art: 'json?', edit: 'json?', script: 'string?', note: 'string?' },
       run(c, i) {
         if (i.page && !i.page.includes('{port}')) throw new CommandError('input', 'page needs {port} where the port goes: tandem starts the page on a port of its choosing, and a second time for the working copy');
         for (const k of ['run', 'edit'] as const) if (i[k] !== undefined && i[k] !== null && !(Array.isArray(i[k]) && (i[k] as unknown[]).every((x) => typeof x === 'string'))) throw new CommandError('input', `${k} is a list of strings`);
@@ -1019,11 +1032,13 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         const setup = i.accept && set.some((p) => p.kind === 'setup');
         if (setup) events.add({ type: 'setup.changed', by: c.by, fields: set.filter((p) => p.kind === 'setup').flatMap((p) => Object.keys(p.after)), restarting: !!process.env.TANDEM_SUPERVISED });
         const installed = taken.length ? await install(taken) : undefined;
-        if (taken.length) events.add({ type: 'code.changed', by: c.by, files: taken.map((f) => f.path), ...(installed !== undefined && { installed }), ...(installed === true && process.env.TANDEM_SUPERVISED && { restarting: true }) });
+        // (A page that is built sees the new code only when it is started again.)
+        const anew = installed === true || (taken.length > 0 && project.config.rebuild === true);
+        if (taken.length) events.add({ type: 'code.changed', by: c.by, files: taken.map((f) => f.path), ...(installed !== undefined && { installed }), ...(anew && process.env.TANDEM_SUPERVISED && { restarting: true }) });
         // The core has the project's code in it as it was when it started: it starts again with the new code. When
         // how the project is run was changed, the project's page is started again too.
         // (And after an install: a page that is running does not find what was not there when it started.)
-        if (setup || installed === true) restart(SETUP); else if (taken.length) restart();
+        if (setup || anew) restart(SETUP); else if (taken.length) restart();
         events.add({ type: 'proposal.decided', by: c.by, round: SET, status: i.accept ? 'accepted' : 'rejected', count: set.length, ids: set.map((p) => p.id), left: 0, paths: set.map((p) => `${p.kind}:${p.path}`) });
         // The agent hears what became of its concepts, and what the person made different in them.
         const made = set.filter((p) => p.kind === 'concept');
@@ -1410,7 +1425,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         if (told) { told.to = now; told.label = t.label; } else list.push({ label: t.label, file: t.file, name: t.name, from: at.found.value, to: now });
         turned(list.filter((x) => x.from !== x.to));
         // A page that does not follow its own files is loaded anew by the screen that shows it.
-        proposeCode(p.by, String(p.after.said ?? ''), { tweaked: { file: t.file, name: t.name }, ...(copyPage() && !preview!.follows() && { anew: true }) });
+        proposeCode(p.by, String(p.after.said ?? ''), { tweaked: { file: t.file, name: t.name }, ...(copyPage() && !preview!.follows() && !project.config.rebuild && { anew: true }) });
         return { value: now, changed: true };
       },
     },
@@ -1422,6 +1437,19 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         if (!preview || !copyPage()) throw new CommandError('unsupported', 'the project has no page to play: say how it is started in tandem.json ("page")');
         bringUp();
         try { return { url: await preview.url() }; } catch (e) { throw new CommandError('failed', e instanceof Error ? e.message : String(e)); }
+      },
+    },
+    {
+      name: 'code.restart', kind: 'write', agent: 'free',
+      about: 'Stop the page of the working copy and start it again, for a page that only takes in changed code when it is started (one that is built: dotnet run, a server without a watcher). Waits until it is up again; the person\'s screen loads it anew when it shows the copy. What the page said while starting is in the error when it does not come up.',
+      async run(c) {
+        if (!code) throw new CommandError('unsupported', 'there is no working copy here: the project is not in a repository');
+        if (!preview || !copyPage()) throw new CommandError('unsupported', 'the project has no page to play: say how it is started in tandem.json ("page")');
+        bringUp();
+        let url: string;
+        try { url = await preview.restart(); } catch (e) { throw new CommandError('failed', e instanceof Error ? e.message : String(e)); }
+        events.add({ type: 'copy.restarted', by: c.by });
+        return { url, restarted: true };
       },
     },
 

@@ -25,6 +25,11 @@ any other folder you add there). What was open last is opened again the next tim
 Everything listens on this machine only: the core can start an agent with a
 command line.
 
+In Chrome, load `extension/` once as an unpacked extension (chrome://extensions, developer mode). With it, what
+the agent sees of the page and what you point at is a picture of the tab itself. Without it, tandem asks to share
+the tab for that (Chrome then shows a bar that it is shared), and where that is not had either, the page is drawn
+again from its styles, which is not always what you see.
+
     tandem list                 every command the running core has
     tandem run concepts.list    run one
     TANDEM_AGENT=off tandem     without the agent
@@ -51,6 +56,7 @@ project that wants tandem out of its history ignores `.tandem` and that is all:
     }
 
 - **page**: how the project's page is started, with `{port}` where the port goes (and `{project}` for the project's own folder, to name a script of its own). The working copy's page gets `TANDEM_COPY=1` in its environment, for a project that wants the copy to keep its hands off something (a database). Tandem shows it in a frame, and starts it a second time from the agent's working copy when you want to play that. For a project with Vite in its package.json this is guessed.
+- **rebuild**: `true` for a page that only takes in changed code when it is started (it is built: `dotnet run`, a server without a watcher). After an accept the project's page is then started again with the core, and the working copy's page is started again when the agent changed the copy since it was started.
 - **test**, **check**, **run**: what the agent may run in its working copy. Without them it can change code but run nothing, and says so. It also has a scratchpad (`.tandem-scratch` in its working copy, never part of a change set): a script it writes there it may run with node or python3, to make a change in many places at once or to try something out.
 - **art**: drawings live in `art/` (depth maps in `depth/`) as text, in pixeldraw's format. `build` is the step that turns them into what the project loads: the project's own, or tandem's, `tandem export <folder>`, which writes a sprite sheet per drawing (`<name>.png`, `<name>.depth.png`) and one `sprites.json` that says where each frame of each animation of each look is, where the tiles and strips of a tilesheet are, and which drawings are characters (a drawing with attachments also gets `<name>.character.png` and `.json`, drawn with any outfit by `art/runtime/pixeldraw.js`; `--runtime=<file>` copies that into the project).
 - **adapter**: a module that lets tandem see inside the running project (see below).

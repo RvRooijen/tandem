@@ -745,6 +745,7 @@ export function chatPanel(): Panel {
 
   function addEvent(ev: Event) {
     if (ev.type === 'agent.did') return addAct({ did: String(ev.did ?? ''), ts: ev.ts, ...(typeof ev.id === 'string' && { id: ev.id }), ...(typeof ev.picture === 'string' && { picture: ev.picture }), ...(typeof ev.added === 'number' && { added: ev.added, removed: Number(ev.removed) || 0 }) });
+    if (ev.type === 'copy.restarted') return addAct({ did: 'started the page of the working copy again', ts: ev.ts });
     if (ev.type === 'page.did') return addAct({ did: `${ev.did || ev.what}${ev.showing === 'copy' ? ', in the working copy' : ''}`, ts: ev.ts });
     if (ev.type === 'agent.out') {
       const call = calls.get(String(ev.id));

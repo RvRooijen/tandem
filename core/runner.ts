@@ -10,6 +10,7 @@ import type { CommandDef } from './commands.ts';
 import type { Event } from './events.ts';
 import { ROOT, type Host } from './host.ts';
 import { entityView } from '../ecs/inspect.ts';
+import { modelFor } from './models.ts';
 
 /**
  * What the agent may do. Always: the engine's commands (the `tandem` command line) and reading, anywhere on the
@@ -279,10 +280,11 @@ export function createRunner(host: Host) {
       : '';
     const prompt = `${from}${ev.text}${expand(ev.refs)}${shared}\n\n[This is round ${round}.${where}${copy}${turned}${gained()}]`;
     const may = tools(host);
+    const { model, effort } = modelFor('agent');
     const args = [
       '-p', prompt, '--append-system-prompt', intro(),
       '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
-      '--model', process.env.TANDEM_MODEL ?? 'claude-fable-5-2', '--effort', process.env.TANDEM_EFFORT ?? 'medium',
+      '--model', model, '--effort', effort,
       ...(session && !retry ? ['--resume', session] : []),
       // It may read everywhere; an Edit rule still only reaches the folder it is started in.
       '--add-dir', '/',

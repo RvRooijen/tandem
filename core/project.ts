@@ -25,6 +25,11 @@ export interface ProjectConfig {
    * for a Vite project.
    */
   page?: string;
+  /**
+   * The page only takes in changed code when it is started again (it is built: dotnet run, a server without a
+   * watcher): after an accept the project's page is started again, and the copy's when the agent changed it.
+   */
+  rebuild?: boolean;
   /** How its tests are run, and its type check: the agent may run these in its working copy. */
   test?: string;
   check?: string;

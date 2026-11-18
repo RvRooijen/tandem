@@ -6,11 +6,12 @@ import type { Event } from '../core/events.ts';
 import type { AgentStatus } from '../core/runner.ts';
 import { info as getInfo, run, type Info } from './api.ts';
 import { createBubbles } from './bubbles.ts';
+import * as capture from './capture.ts';
 import { clear, h } from './dom.ts';
 import { icon } from './icons.ts';
 import type { Mascot } from './mascot.ts';
 import type { Picked, Stage } from './stage.ts';
-import { sound } from './prefs.ts';
+import { panelWidth, setPanelWidth, sound } from './prefs.ts';
 import { createTweaks, type Tweak } from './tweaks.ts';
 import { babble, mouth } from './voice.ts';
 
@@ -106,7 +107,38 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       h<'button'>('button.icon.settings', { 'aria-label': 'Settings', title: 'Settings', onclick: () => app.open('settings') }, icon('settings')),
       h<'button'>('button.icon', { 'aria-label': 'Close', onclick: () => app.close() }, icon('close'))),
     body, foot);
-  const ring = h('div#t-ring', { hidden: true }, h('i'), h('span'));
+  // Beside the page, the tools' left edge is dragged to make them wider or narrower; a double click is the width
+  // the stylesheet gives them. What it was set to is kept for this browser.
+  const grip = h('div#t-grip', { title: 'Drag to make the tools wider or narrower; double click for the usual width' });
+  sheet.prepend(grip);
+  const fitPanel = (w: number) => Math.round(Math.min(Math.max(w, 320), window.innerWidth - 320));
+  const setPanel = (w: number | undefined) => {
+    if (w) document.body.style.setProperty('--t-panel', `${fitPanel(w)}px`);
+    else document.body.style.removeProperty('--t-panel');
+  };
+  setPanel(panelWidth());
+  let gripping: number | undefined;
+  grip.addEventListener('pointerdown', (ev) => {
+    if (!app.beside()) return;
+    ev.preventDefault();
+    gripping = ev.pointerId;
+    grip.setPointerCapture?.(ev.pointerId);
+    document.body.classList.add('t-sizing');
+  });
+  grip.addEventListener('pointermove', (ev) => {
+    if (ev.pointerId === gripping) setPanel(window.innerWidth - ev.clientX);
+  });
+  const letGo = (ev: PointerEvent) => {
+    if (ev.pointerId !== gripping) return;
+    gripping = undefined;
+    document.body.classList.remove('t-sizing');
+    setPanelWidth(parseFloat(document.body.style.getPropertyValue('--t-panel')) || undefined);
+  };
+  grip.addEventListener('pointerup', letGo);
+  grip.addEventListener('pointercancel', letGo);
+  grip.addEventListener('dblclick', () => { setPanel(undefined); setPanelWidth(undefined); });
+  window.addEventListener('resize', () => { if (panelWidth()) setPanel(panelWidth()); });
+  const ring =h('div#t-ring', { hidden: true }, h('i'), h('span'));
   /** What the figure carries from the page to the chat: a picture of what was pointed at. */
   const carry = h('div#t-carry', { hidden: true });
   // (With an example of the change set there are two ways to see the copy: from one to the other, right here.)
@@ -150,6 +182,9 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
   const answerTake = async (allow: boolean) => {
     const id = [...takes.keys()][0];
     if (id === undefined) return;
+    // Let it, and this tab is shared (unless tandem's extension takes the pictures): what the agent sees of the
+    // page is then a picture of the screen itself. (Asked for right here, in the click: a browser only asks on one.)
+    if (allow && !capture.extension()) void capture.share();
     // (Whatever the core says, this asking is answered here: one that came too late is gone too.)
     await app.act('page.let', { id, allow });
     takes.delete(id);
@@ -163,6 +198,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     document.body.classList.toggle('t-held', held);
   };
   const toastEl = h('div#t-toast', { hidden: true });
+  capture.sayFailures((why) => app.toast(`No real picture, so the page drew it itself: ${why}.`));
   const zoomEl = h('div#t-zoom', { hidden: true, onclick: () => { zoomEl.hidden = true; } }, h<'img'>('img'));
   const bubbleEl = h('div#t-bubbles', { hidden: true });
   root.append(fab, bubbleEl, marks, tray, takeEl, ring, sheet, toastEl, zoomEl, carry);
@@ -293,7 +329,16 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
     fab.style.transform = '';
     const back = () => { mascot?.release(); pointing = false; house(); };
     if (ev.type === 'pointercancel') { ring.hidden = true; back(); return; }
-    void stage.pick(ev.clientX, ev.clientY, true).then(async (got) => {
+    // The first time something is pointed at, this tab is asked to be shared, in the gesture itself: from then on
+    // the picture of what is pointed at is the screen's own. Said no to, it is not asked again.
+    const asking = capture.real() || !capture.can() || capture.refused() ? null : capture.share();
+    void (asking ?? Promise.resolve(capture.real())).then((real) => stage.pick(ev.clientX, ev.clientY, !real).then(async (got) => {
+      // With the tab shared, the picture of it is cut out of the screen; where that does not work, the page draws it.
+      if (got && real) {
+        const image = await capture.shot(got, Math.min(window.devicePixelRatio || 1, 3, capture.PICTURE / Math.max(got.w, got.h, 1)));
+        if (image) got = { ...got, image };
+        else got = await stage.pick(ev.clientX, ev.clientY, true) ?? got;
+      }
       ring.hidden = true;
       if (!got) { back(); return app.toast(stage.can.find ? 'There is nothing there to point at.' : 'This page cannot be asked what is there.'); }
       // The figure takes it with its other hand and puts it in the chat, which is opened for that: the button stays
@@ -314,7 +359,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
         kept = window.setTimeout(() => fab.classList.remove('carrying'), lives === fab ? 3000 : 500);
       }
       app.attach(`page:${JSON.stringify({ words: got.words, ...(got.near && { near: got.near }), tag: got.tag, selector: got.selector, path: got.path, ...(got.three && { three: got.three }) })}`, got.image);
-    });
+    }));
   };
   fab.addEventListener('pointerup', drop);
   fab.addEventListener('pointercancel', drop);
@@ -551,6 +596,8 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
         if (ev.by !== 'me' && ['message', 'look', 'playtest', 'welcome'].includes(ev.type)) app.badge('chat', true);
         // A value was turned in the copy, and its page does not follow its own files: it is loaded anew to show it.
         if (ev.type === 'proposal' && ev.tweaked && ev.anew && stage.showing === 'copy') stage.again();
+        // The copy's page was started again: what is shown of it is loaded anew, from the page that runs now.
+        if (ev.type === 'copy.restarted' && stage.showing === 'copy') stage.again();
         // (What the person turned themselves is not news to them.)
         if (ev.type === 'proposal' && !ev.worker && !ev.tweaked) app.badge('chat', true);
         // A worker's round is ready: that is news in the Art tab.
@@ -564,6 +611,17 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
    * project or the working copy (`copy` switches to one or the other first); the thing it touches is marked, so
    * the person sees it happen.
    */
+  async function pictureOfPage(): Promise<Record<string, unknown> | null> {
+    const r = stage.rect();
+    // (With the tab shared, cut out of the screen; not while the tools lie over the page.)
+    if (r && capture.real() && !(shown && !app.beside())) {
+      const scale = Math.min(1, capture.PICTURE / Math.max(r.w, r.h, 1));
+      const image = await capture.shot(r, scale);
+      if (image) return { ok: true, image, size: [Math.round(r.w * scale), Math.round(r.h * scale)] };
+    }
+    return stage.act({ do: 'picture' }, 8000);
+  }
+
   async function onPage(ev: Event) {
     const answer = (result: Record<string, unknown>) => run('page.answer', { id: String(ev.id), result }).catch(() => {});
     const wait = async (what: () => unknown, ms: number) => { for (let t = 0; t < ms && !what(); t += 150) await new Promise((r) => setTimeout(r, 150)); return !!what(); };
@@ -589,7 +647,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
       for (let i = 0; i < 4 && !now; i++) now = await stage.act({ do: 'look' });
       if (!now) return void answer({ ok: false, error: 'the page did not answer', showing: stage.showing });
       // While the agent has the page, a picture of it goes along: what a canvas draws is not in the lines.
-      const pic = ev.picture ? await stage.act({ do: 'picture' }, 8000) : null;
+      const pic = ev.picture ? await pictureOfPage() : null;
       void answer({ ok: true, did: did?.did ?? (did ? undefined : 'done, as far as can be told: the page loaded anew'), showing: stage.showing, path: now.path, title: now.title, lines: now.lines, ...(pic?.ok ? { image: pic.image, size: pic.size } : {}) });
     } catch (e) {
       void answer({ ok: false, error: e instanceof Error ? e.message : String(e) });

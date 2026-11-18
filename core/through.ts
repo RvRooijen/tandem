@@ -51,8 +51,12 @@ export function withTandem(html: string): string {
 export const liveReload = (url: string | undefined, protocol: string | string[] | undefined) =>
   /^vite/.test(String(protocol ?? '')) || /hmr|live-?reload|browser-sync|sockjs-node|webpack/i.test(url ?? '');
 
-/** `live` is called when the page turns out to follow its own files: it loads itself anew when one changes. */
-export function startThrough(opts: { port: number; to: number; host?: string; live?: () => void }): Promise<Server> {
+/**
+ * `live` is called when the page turns out to follow its own files: it loads itself anew when one changes. With
+ * `fresh` nothing of the page is kept by the browser: the working copy's code changes under a server that may still
+ * hand out what it had when it started (an ETag from its build), and the browser would keep the old file for that.
+ */
+export function startThrough(opts: { port: number; to: number; host?: string; live?: () => void; fresh?: boolean }): Promise<Server> {
   const host = opts.host ?? '127.0.0.1';
   const server = createServer((req, res) => {
     if (req.url === SCRIPT) {
@@ -62,17 +66,26 @@ export function startThrough(opts: { port: number; to: number; host?: string; li
     // Asked for as it is, so that a page of HTML can be read here and given its line.
     const headers = { ...req.headers };
     delete headers['accept-encoding'];
+    if (opts.fresh) for (const name of ['if-none-match', 'if-modified-since', 'if-match', 'if-unmodified-since', 'if-range']) delete headers[name];
+    const fresh = <T extends Record<string, string | string[] | undefined>>(out: T): T => {
+      if (!opts.fresh) return out;
+      const copy: Record<string, string | string[] | undefined> = { ...out, 'cache-control': 'no-store' };
+      delete copy.etag;
+      delete copy['last-modified'];
+      delete copy.expires;
+      return copy as T;
+    };
     const inner = request({ host, port: opts.to, method: req.method, path: req.url, headers }, (got) => {
       const html = /text\/html/.test(String(got.headers['content-type'] ?? '')) && req.method === 'GET';
       if (!html) {
-        res.writeHead(got.statusCode ?? 502, framable(got.headers));
+        res.writeHead(got.statusCode ?? 502, fresh(framable(got.headers)));
         return void got.pipe(res);
       }
       const parts: Buffer[] = [];
       got.on('data', (d: Buffer) => parts.push(d));
       got.on('end', () => {
         const body = Buffer.from(withTandem(Buffer.concat(parts).toString('utf8')));
-        const out = { ...framable(got.headers), 'content-length': String(body.length) };
+        const out = { ...fresh(framable(got.headers)), 'content-length': String(body.length) };
         delete out['transfer-encoding'];
         delete out['content-encoding'];
         // What the page looked like is not kept by the browser as proof that it has not changed: its length did.

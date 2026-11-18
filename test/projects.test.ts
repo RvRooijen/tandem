@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { CommandError, createRegistry } from '../core/commands.ts';
 import { execFileSync } from 'node:child_process';
 import { createHost } from '../core/host.ts';
+import { modelCommands, modelFor } from '../core/models.ts';
 import { listProjects, projectCommands, readState, welcome, writeState } from '../core/projects.ts';
 import { startLobby } from '../core/server.ts';
 import { fixture } from './helpers.ts';
@@ -147,11 +148,37 @@ test('with no project open, the core has only what it takes to choose one', asyn
   const base = `http://127.0.0.1:${lobby.port}/api`;
   const post = async (name: string, input: unknown = {}) => (await fetch(`${base}/run/${name}`, { method: 'POST', body: JSON.stringify(input) })).json() as Promise<any>;
   assert.deepEqual(await (await fetch(`${base}/info`)).json(), { project: null, name: 'tandem', last: 0, page: null, senses: false, copy: false });
-  assert.deepEqual((await (await fetch(`${base}/commands`)).json() as { name: string }[]).map((c) => c.name), ['projects.list', 'projects.open', 'projects.create', 'projects.browse', 'projects.look']);
+  assert.deepEqual((await (await fetch(`${base}/commands`)).json() as { name: string }[]).map((c) => c.name), ['models.get', 'models.set', 'projects.list', 'projects.open', 'projects.create', 'projects.browse', 'projects.look']);
   const list = await post('projects.list');
   assert.equal(list.result.open, null);
   assert.ok(mine(list.result.projects).some((p: any) => p.name === 'Gnome Garden'));
   assert.equal((await post('chat.send', { text: 'hello' })).code, 'unknown');
   assert.equal((await post('projects.open', { dir: join(root, 'garden') })).result.restarting, false, 'nothing looks after this one, so it only remembers');
   await lobby.close();
+});
+
+test('the model and effort for the agent and for the workers are chosen apart, for every project', async () => {
+  const registry = createRegistry();
+  registry.add(...modelCommands());
+  const run = (name: string, input: Record<string, unknown>, by = 'me') => registry.run(name, input, { by }) as Promise<any>;
+  const refused = (p: Promise<unknown>, code: string) => assert.rejects(p, (e) => e instanceof CommandError && e.code === code);
+  const before = readState();
+  writeState({ ...before, models: undefined });
+
+  const got = await run('models.get', {});
+  assert.deepEqual(got.agent, { model: 'claude-fable-5-2', effort: 'medium' }, 'nothing chosen: what it always was');
+  assert.deepEqual(got.workers, { model: 'claude-fable-5-2', effort: 'high' });
+  assert.ok(got.models.some((m: any) => m.id === 'claude-opus-5-5'));
+
+  await run('models.set', { who: 'agent', model: 'claude-opus-5-5' });
+  await run('models.set', { who: 'workers', effort: 'max' });
+  assert.deepEqual(modelFor('agent'), { model: 'claude-opus-5-5', effort: 'medium' });
+  assert.deepEqual(modelFor('workers'), { model: 'claude-fable-5-2', effort: 'max' });
+  assert.equal(readState().project, before.project, 'the rest of the state stays');
+
+  await refused(run('models.set', { who: 'agent', model: 'gpt-5' }), 'input');
+  await refused(run('models.set', { who: 'agent', effort: 'extreme' }), 'input');
+  await refused(run('models.set', { who: 'everyone', effort: 'low' }), 'input');
+  await refused(run('models.set', { who: 'agent', effort: 'low' }, 'agent:main'), 'permission');
+  writeState({ ...readState(), models: undefined });
 });

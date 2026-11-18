@@ -719,6 +719,7 @@ test('a project that has no page yet is played from the copy, once its change se
   host.proposeCode('agent:main', 'A page.');
   assert.equal(card().plays, undefined, 'nothing starts a page yet');
   await refused(me('code.play'), 'unsupported');
+  await refused(me('code.restart'), 'unsupported');
   // The change set brings what tandem starts by itself: its copy has a page, the project still has none.
   writeFileSync(join(copy, 'package.json'), JSON.stringify({ name: 'fixture', scripts: { dev: 'vite' }, devDependencies: { vite: '^6.0.0' } }));
   host.proposeCode('agent:main', 'A page.');

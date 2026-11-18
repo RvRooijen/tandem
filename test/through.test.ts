@@ -11,6 +11,7 @@ import { innerPort, startThrough, withTandem } from '../core/through.ts';
 const PAGE = '<!doctype html><html><head><title>A page</title></head><body><h1>Lots</h1></body></html>';
 const inner: Server = createServer((req, res) => {
   if (req.url === '/') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', etag: '"abc"', 'content-length': String(Buffer.byteLength(PAGE)) }); return void res.end(PAGE); }
+  if (req.url === '/app.js' && req.headers['if-none-match'] === '"js"') { res.writeHead(304, { etag: '"js"' }); return void res.end(); }
   if (req.url === '/app.js') { res.writeHead(200, { 'content-type': 'text/javascript', etag: '"js"' }); return void res.end('export const a = "</head>";\n'); }
   if (req.url === '/save' && req.method === 'POST') { let body = ''; req.on('data', (d) => { body += d; }); return void req.on('end', () => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ got: body, enc: req.headers['accept-encoding'] ?? null })); }); }
   // A page that forbids being shown in another page's frame, the way ASP.NET does by itself.
@@ -47,6 +48,19 @@ test('a page of HTML gets tandem\'s line, once; everything else passes as it is'
   assert.equal(await (await fetch(`${at}/__tandem/page.js`)).text(), ['scene.js', 'page.js'].map((f) => readFileSync(new URL(`../bridge/${f}`, import.meta.url), 'utf8')).join(''), 'tandem\'s lines: those for a scene first, then those for the page');
   assert.equal(withTandem(html), html, 'never twice');
   assert.equal(withTandem('<p>bare</p>'), '<p>bare</p><script src="/__tandem/page.js"></script>');
+});
+
+test('the working copy\'s page is not kept by the browser: its server may still tag a changed file as it was at its start', async () => {
+  const asked = { headers: { 'if-none-match': '"js"' } };
+  assert.equal((await fetch(`${at}/app.js`, asked)).status, 304, 'the project\'s page: as its server says');
+  const fresh = await startThrough({ port: 0, to, fresh: true });
+  try {
+    const js = await fetch(`http://127.0.0.1:${(fresh.address() as AddressInfo).port}/app.js`, asked);
+    assert.equal(js.status, 200, 'asked whole, whatever the browser had');
+    assert.equal(await js.text(), 'export const a = "</head>";\n');
+    assert.equal(js.headers.get('etag'), null);
+    assert.equal(js.headers.get('cache-control'), 'no-store');
+  } finally { fresh.close(); fresh.closeAllConnections(); }
 });
 
 test('a page that forbids being shown in a frame can be shown in tandem\'s; the rest of its policy stays', async () => {

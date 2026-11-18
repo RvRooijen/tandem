@@ -23,6 +23,8 @@ export interface State {
   lastIn?: string;
   /** When each project was last opened, by its folder: what was worked on last is listed first. */
   opened?: Record<string, number>;
+  /** The model and effort chosen for the agent and for the workers (core/models.ts). */
+  models?: Partial<Record<'agent' | 'workers', { model?: string; effort?: string }>>;
 }
 
 const stateFile = () => process.env.TANDEM_STATE ?? join(homedir(), '.tandem', 'state.json');

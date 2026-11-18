@@ -12,7 +12,8 @@ export const COPY_PORT = Number(process.env.TANDEM_COPY_PORT ?? 5211);
 
 /** `copy` gives the working copy as a project; it is asked for when the page is, because the copy is made late. */
 /** `log` is where the copy's page writes what it says while it starts and runs: why it did not come up is in there. */
-export function createPreview(copy: () => Project, log?: string) {
+/** `starting` is called each time the copy's page is started, before it is. */
+export function createPreview(copy: () => Project, log?: string, starting?: () => void) {
   const said = () => {
     try { return log && existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').slice(-6).join('\n').slice(-900) : ''; } catch { return ''; }
   };
@@ -24,17 +25,18 @@ export function createPreview(copy: () => Project, log?: string) {
   const up = async () => {
     try { return (await fetch(`http://127.0.0.1:${COPY_PORT}/`, { signal: AbortSignal.timeout(1500) })).status < 500; } catch { return false; }
   };
-  return {
+  const preview = {
     /** The address of the working copy's page; starts it if it is not running. */
     async url(): Promise<string> {
       if (!(await up())) {
         stopTree(proc);
         const at = copy();
         live = false;
-        through ??= startThrough({ port: COPY_PORT, to: innerPort(COPY_PORT, true), live: () => { live = true; } });
+        through ??= startThrough({ port: COPY_PORT, to: innerPort(COPY_PORT, true), fresh: true, live: () => { live = true; } });
         try { await through; } catch (e) { through = undefined; throw e; }
         const command = at.pageCommand(innerPort(COPY_PORT, true));
         if (!command) throw new Error('the project has no page to start');
+        starting?.();
         const out = log ? openSync(log, 'w') : 'ignore';
         proc = startTree(command, { cwd: at.root, stdio: ['ignore', out, out], env: { ...process.env, TANDEM_COPY: '1' } });
         if (typeof out === 'number') closeSync(out);
@@ -43,10 +45,21 @@ export function createPreview(copy: () => Project, log?: string) {
       }
       return `http://localhost:${COPY_PORT}/`;
     },
+    /** Stop the copy's page and start it again: for a page that only takes in a changed file when it is started (a build). */
+    async restart(): Promise<string> {
+      stopTree(proc);
+      proc = undefined;
+      for (let i = 0; i < 20 && (await up()); i++) await new Promise((r) => setTimeout(r, 500));
+      if (await up()) throw new Error(`the page of the working copy did not stop; something else answers on port ${innerPort(COPY_PORT, true)}`);
+      return preview.url();
+    },
+    /** Whether the copy's page was started here and has not stopped. */
+    running: () => !!proc && proc.exitCode === null && proc.signalCode === null,
     /** Whether the copy's page shows a changed file by itself. One that does not is loaded anew by whoever shows it. */
     follows: () => live,
     stop() { stopTree(proc); proc = undefined; void through?.then((s) => s.close(), () => {}); through = undefined; },
   };
+  return preview;
 }
 
 export type Preview = ReturnType<typeof createPreview>;

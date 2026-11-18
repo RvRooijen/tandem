@@ -36,6 +36,8 @@ export interface Stage {
   showProject(anew?: boolean): void;
   /** Load the page that is shown anew, where it is: a file of it changed, and it does not follow its files itself. */
   again(): void;
+  /** Where the frame is on this screen; null while no page is shown in it. */
+  rect(): { x: number; y: number; w: number; h: number } | null;
   /** Where a point of the project's world is on this screen; null when the page does not say. */
   where(x: number, y: number): Promise<{ x: number; y: number } | null>;
   /**
@@ -120,6 +122,11 @@ export function createStage(root: HTMLElement, info: Info, on: { snapshot(snapsh
       stage.can = { snapshot: false, point: false, find: false };
       if (info.page) void show(info.page, info.name); else if (info.project) nothing();
       on.changed();
+    },
+    rect() {
+      if (frame.hidden) return null;
+      const r = frame.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 ? { x: r.left, y: r.top, w: r.width, h: r.height } : null;
     },
     again() {
       // (Not through show(): the page is up, and the frame is not hidden while it comes back.)

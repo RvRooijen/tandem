@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "tandem pictures",
+  "version": "1.0",
+  "description": "Lets tandem's page take a picture of what the tab shows: what the agent sees of the project's page, and what you point at, is then the screen itself.",
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    { "matches": ["http://localhost/*", "http://127.0.0.1/*"], "js": ["content.js"], "run_at": "document_start" }
+  ]
+}

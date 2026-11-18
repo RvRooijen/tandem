@@ -796,12 +796,19 @@ test('the agent shows things on the person\'s screen', async () => {
     three: { uuid: 'abc', type: 'Mesh', geometry: { type: 'IcosahedronGeometry', made: { radius: 0.8, detail: 0 }, points: 60 }, material: { type: 'ShaderMaterial' }, position: [1, 0.8, -2], size: [1.5, 1.5, 1.5], point: [1.1, 1.2, -1.8], index: 2, of: 5, graph: 'Scene > Mesh' } };
   toFrame.length = 0;
   ran.length = 0;
+  // (The first time something is pointed at, this tab is asked to be shared, when the finger lets go; said no to,
+  // the page draws the picture itself, and it is not asked again.)
+  const shareAsked: unknown[] = [];
+  Object.defineProperty(globalThis.navigator, 'mediaDevices', { configurable: true, value: { getDisplayMedia: (o: unknown) => { shareAsked.push(o); return Promise.reject(new Error('NotAllowedError')); } } });
   pointer('pointerdown', 340, 60);
   pointer('pointermove', 200, 400);
   await answer(die);
   await until(() => !$('#t-ring').hidden && $('#t-ring span').textContent === '"Mesh, IcosahedronGeometry 0.8, 2 of…"', 'the thing in the scene to be marked');
   pointer('pointerup', 200, 400);
+  assert.equal(shareAsked.length, 1, 'sharing the tab is asked for as the finger lets go');
   assert.equal((await answer({ ...die, image: 'data:image/jpeg;base64,/9j/AAAA' })).image, true, 'let go on it, a picture of it is asked for');
+  assert.equal((await import('../shell/capture.ts')).refused(), true, 'said no to: not asked again by itself');
+  delete (globalThis.navigator as unknown as Record<string, unknown>).mediaDevices;
   await until(() => app.refs.length === 1 && app.pictures.size === 1, 'the thing and its picture to go with the next message');
   assert.deepEqual(JSON.parse(app.refs[0].slice('page:'.length)).three, die.three);
   assert.ok(ran.includes('chat.attach'));
@@ -904,7 +911,12 @@ test('the agent shows things on the person\'s screen', async () => {
   await until(() => !$('#t-take').hidden, 'the asking, over the page');
   assert.match($('#t-take').textContent!, /to see the dice roll/);
   assert.equal($('#t-held').hidden, true);
+  // Let it, and this tab is asked to be shared, in the same click; said no to, the page draws its pictures itself.
+  const tabAsked: unknown[] = [];
+  Object.defineProperty(globalThis.navigator, 'mediaDevices', { configurable: true, value: { getDisplayMedia: (o: unknown) => { tabAsked.push(o); return Promise.reject(new Error('NotAllowedError')); } } });
   click(button('Let it', $('#t-take')));
+  assert.equal(tabAsked.length, 1, 'asked in the click itself');
+  assert.equal((tabAsked[0] as { preferCurrentTab?: boolean }).preferCurrentTab, true, 'this tab');
   assert.deepEqual(await taking, { taken: true });
   await until(() => !$('#t-held').hidden && $('#t-take').hidden && document.body.classList.contains('t-held'), 'the mark that the agent has the page');
   // From then on a picture of the page goes along with what it does there, kept where it can read it.
@@ -923,6 +935,7 @@ test('the agent shows things on the person\'s screen', async () => {
   await doing('look', onPage);
   await doing('picture', { ok: false, error: 'this browser does not hand a picture of the page back' });
   assert.match((await placing).picture, /^none/);
+  delete (globalThis.navigator as unknown as Record<string, unknown>).mediaDevices;
   assert.equal(host.events.since(0).filter((e) => e.type === 'page.did').at(-1)!.at, '100, 200');
   await assert.rejects(host.run('page.tap', {}, AGENT) as Promise<any>, /needs at/);
   // The person takes it back: the agent leaves the page alone for the rest of its turn.
@@ -940,10 +953,34 @@ test('the agent shows things on the person\'s screen', async () => {
   await until(() => $('#t-take').hidden, 'the asking to go');
   assert.equal($('#t-held').hidden, true);
   // Given back by the agent, and at the end of its turn, the page is the person's again.
+  // With tandem's extension in the browser nothing is shared: the picture of the page is asked of the extension
+  // (here it has none to give, and the page draws it itself).
+  const extAsked: number[] = [];
+  const extension = (ev: MessageEvent) => { if (ev.data?.tandemPictures === 'ask') { extAsked.push(ev.data.id); w.postMessage({ tandemPictures: 'shot', id: ev.data.id, ok: false, error: 'not here' }, '*'); } };
+  document.documentElement.dataset.tandemPictures = '1';
+  w.addEventListener('message', extension);
+  const sharedNow = tabAsked.length;
+  Object.defineProperty(globalThis.navigator, 'mediaDevices', { configurable: true, value: { getDisplayMedia: (o: unknown) => { tabAsked.push(o); return Promise.reject(new Error('NotAllowedError')); } } });
+  const frameEl = $('#t-frame') as HTMLIFrameElement;
+  const frameHidden = frameEl.hidden;
+  frameEl.hidden = false;
+  frameEl.getBoundingClientRect = () => ({ left: 0, top: 0, width: 360, height: 620, right: 360, bottom: 620, x: 0, y: 0, toJSON() {} }) as DOMRect;
   const again_ = host.run('page.take', { why: 'once more' }, AGENT) as Promise<any>;
   await until(() => !$('#t-take').hidden, 'the asking');
   click(button('Let it', $('#t-take')));
   await again_;
+  assert.equal(tabAsked.length, sharedNow, 'the tab is not asked to be shared');
+  toFrame.length = 0;
+  const lookingExt = host.run('page.look', {}, AGENT) as Promise<any>;
+  await doing('look', onPage);
+  await until(() => extAsked.length === 1, 'the extension to be asked for a picture');
+  await doing('picture', { ok: true, image: 'data:image/jpeg;base64,/9j/AAAA', size: [360, 620] });
+  assert.deepEqual((await lookingExt).size, [360, 620]);
+  w.removeEventListener('message', extension);
+  delete document.documentElement.dataset.tandemPictures;
+  delete (globalThis.navigator as unknown as Record<string, unknown>).mediaDevices;
+  delete (frameEl as unknown as Record<string, unknown>).getBoundingClientRect;
+  frameEl.hidden = frameHidden;
   assert.deepEqual(await host.run('page.release', {}, AGENT), { released: true });
   await until(() => $('#t-held').hidden, 'the mark to go');
   assert.deepEqual(host.events.since(0).filter((e) => e.type.startsWith('page.t') || e.type === 'page.released').slice(-3).map((e) => [e.type, e.by, e.allow]), [['page.take', AGENT, undefined], ['page.taken', 'me', true], ['page.released', AGENT, undefined]]);
@@ -1702,6 +1739,17 @@ test('projects: the folders that could be one are listed, and another is chosen 
   click($('button[aria-label="Settings"]'));
   assert.equal(all('.t-tab.on').length, 0, 'none of the tabs is the one showing');
   assert.equal(($('input[aria-label="Sound"]') as HTMLInputElement).checked, false);
+  // (And which model the agent and the workers run on, each with its own effort: for every project.)
+  await until(() => all('select[aria-label="Agent model"]').length === 1, 'the models');
+  const agentModel = $('select[aria-label="Agent model"]') as HTMLSelectElement;
+  agentModel.value = 'claude-opus-5-5';
+  agentModel.dispatchEvent(new w.Event('change'));
+  const workersEffort = $('select[aria-label="Workers effort"]') as HTMLSelectElement;
+  workersEffort.value = 'max';
+  workersEffort.dispatchEvent(new w.Event('change'));
+  await until(() => gave.filter(([n]) => n === 'models.set').length === 2, 'both to be chosen');
+  assert.deepEqual(gave.filter(([n]) => n === 'models.set').map(([, i]) => i), [{ who: 'agent', model: 'claude-opus-5-5' }, { who: 'workers', effort: 'max' }]);
+  await until(() => { try { return JSON.parse(readFileSync(process.env.TANDEM_STATE!, 'utf8')).models?.workers?.effort === 'max'; } catch { return false; } }, 'it to be kept');
   tab('Projects');
   await until(() => all('.item.project').length >= 3, 'the folders again');
   const item = (name: string) => all('.item.project').find((i) => $('b', i).textContent === name)!;

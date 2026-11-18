@@ -10,6 +10,7 @@ import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EventLog } from '../core/events.ts';
+import { modelFor } from '../core/models.ts';
 import type { Proposals } from '../core/proposals.ts';
 import type { PictureMaker, Pictures } from './pictures.ts';
 import type { Workspaces } from './workspace.ts';
@@ -107,10 +108,11 @@ export function createWorkers(o: WorkersOptions) {
     active.set(w.id, w);
     save(w); cast(w);
     const edit = w.names.flatMap((n) => [`Edit(art/${n}.txt)`, `Write(art/${n}.txt)`, `Edit(depth/${n}.txt)`, `Write(depth/${n}.txt)`]);
+    const { model, effort } = modelFor('workers');
     const proc = spawn(process.env.CLAUDE_BIN ?? 'claude', [
       '-p', prompt, '--append-system-prompt', readFileSync(GUIDE, 'utf8'),
       '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
-      '--model', process.env.TANDEM_ART_MODEL ?? process.env.TANDEM_MODEL ?? 'claude-fable-5-2', '--effort', process.env.TANDEM_ART_EFFORT ?? 'high',
+      '--model', model, '--effort', effort,
       ...(w.session ? ['--resume', w.session] : []),
       // Only what is listed: reading the workspace, changing the drawings asked about, rendering and reporting.
       '--permission-mode', 'default', '--allowedTools',

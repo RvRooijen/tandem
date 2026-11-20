@@ -58,16 +58,15 @@ function Install-Tandem {
   $zip = Join-Path $env:TEMP 'tandem.zip'
   Log "downloading $Release"
   Invoke-WebRequest $Release -OutFile $zip -UseBasicParsing
-  # Everything is the release's, but for the dependencies that were installed before: npm brings those up to date.
-  Get-ChildItem $App -Force | Where-Object { $_.Name -notin @('node_modules', 'desktop') } | Remove-Item -Recurse -Force
+  # Everything is the release's, but for Electron, which was installed before: npm brings that up to date. Tandem
+  # itself needs nothing installed; its page comes built.
+  Get-ChildItem $App -Force | Where-Object { $_.Name -ne 'desktop' } | Remove-Item -Recurse -Force
   if (Test-Path (Join-Path $App 'desktop')) { Get-ChildItem (Join-Path $App 'desktop') -Force | Where-Object { $_.Name -ne 'node_modules' } | Remove-Item -Recurse -Force }
   Expand-Archive $zip -DestinationPath $App -Force
   Remove-Item $zip
-  # (For Windows, also when npm is set to install for another system: what Vite runs on is native.)
-  foreach ($dir in @($App, (Join-Path $App 'desktop'))) {
-    Push-Location $dir
-    try { Run 'npm.cmd' @('install', '--os=win32', '--no-audit', '--no-fund') } finally { Pop-Location }
-  }
+  # (For Windows, also when npm is set to install for another system.)
+  Push-Location (Join-Path $App 'desktop')
+  try { Run 'npm.cmd' @('install', '--os=win32', '--no-audit', '--no-fund') } finally { Pop-Location }
   # Electron's package fetches Electron itself only when it is first asked for it; the shortcut asks for the file.
   Run 'node' @((Join-Path $App 'desktop\node_modules\electron\install.js'))
   $shell = New-Object -ComObject WScript.Shell

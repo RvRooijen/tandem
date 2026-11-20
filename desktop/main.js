@@ -23,6 +23,8 @@ function start() {
   const gitSh = join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'usr', 'bin');
   const path = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'Path';
   if (WINDOWS && existsSync(gitSh)) env[path] = `${gitSh};${env[path] ?? ''}`;
+  // A release comes with tandem's page built, and then needs no Vite.
+  if (existsSync(join(ROOT, 'dist', 'index.html'))) env.TANDEM_SHELL = 'built';
   tandem = spawn('node', ['--no-warnings', 'core/start.ts'], { cwd: ROOT, env, stdio: 'inherit', windowsHide: true });
   tandem.on('exit', () => { tandem = undefined; app.quit(); });
 }

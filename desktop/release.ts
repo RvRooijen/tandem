@@ -1,6 +1,7 @@
-// A release of tandem for the installer (desktop/install.ps1): the files of the commit that is checked out, as
-// tandem.zip on a GitHub release named after the version in package.json. What is not committed is not in it,
-// and the commit has to be on GitHub already, for the release to point at it.
+// A release of tandem for the installer (desktop/install.ps1): the files of the commit that is checked out, and
+// tandem's page built from them (dist/), as tandem.zip on a GitHub release named after the version in
+// package.json. What is not committed is not in it, and the commit has to be on GitHub already, for the release
+// to point at it.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -21,6 +22,8 @@ const dir = mkdtempSync(join(tmpdir(), 'tandem-release-'));
 try {
   const zip = join(dir, 'tandem.zip');
   run('git', 'archive', '--format=zip', '-o', zip, 'HEAD');
+  run('npm', 'run', 'build');
+  run('zip', '-qr', zip, 'dist');
   run('gh', 'release', 'create', tag, zip, '--target', head, '--title', `tandem ${version}`,
     '--notes', 'Install or update on Windows: download desktop/install.ps1 and run it with PowerShell.');
   console.log(`released ${tag} (${head.slice(0, 7)})`);

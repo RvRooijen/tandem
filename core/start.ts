@@ -16,8 +16,9 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:http';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { serveBuilt } from './built.ts';
 import { SETUP, loadProject, startTree, stopTree } from './project.ts';
 import { SWITCH, opening, readState, writeState } from './projects.ts';
 import { innerPort, startThrough } from './through.ts';
@@ -130,7 +131,14 @@ const status = createServer((_req, res) => {
 status.on('error', (e) => console.log(`what the core is doing while it starts cannot be told on port ${STATUS_PORT}: ${e.message}`));
 status.listen(STATUS_PORT, '127.0.0.1');
 
-// Tandem's own page.
-const shell = startTree('npx vite', { cwd: ROOT, env: process.env });
-shell.on('exit', (code) => { if (!stopping) { console.log(`tandem's page stopped (${code})`); stop(code ?? 0); } });
+// Tandem's own page: with Vite, or as a release has it built (TANDEM_SHELL=built: core/built.ts).
+const SHELL_PORT = Number(process.env.TANDEM_SHELL_PORT ?? 5173);
+let shell: ChildProcess | undefined;
+if (process.env.TANDEM_SHELL === 'built') {
+  serveBuilt({ dir: join(ROOT, 'dist'), port: SHELL_PORT, core: Number(process.env.TANDEM_PORT ?? 5201), status: STATUS_PORT })
+    .on('error', (e) => { console.log(`tandem's page cannot be shown on port ${SHELL_PORT}: ${e.message}`); stop(1); });
+} else {
+  shell = startTree('npx vite', { cwd: ROOT, env: process.env });
+  shell.on('exit', (code) => { if (!stopping) { console.log(`tandem's page stopped (${code})`); stop(code ?? 0); } });
+}
 startProject();

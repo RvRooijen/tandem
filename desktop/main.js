@@ -46,6 +46,7 @@ else {
   app.whenReady().then(async () => {
     win = new BrowserWindow({
       width: 1400, height: 900, title: 'tandem', backgroundColor: '#111', autoHideMenuBar: true,
+      icon: join(dirname(fileURLToPath(import.meta.url)), WINDOWS ? 'icon.ico' : 'icon.png'),
       webPreferences: { preload: join(dirname(fileURLToPath(import.meta.url)), 'preload.cjs') },
     });
     ipcMain.handle('pick-folder', async (_ev, title) => {

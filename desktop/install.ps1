@@ -75,6 +75,7 @@ function Install-Tandem {
     $link.TargetPath = $Electron
     $link.Arguments = '"' + (Join-Path $App 'desktop') + '"'
     $link.WorkingDirectory = $App
+    $link.IconLocation = (Join-Path $App 'desktop\icon.ico') + ',0'
     $link.Save()
   }
   Log "tandem is in $App, with a shortcut in the Start menu and on the desktop"

@@ -9,7 +9,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = process.env.TANDEM_ROOT ?? join(dirname(fileURLToPath(import.meta.url)), '..');
-const SHELL = `http://127.0.0.1:${process.env.TANDEM_SHELL_PORT ?? 5173}/`;
+const PORT = process.env.TANDEM_SHELL_PORT ?? 5173;
+const SHELL = `http://127.0.0.1:${PORT}/`;
+// Shown as localhost, like the project's page in its frame: the same site, so the project's own cookies (a login)
+// count in that frame. From 127.0.0.1 the frame is another site's, and the browser keeps them out.
+const PAGE = `http://localhost:${PORT}/`;
 const WINDOWS = process.platform === 'win32';
 
 /** Tandem, when this window started it. */
@@ -62,6 +66,6 @@ else {
     win.loadURL(`data:text/html,<body style="background:%23111;color:%23aaa;font:14px sans-serif;display:grid;place-items:center;height:100vh;margin:0">tandem starts…</body>`);
     if (!(await answers())) start();
     while (!(await answers())) await new Promise((r) => setTimeout(r, 300));
-    win.loadURL(SHELL);
+    win.loadURL(PAGE);
   });
 }

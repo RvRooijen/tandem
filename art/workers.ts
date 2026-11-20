@@ -110,7 +110,8 @@ export function createWorkers(o: WorkersOptions) {
     const edit = w.names.flatMap((n) => [`Edit(art/${n}.txt)`, `Write(art/${n}.txt)`, `Edit(depth/${n}.txt)`, `Write(depth/${n}.txt)`]);
     const { model, effort } = modelFor('workers');
     const proc = spawn(process.env.CLAUDE_BIN ?? 'claude', [
-      '-p', prompt, '--append-system-prompt', readFileSync(GUIDE, 'utf8'),
+      // (The request on stdin, the guide as a file: on Windows a command line holds 32,767 characters.)
+      '-p', '--append-system-prompt-file', GUIDE,
       '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
       '--model', model, '--effort', effort,
       ...(w.session ? ['--resume', w.session] : []),
@@ -118,7 +119,9 @@ export function createWorkers(o: WorkersOptions) {
       '--permission-mode', 'default', '--allowedTools',
       'Read(art/**)', 'Read(depth/**)', 'Read(out/**)', 'Read(scratch/**)', 'Edit(scratch/**)', 'Write(scratch/**)', ...edit,
       'Bash(node scripts/render.js:*)', 'Bash(node scripts/event.js:*)', 'Bash(node scripts/scratch.js:*)',
-    ], { cwd: spaces.dir(w.id), stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PIXEL_WORKER: w.id } });
+    ], { cwd: spaces.dir(w.id), stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PIXEL_WORKER: w.id } });
+    proc.stdin!.on('error', () => { /* it went before it read it; its exit says why */ });
+    proc.stdin!.end(prompt);
     runs.set(w.id, proc);
     let buf = '', err = '', failed = '', lastCast = 0;
     const timer = setTimeout(() => { failed = 'it took more than forty minutes and was stopped'; proc.kill(); }, 40 * 60_000);

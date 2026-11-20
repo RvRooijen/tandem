@@ -2,10 +2,10 @@
 // Stands in for the claude command line in tests: speaks its stream-json, and
 // uses the tandem command line the way the agent does.
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
-const prompt = args[args.indexOf('-p') + 1];
+const prompt = readFileSync(0, 'utf8');
 const resumed = args.includes('--resume');
 const say = (o) => process.stdout.write(JSON.stringify(o) + '\n');
 

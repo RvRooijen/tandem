@@ -4,7 +4,8 @@
 // per game, resumed from message to message.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { delimiter, join } from 'node:path';
 import { SCRATCH } from './code.ts';
 import { within } from './paths.ts';
 import type { CommandDef } from './commands.ts';
@@ -30,6 +31,9 @@ export function runnable(project: Host['project']): string[] {
   const own = existsSync(join(project.root, 'package.json')) ? ['npm test', 'npm run test', 'node --test'] : [];
   return [...new Set([...told, ...own])];
 }
+
+/** What the agent is told besides the message, written out for each turn (see run). */
+const INTRO = join(tmpdir(), `tandem-agent-${process.pid}.md`);
 
 /** Looking around from the command line: none of these writes anything. */
 const LOOKING = ['ls', 'grep', 'cat', 'head', 'tail', 'wc'];
@@ -295,8 +299,10 @@ export function createRunner(host: Host) {
     const prompt = `${from}${ev.text}${expand(ev.refs)}${shared}\n\n[This is round ${round}.${where}${copy}${turned}${gained()}]`;
     const may = tools(host);
     const { model, effort } = modelFor('agent');
+    // The message comes in on stdin and what it is told in a file: on Windows a command line holds 32,767 characters.
+    writeFileSync(INTRO, intro());
     const args = [
-      '-p', prompt, '--append-system-prompt', intro(),
+      '-p', '--append-system-prompt-file', INTRO,
       '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
       '--model', model, '--effort', effort,
       ...(session && !retry ? ['--resume', session] : []),
@@ -306,10 +312,12 @@ export function createRunner(host: Host) {
       '--permission-mode', 'default', '--allowedTools', ...may.allow, ...(may.deny.length ? ['--disallowedTools', ...may.deny] : []),
     ];
     const proc = spawn(process.env.CLAUDE_BIN ?? 'claude', args, {
-      cwd: host.code?.work ?? host.project.root, stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: host.code?.work ?? host.project.root, stdio: ['pipe', 'pipe', 'pipe'],
       // `tandem` on its path is the engine's command line, talking to this core.
-      env: { ...process.env, PATH: `${join(ROOT, 'bin')}:${process.env.PATH ?? ''}`, TANDEM_BY: 'agent:main', TANDEM_ROUND: round },
+      env: { ...process.env, PATH: `${join(ROOT, 'bin')}${delimiter}${process.env.PATH ?? ''}`, TANDEM_BY: 'agent:main', TANDEM_ROUND: round },
     });
+    proc.stdin!.on('error', () => { /* it went before it read it; its exit says why */ });
+    proc.stdin!.end(prompt);
     child = proc;
     let buf = '', err = '', said = 0, failed = '', lastSaid = '';
     /** What it is doing with a tool right now, by the id of the call: what the tool answers is said with it. */

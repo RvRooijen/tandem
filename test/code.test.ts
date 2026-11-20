@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SCRATCH, createCode, forConcepts } from '../core/code.ts';
+import './helpers.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'tandem-code-'));
 after(() => rmSync(root, { recursive: true, force: true }));

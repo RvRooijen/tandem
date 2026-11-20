@@ -2,12 +2,32 @@
 // make a world, step it, draw it, let a bot play it. The adapter runs in the
 // core (the world the agent looks into) and in a job (a playtest, a picture),
 // never in the page, which is why everything here is plain data in and out.
-import type { EntityManager } from 'archetype-ecs';
 import type { CommandDef } from './commands.ts';
+
+/** What the inspector asks of a world's entities: the project's own ECS (archetype-ecs's EntityManager). */
+export interface Entities {
+  isAlive(id: number): boolean;
+  getAllEntities(): number[];
+  hasComponent(id: number, def: unknown): boolean;
+  getComponent(id: number, def: unknown): unknown;
+  replaceComponent(id: number, def: unknown, row: unknown): void;
+}
+
+/**
+ * What the inspector asks of the ECS the project runs on, which only the project has: archetype-ecs's
+ * componentSchemas, profiler and queryDiagnostics, as the adapter imports them.
+ */
+export interface EcsModule {
+  componentSchemas: { get(key: symbol): Record<string, unknown> | undefined };
+  profiler: { readonly enabled: boolean; setEnabled(on: boolean): void; getData(): Map<string, { avg: number; rows?: number }> };
+  queryDiagnostics: {
+    reports: { query: string; mode: string; kernelOps: number; wasm: boolean; demoted: boolean; statements: { source: string; compiled: boolean; hint?: string }[] }[];
+  };
+}
 
 /** A running game: an ECS world and the rules that step it. */
 export interface World {
-  em: EntityManager;
+  em: Entities;
   step(dt: number): void;
   /** Everything needed to start this world again somewhere else. Plain JSON. */
   snapshot(): unknown;
@@ -34,6 +54,8 @@ export interface GameModule {
   name: string;
   /** Every component by name, so the inspector can say what an entity is made of. */
   components: Record<string, unknown>;
+  /** The ECS it runs on, for the fields of the components and how the systems compiled and what they cost. */
+  ecs?: EcsModule;
   /** Which component says where an entity is, so a point on the stage can be turned into the entities near it. */
   position?: { component: string; x: string; y: string };
   /** The size of the world in its own units, and how many picture pixels one unit is. */

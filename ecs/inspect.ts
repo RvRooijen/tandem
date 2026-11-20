@@ -3,7 +3,6 @@
 // command, so the inspector panel in the page and the agent ask the same
 // questions and get the same answers. It works on any world, in the page (the
 // one being played) and on the server (the shared copy, a sandbox).
-import { componentSchemas, profiler, queryDiagnostics, type ComponentDef, type EntityId } from 'archetype-ecs';
 import { CommandError, type CommandDef } from '../core/commands.ts';
 import type { GameModule, World } from '../core/game.ts';
 
@@ -12,7 +11,7 @@ export interface EntityView { id: number; components: Record<string, Row> }
 
 const round = (v: unknown) => (typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 1000) / 1000 : v) as number | string;
 
-function rowOf(world: World, id: EntityId, def: ComponentDef): Row | undefined {
+function rowOf(world: World, id: number, def: unknown): Row | undefined {
   const row = world.em.getComponent(id, def) as Record<string, unknown> | undefined;
   if (!row) return undefined;
   const out: Row = {};
@@ -21,11 +20,11 @@ function rowOf(world: World, id: EntityId, def: ComponentDef): Row | undefined {
 }
 
 export function entityView(world: World, game: GameModule, id: number): EntityView | undefined {
-  if (!world.em.isAlive(id as EntityId)) return undefined;
+  if (!world.em.isAlive(id)) return undefined;
   const components: Record<string, Row> = {};
   for (const name in game.components) {
-    const def = game.components[name] as ComponentDef;
-    if (world.em.hasComponent(id as EntityId, def)) components[name] = rowOf(world, id as EntityId, def) ?? {};
+    const def = game.components[name];
+    if (world.em.hasComponent(id, def)) components[name] = rowOf(world, id, def) ?? {};
   }
   return { id, components };
 }
@@ -40,8 +39,8 @@ const typeName = (v: unknown) => (typeof v === 'string' ? v : typeof v === 'func
 export function schemas(game: GameModule): Record<string, Record<string, string>> {
   const out: Record<string, Record<string, string>> = {};
   for (const name in game.components) {
-    const def = game.components[name] as ComponentDef & { _sym: symbol };
-    const schema = componentSchemas.get(def._sym) ?? {};
+    const def = game.components[name] as { _sym: symbol };
+    const schema = game.ecs?.componentSchemas.get(def._sym) ?? {};
     out[name] = Object.fromEntries(Object.entries(schema).map(([k, v]) => [k, typeName(v)]));
   }
   return out;
@@ -54,7 +53,7 @@ export function summary(world: World, game: GameModule) {
   const perComponent: Record<string, number> = Object.fromEntries(names.map((n) => [n, 0]));
   const ids = world.em.getAllEntities();
   for (const id of ids) {
-    const has = names.filter((n) => world.em.hasComponent(id, game.components[n] as ComponentDef));
+    const has = names.filter((n) => world.em.hasComponent(id, game.components[n]));
     for (const n of has) perComponent[n]++;
     const key = has.join(' + ') || '(nothing)';
     groups.set(key, (groups.get(key) ?? 0) + 1);
@@ -97,14 +96,14 @@ export function find(world: World, game: GameModule, opts: { with?: string; wher
   const need = (opts.with ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   for (const n of need) if (!game.components[n]) throw new CommandError('input', `there is no component called ${n}; there are: ${Object.keys(game.components).join(', ')}`);
   const conds = parseWhere(opts.where, game);
-  const defs = [...new Set([...need, ...conds.map((c) => c.component)])].map((n) => game.components[n] as ComponentDef);
+  const defs = [...new Set([...need, ...conds.map((c) => c.component)])].map((n) => game.components[n]);
   const limit = Math.max(1, Math.min(200, opts.limit ?? 20));
   const out: EntityView[] = [];
   let total = 0;
   for (const id of world.em.getAllEntities()) {
     if (!defs.every((d) => world.em.hasComponent(id, d))) continue;
     if (conds.length) {
-      const ok = conds.every((c) => holds(rowOf(world, id, game.components[c.component] as ComponentDef)?.[c.field], c));
+      const ok = conds.every((c) => holds(rowOf(world, id, game.components[c.component])?.[c.field], c));
       if (!ok) continue;
     }
     total++;
@@ -117,7 +116,7 @@ export function find(world: World, game: GameModule, opts: { with?: string; wher
 export function near(world: World, game: GameModule, x: number, y: number, radius = 14) {
   const pos = game.position;
   if (!pos) throw new CommandError('unsupported', `${game.name} does not say which component is a position`);
-  const def = game.components[pos.component] as ComponentDef;
+  const def = game.components[pos.component];
   const hits: { d: number; id: number }[] = [];
   for (const id of world.em.getAllEntities()) {
     const row = rowOf(world, id, def);
@@ -130,12 +129,14 @@ export function near(world: World, game: GameModule, x: number, y: number, radiu
 }
 
 /** The pipeline in the order it runs, and for each query how it was compiled and what it costs. */
-export function systems(world: World) {
-  const times = profiler.getData();
+export function systems(world: World, game: GameModule) {
+  // (Without the project's ECS, the order is all there is to say.)
+  if (!game.ecs) return { order: world.systems, profiling: false, queries: [] };
+  const times = game.ecs.profiler.getData();
   return {
     order: world.systems,
-    profiling: profiler.enabled,
-    queries: queryDiagnostics.reports
+    profiling: game.ecs.profiler.enabled,
+    queries: game.ecs.queryDiagnostics.reports
       .filter((r) => world.systems.includes(r.query))
       // The same query is reported once per world that was made; the last one is this one's as much as any.
       .filter((r, i, all) => !all.slice(i + 1).some((x) => x.query === r.query))
@@ -182,13 +183,17 @@ export function ecsCommands(world: (room?: string) => World, game: GameModule, c
       name: 'ecs.systems', kind: 'read',
       about: 'The systems of the pipeline in the order they run, and for each query whether it compiled to a kernel, runs partly in JS, and what it costs per tick when profiling is on.',
       input: { room: 'string?' },
-      run: (_c, i) => systems(world(i.room)),
+      run: (_c, i) => systems(world(i.room), game),
     },
     {
       name: 'ecs.profile', kind: 'write', agent: 'free',
       about: 'Turn timing of the systems on or off. Costs a little while it is on.',
       input: { on: 'boolean' },
-      run(_c, i) { profiler.setEnabled(i.on); return { profiling: profiler.enabled }; },
+      run(_c, i) {
+        if (!game.ecs) throw new CommandError('unsupported', `${game.name}'s adapter does not give tandem its ECS (ecs in its GameModule)`);
+        game.ecs.profiler.setEnabled(i.on);
+        return { profiling: game.ecs.profiler.enabled };
+      },
     },
     {
       name: 'ecs.set', kind: 'write', agent: 'free',
@@ -197,12 +202,12 @@ export function ecsCommands(world: (room?: string) => World, game: GameModule, c
       run(c, i) {
         canWrite(i.room, c.by);
         const w = world(i.room);
-        const def = game.components[i.component] as ComponentDef | undefined;
+        const def = game.components[i.component];
         if (!def) throw new CommandError('input', `there is no component called ${i.component}`);
-        const row = w.em.getComponent(i.id as EntityId, def) as Record<string, unknown> | undefined;
+        const row = w.em.getComponent(i.id, def) as Record<string, unknown> | undefined;
         if (!row) throw new CommandError('missing', `entity ${i.id} has no ${i.component}`);
         if (!(i.field in row)) throw new CommandError('input', `${i.component} has no field ${i.field}; it has: ${Object.keys(row).join(', ')}`);
-        w.em.replaceComponent(i.id as EntityId, def, { ...row, [i.field]: i.value } as never);
+        w.em.replaceComponent(i.id, def, { ...row, [i.field]: i.value });
         return entityView(w, game, i.id);
       },
     },

@@ -8,10 +8,10 @@
     "start": "node --no-warnings core/start.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
+    "release": "node --no-warnings desktop/release.ts",
     "test": "node --no-warnings --test \"art/test/*.test.js\" && node --no-warnings --test --test-force-exit --test-concurrency=1 \"test/**/*.test.ts\""
   },
   "dependencies": {
-    "archetype-ecs": "file:../archetype-ecs",
     "lucide": "^1.73.0",
     "three": "^0.170.0"
   },

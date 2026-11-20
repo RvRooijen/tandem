@@ -35,6 +35,10 @@ again from its styles, which is not always what you see.
     TANDEM_AGENT=off tandem     without the agent
     npm test                    (in tandem) its own tests
 
+On Windows tandem runs in a window of its own (`desktop/`, Electron). `desktop/install.ps1` installs it from the
+latest release, with Git, Node.js and Claude Code when they are not there yet, in `%LOCALAPPDATA%\tandem`; running
+it again updates it. `npm run release` makes that release from the commit that is checked out and pushed.
+
 ## What a project needs
 
 A git repository. That is all: tandem then gives you the chat, concepts, locks
@@ -133,7 +137,7 @@ page back; it also gets it back to you when it is done or its turn is over.
 
 **The bridge** is one small file, `bridge/tandem.bridge.ts`, copied into the project (it has no imports). The page calls `tandemStart()` before it starts its world and `tandemConnect({ snapshot, toScreen })` once it runs. Outside tandem's frame it does nothing.
 
-**The adapter** exports `game`, a `GameModule` (`core/game.ts`): how to make a world from a snapshot, step it, describe it in words, draw it to pixels, let a bot play it and report milestones, and the things a player can do as commands. Tandem loads it in the core and in jobs, never in the page. Gnome Garden's is `tandem.adapter.ts` in `../incremental`.
+**The adapter** exports `game`, a `GameModule` (`core/game.ts`): how to make a world from a snapshot, step it, describe it in words, draw it to pixels, let a bot play it and report milestones, and the things a player can do as commands. For the inspector it also gives the ECS it runs on (`ecs`: archetype-ecs's `componentSchemas`, `profiler` and `queryDiagnostics`); tandem has no ECS of its own. Tandem loads it in the core and in jobs, never in the page.
 
 ## The idea
 
@@ -161,13 +165,14 @@ page back; it also gets it back to you when it is done or its turn is over.
     playtest/    pacing runs, and comparing two of them
     bridge/      the file a project's page copies to talk to tandem, and the lines tandem adds to any page it shows
     shell/       tandem's page: the project in a frame, a sheet with Chat, Concepts and Art over it
-    test/        on a small fixture project (test/fixture) and, for what needs an adapter, on Gnome Garden
+    test/        on a small fixture project (test/fixture)
+    desktop/     tandem in a window (Electron) for Windows, its installer, and the release it installs from
 
 In a project: `.tandem/tandem.json` (and `.tandem/page.sh` when starting the page takes a script), `.tandem/concepts`, `.tandem/thoughts.json`, `.tandem/locks.json`, and `.tandem/data` (not in git: the event log, proposals, pictures, the agent's session).
 
 ## Where it stands
 
-Works, and is tested: everything above, on the fixture project and on Gnome Garden (`../incremental`), including a real agent coding in its working copy and real drawing workers.
+Works, and is tested on the fixture project: everything above but what needs an adapter, which was tried on Gnome Garden and has no tests of its own here.
 
 Not there, or not seen:
 

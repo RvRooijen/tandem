@@ -6,7 +6,6 @@ export default defineConfig({
   base: './',
   esbuild: { target: 'es2022' },
   build: { target: 'es2022', outDir: '../dist', emptyOutDir: true },
-  optimizeDeps: { exclude: ['archetype-ecs'] },
   server: {
     // IPv4 loopback: a phone's browser looks for localhost there, and node on its own picks IPv6 only.
     host: '127.0.0.1',

@@ -1398,11 +1398,21 @@ test('a new conversation clears the chat and keeps what is still to be decided',
   host.events.add({ type: 'welcome', by: 'engine', existing: true, files: 12, name: 'Fixture' });
   await until(() => $('.msg.welcome'), 'the first line');
   assert.match($('.msg.welcome').textContent!, /Fixture is new to tandem\. Shall I read the project/);
+  // When the agent could not do it, the offer is there again: until it is done, not only until it was asked.
+  const tried = host.events.last();
+  host.events.add({ type: 'message', by: 'engine', kind: 'init', text: 'fail to read it' });
+  await until(() => host.events.since(tried).some((e) => e.type === 'message' && e.by === 'agent' && e.error), 'the agent to fail');
+  await until(() => all('button', $('.msg.welcome')).length === 1, 'the offer to be back');
+  await until(() => !app.agent.busy, 'the agent to be done');
   const before = ran.filter((n) => n === 'project.init').length;
+  const reading = host.events.last();
   click(button('Yes, read the project', $('.msg.welcome')));
   await until(() => ran.filter((n) => n === 'project.init').length === before + 1, 'the agent to be asked');
   await until(() => all('button', $('.msg.welcome')).length === 0, 'the offer to be taken');
-  await until(() => !app.agent.busy && all('.msg.agent:not(.welcome)').length >= 2, 'the agent to have read it');
+  await until(() => !app.agent.busy && host.events.since(reading).some((e) => e.type === 'setup.done'), 'the agent to have read it');
+  host.events.add({ type: 'message', by: 'agent', error: true, text: 'That did not work: something later' });
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(all('button', $('.msg.welcome')).length, 0, 'once it is done, it is not offered again');
   // A project with nothing in it yet is asked what it is going to be, and there is nothing to read.
   host.events.add({ type: 'welcome', by: 'engine', existing: false, files: 0, name: 'Blank' });
   await until(() => all('.msg.welcome').length === 2, 'the other first line');

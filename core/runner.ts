@@ -420,6 +420,9 @@ export function createRunner(host: Host) {
         forget();
         return run(ev, true);
       } else if (failed || code !== 0) say(`That did not work: ${failed || err.trim().split('\n').pop() || `claude ended with code ${code}`}`, { error: true });
+      // The turn that sets tandem up for the project (or carries on with it after a restart) went well: now it is,
+      // and the chat stops offering it.
+      else if ((ev.kind === 'init' || ev.kind === 'resume') && setupAsked()) host.events.add({ type: 'setup.done', by: 'agent' });
       // What its working copy now differs from the project is the change set the person gets to play and decide.
       try { host.proposeCode('agent:main', lastSaid); } catch (e) { say(`(The working copy could not be compared with the project: ${e instanceof Error ? e.message.split('\n')[0] : e})`, { error: true }); }
       if (session && context > CONTEXT_LIMIT) {
@@ -476,6 +479,16 @@ export function createRunner(host: Host) {
       text: 'Tandem was started again while you were in the middle of your turn, and the turn was cut off. Whatever you had already proposed or changed still stands: look at what is there (proposals.list, and your working copy if you were coding), then carry on from where you were and finish. Do not start over, and do not propose again what is already waiting.',
     }), 1200);
     resume.unref?.();
+  }
+
+  /** The person asked for tandem to be set up for the project (project.init), and no turn has finished that yet. */
+  function setupAsked() {
+    let asked = false;
+    for (const e of host.events.since(0)) {
+      if (e.type === 'message' && e.kind === 'init') asked = true;
+      else if (e.type === 'setup.done') asked = false;
+    }
+    return asked;
   }
 
   /** Start logging claude in: it says the page to sign in on, and then waits for the code that page gives. */

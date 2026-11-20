@@ -71,7 +71,8 @@ if (prompt.startsWith('needs a login') && !existsSync('.fake-claude-login')) {
   say({ type: 'result', is_error: true, result: 'Failed to authenticate: OAuth session expired and could not be refreshed', session_id: 'sess-1' });
   process.exit(1);
 }
-if (prompt.startsWith('fail')) {
+// (Also when the engine says it.)
+if (prompt.replace(/^\[From the engine, not the person:\] /, '').startsWith('fail')) {
   say({ type: 'result', is_error: true, result: 'out of patience', session_id: 'sess-1' });
   process.exit(1);
 }

@@ -574,17 +574,26 @@ export function chatPanel(): Panel {
       h('div.field', {}, h('span.k', {}, 'whole game'), h('span.now', {}, mins(ev.length as number | undefined))));
   }
 
-  /** In a project tandem has not been in before: the offer to read it, or where to begin. */
-  let asked = false;
+  /**
+   * In a project tandem has not been in before: the offer to read it, or where to begin. The offer stands until
+   * the agent has done it (setup.done): while it is at it, it is gone, and when that went wrong it is back.
+   */
+  let asked = false, setUp = false;
   const welcomes: HTMLElement[] = [];
   function welcomeCard(ev: Event): HTMLElement {
     const el = h('div.msg.agent.welcome', {},
       ev.existing
         ? prose(`**${ev.name}** is new to tandem. Shall I read the project and write down what it is made of (its concepts) and how it is run? I propose; you accept what is right. Or just start talking.`)
-        : prose(`**${ev.name}** is a fresh project. Tell me what you want to make, and we start by writing the idea down as a concept.`),
-      !!ev.existing && !asked && h('div.t-row', {}, h<'button'>('button.primary', { onclick: () => void app.act('project.init') }, 'Yes, read the project')));
-    welcomes.push(el);
+        : prose(`**${ev.name}** is a fresh project. Tell me what you want to make, and we start by writing the idea down as a concept.`));
+    if (ev.existing) welcomes.push(el);
+    offerSetup();
     return el;
+  }
+  function offerSetup() {
+    for (const el of welcomes) {
+      el.querySelector('.t-row')?.remove();
+      if (!asked && !setUp) el.append(h('div.t-row', {}, h<'button'>('button.primary', { onclick: () => void app.act('project.init') }, 'Yes, read the project')));
+    }
   }
 
   /**
@@ -628,13 +637,18 @@ export function chatPanel(): Panel {
         return welcomeCard(ev);
       case 'login':
         return loginCard();
+      case 'setup.done':
+        setUp = true; offerSetup();
+        return null;
       case 'login.done':
         for (const el of logins.splice(0)) el.replaceWith(h('div.sys.engine', {}, icon('engine'), ' Claude was not logged in.'));
         return h('div.sys.engine', {}, icon('engine'), ' Claude is logged in again; the agent carries on.');
       case 'message':
         // What the engine tells the agent (art was accepted: bring it into the game) is shown, small: it is why the agent starts working.
         // Once the agent has been asked to read the project, the offer to do so is no longer one.
-        if (ev.by === 'engine' && ev.kind === 'init') { asked = true; for (const w of welcomes) w.querySelector('.t-row')?.remove(); }
+        if (ev.by === 'engine' && ev.kind === 'init') { asked = true; offerSetup(); }
+        // The agent could not do it after all (it failed, was stopped, tandem fell over): it is offered again.
+        if (ev.by === 'agent' && ev.error && asked && !setUp) { asked = false; offerSetup(); }
         if (ev.by === 'engine' && ev.kind === 'resume') return h('div.sys.engine', {}, icon('engine'), ' Tandem was started again while the agent was at work: it carries on where it was.');
         // (That a worker's round ended is said by the line of the round itself, right above.)
         if (ev.by === 'engine' && ev.kind === 'art') return null;
@@ -908,7 +922,7 @@ export function chatPanel(): Panel {
     refs() { if (body) paintRefs(); },
     event(ev) {
       if (ev.type === 'chat.new') {
-        asked = false; welcomes.length = 0; acts = undefined; calls.clear();
+        asked = false; setUp = false; welcomes.length = 0; acts = undefined; calls.clear();
         // A new conversation: everything said goes, what is still to be decided stays.
         sets.splice(0, sets.length, ...sets.filter((r) => r.status === 'pending'));
         list.replaceChildren(...sets.map((r) => r.el!).filter(Boolean));

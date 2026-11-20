@@ -82,7 +82,10 @@ export function depCommands(): CommandDef[] {
         const was = await versionOf(dep);
         const how = was ? dep.update : dep.install;
         if (!how) throw new CommandError('unsupported', `${dep.name} is ${was ? 'updated' : 'installed'} with the system's package manager here, not by tandem`);
-        const got = await run(how[0], how[1], 15 * 60_000);
+        let got = await run(how[0], how[1], 15 * 60_000);
+        // Installed without winget (Node.js from its own installer): winget does not know it as its package, and
+        // installing that package over it is what updates it.
+        if (!got.ok && was && dep.install && /No installed package found/i.test(got.out)) got = await run(dep.install[0], dep.install[1], 15 * 60_000);
         // (winget says so, and stops with an error, when there is nothing newer.)
         const newest = /No (available|applicable) (upgrade|update)|is up to date|already (installed|up to date|on the latest)/i.test(got.out);
         if (!got.ok && !newest) throw new CommandError('failed', `${dep.name} could not be ${was ? 'updated' : 'installed'}: ${got.out.split('\n').filter(Boolean).slice(-3).join(' ')}`);

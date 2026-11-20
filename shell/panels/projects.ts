@@ -3,6 +3,7 @@
 // on it, and the page with it.
 import { coreUp } from '../api.ts';
 import type { App, Panel } from '../app.ts';
+import { desktop } from '../desktop.ts';
 import { clear, h } from '../dom.ts';
 import { icon } from '../icons.ts';
 
@@ -52,6 +53,7 @@ export function projectsPanel(): Panel {
    * folder the projects are in, or, standing in a repository, to open that one.
    */
   async function browse(why: 'new' | 'find', dir?: string) {
+    if (desktop) return pick(why);
     const got = await app.act<Folder>('projects.browse', dir ? { dir } : {});
     if (!body || !got) return;
     const into = (d: string) => () => void browse(why, d);
@@ -68,6 +70,20 @@ export function projectsPanel(): Panel {
       got.folders.map((n) => h('div.item.folder', { onclick: into(`${got.dir === '/' ? '' : got.dir}/${n}`) }, h('b', {}, icon('folder'), ` ${n}`))),
       !got.folders.length && h('p.t-hint', {}, 'No folders in here.'));
     body.scrollTop = 0;
+  }
+
+  /**
+   * The same with the system's own folder picker, in tandem's window. A repository that is found is opened; another
+   * folder is one the projects are in.
+   */
+  async function pick(why: 'new' | 'find') {
+    const dir = await desktop!.pickFolder(why === 'new' ? 'Where does it go?' : 'A project, or the folder your projects are in');
+    if (!dir) return;
+    if (why === 'new') { draft.in = dir; return void paint(); }
+    const got = await app.act<Folder>('projects.browse', { dir });
+    if (!got) return;
+    if (got.git) return void openDir(got.dir, got.dir.split(/[\\/]/).pop() || got.dir);
+    if (await app.act('projects.look', { dir: got.dir })) void paint();
   }
 
   async function paint() {

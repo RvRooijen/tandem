@@ -2,7 +2,7 @@
 // terminal (core/start.ts, with the Node that is installed); this only waits
 // for its page and shows it. When tandem is already running, the window shows
 // that one. Closing the window stops what it started.
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -44,7 +44,14 @@ else {
   app.on('before-quit', stop);
 
   app.whenReady().then(async () => {
-    win = new BrowserWindow({ width: 1400, height: 900, title: 'tandem', backgroundColor: '#111', autoHideMenuBar: true });
+    win = new BrowserWindow({
+      width: 1400, height: 900, title: 'tandem', backgroundColor: '#111', autoHideMenuBar: true,
+      webPreferences: { preload: join(dirname(fileURLToPath(import.meta.url)), 'preload.cjs') },
+    });
+    ipcMain.handle('pick-folder', async (_ev, title) => {
+      const got = await dialog.showOpenDialog(win, { title: String(title ?? ''), properties: ['openDirectory', 'createDirectory'] });
+      return got.canceled ? null : got.filePaths[0] ?? null;
+    });
     win.loadURL(`data:text/html,<body style="background:%23111;color:%23aaa;font:14px sans-serif;display:grid;place-items:center;height:100vh;margin:0">tandem starts…</body>`);
     if (!(await answers())) start();
     while (!(await answers())) await new Promise((r) => setTimeout(r, 300));

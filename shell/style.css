@@ -194,7 +194,7 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 #tandem button.working::after { content: ''; position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -9px 0 0 -9px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: var(--t-ink); animation: t-spin 0.7s linear infinite; }
 #tandem button.primary.working::after { border-color: rgba(0, 0, 0, 0.25); border-top-color: #1b1a22; }
 #tandem .t-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
-#tandem .t-row > button, #tandem .adder > button, #tandem .composer > button, .agent-status button {
+#tandem .t-row > button, #tandem .adder > button, #tandem .composer > button, #tandem .dep > button, .agent-status button {
   min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--t-line); background: var(--t-raise); font-weight: 600;
 }
 #tandem button.primary { background: var(--t-accent); border-color: var(--t-accent); color: var(--t-accent-ink); }
@@ -391,6 +391,7 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 .card.ask { border-color: var(--t-line-2); }
 .dep { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
 .dep > span { flex: 1; }
+#tandem .dep > button { min-height: 34px; min-width: 6.5em; }
 .card.login { border-color: var(--t-accent); }
 .card.login p { margin: 0 0 8px; font-size: var(--t-m); line-height: 1.4; }
 #tandem .card.login input { width: 100%; margin: 8px 0 6px; }

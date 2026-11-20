@@ -181,3 +181,28 @@ test('a turn that was cut off because tandem was started again is taken up again
     other.cleanup();
   }
 });
+
+test('claude that is not logged in: the message waits, the person logs in from a card, and then it is answered', async () => {
+  const before = host.events.last();
+  await post('chat.send', { text: 'needs a login, and then the tulips' });
+  await until(() => host.events.since(before).some((e) => e.type === 'login'));
+  await until(() => !s.runner!.status().busy);
+  assert.ok(!host.events.since(before).some((e) => e.type === 'message' && e.by === 'agent'), 'it says nothing yet: nothing failed but the login');
+
+  const refused = await post('agent.login', {}, { 'x-tandem-by': 'agent:main' });
+  assert.equal(refused.ok, false, 'logging in is the person\'s');
+  const started = await post('agent.login');
+  assert.equal(started.result.url, 'https://claude.example/oauth/authorize?state=x');
+  const wrong = await post('agent.login', { code: 'nope' });
+  assert.deepEqual([wrong.ok, wrong.code], [false, 'input']);
+  assert.match(String(wrong.error), /wasn't accepted.*Start logging in again/);
+  await post('agent.login');
+  const done = await post('agent.login', { code: 'good-code' });
+  assert.deepEqual(done.result, { loggedIn: true });
+
+  await until(() => host.events.since(before).some((e) => e.type === 'message' && e.by === 'agent'));
+  await until(() => !s.runner!.status().busy);
+  const evs = host.events.since(before);
+  assert.ok(evs.some((e) => e.type === 'login.done'));
+  assert.match(String(evs.find((e) => e.type === 'message' && e.by === 'agent')!.text), /I proposed it \(ok\)/, 'and what waited is answered');
+});

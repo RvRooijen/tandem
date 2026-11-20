@@ -1973,3 +1973,26 @@ test('parity: everything the shell does is a command the agent could name', asyn
   known.add('world.push');
   for (const name of used) assert.ok(known.has(name), `${name}, which the shell uses, is a command`);
 });
+
+test('chat: claude that is not logged in is logged in from a card, with the code its login page gives', async () => {
+  app.open('chat');
+  const before = host.events.last();
+  await host.run('chat.send', { text: 'needs a login, and then the tulips' }, 'me');
+  await until(() => $('.card.login'), 'the card');
+  const card = $('.card.login');
+  assert.match(card.textContent!, /Claude is not logged in.*the agent waits/);
+  click(button('Open the login page', card));
+  await until(() => !($('a', card) as HTMLAnchorElement).hidden, 'the link to the page');
+  assert.equal(($('a', card) as HTMLAnchorElement).href, 'https://claude.example/oauth/authorize?state=x');
+  type($('input', card), 'nope');
+  click(button('Log in', card));
+  await until(() => /wasn't accepted/.test($('#t-toast').textContent!), 'it to say so');
+  click(button('Start again', card));
+  await until(() => !(button('Log in', card) as HTMLButtonElement).disabled, 'a new login');
+  type($('input', card), 'good-code');
+  click(button('Log in', card));
+  await until(() => !card.isConnected && /logged in again/.test($('#t-sheet').textContent!), 'the card to make way');
+  await until(() => host.events.since(before).some((e) => e.type === 'message' && e.by === 'agent'), 'the agent to answer what waited');
+  await until(() => !app.agent.busy, 'the agent to be done');
+  if ((await host.run('proposals.list', { status: 'pending' }, 'me') as unknown[]).length) await host.run('proposals.decide', { accept: false }, 'me');
+});

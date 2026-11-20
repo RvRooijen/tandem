@@ -389,6 +389,10 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 .questions .qanswer { font-size: var(--t-m); color: var(--t-soft); margin: 0; padding-left: 10px; border-left: 2px solid var(--t-line); overflow-wrap: anywhere; white-space: pre-wrap; }
 .questions .t-row { margin: 2px 0 6px; }
 .card.ask { border-color: var(--t-line-2); }
+.card.login { border-color: var(--t-accent); }
+.card.login p { margin: 0 0 8px; font-size: var(--t-m); line-height: 1.4; }
+#tandem .card.login input { width: 100%; margin: 8px 0 6px; }
+.card.login a { display: block; margin-top: 6px; }
 details.cwas, details.cmore { margin: 8px 0 0; }
 details.cwas summary, details.cmore summary { color: var(--t-soft); font-size: var(--t-s); cursor: pointer; padding: 3px 0; list-style: none; display: inline-flex; align-items: center; gap: 6px; }
 details.cwas summary::-webkit-details-marker, details.cmore summary::-webkit-details-marker { display: none; }

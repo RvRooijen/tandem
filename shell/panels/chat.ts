@@ -587,10 +587,50 @@ export function chatPanel(): Panel {
     return el;
   }
 
+  /**
+   * Claude is not logged in, so the agent cannot answer: it waits until the person has logged it in from here. Its
+   * login page gives a code, which goes back to claude through the card.
+   */
+  const logins: HTMLElement[] = [];
+  function loginCard(): HTMLElement {
+    const code = h<'input'>('input', { placeholder: 'The code from the login page', 'aria-label': 'The code from the login page' });
+    const page = h<'a'>('a.t-hint', { target: '_blank', rel: 'noopener', hidden: true }, 'If no page opened, open it here.');
+    const send = h<'button'>('button.primary', {
+      disabled: true,
+      onclick: async () => {
+        if (!code.value.trim()) return app.toast('Paste the code first.');
+        send.disabled = true;
+        // (A code that is not accepted ends that login: a new one is started for a new code.)
+        if (!(await app.act('agent.login', { code: code.value.trim() }))) start.textContent = 'Start again';
+      },
+    }, 'Log in');
+    const start = h<'button'>('button', {
+      onclick: async () => {
+        const got = await app.act<{ url: string }>('agent.login');
+        if (!got) return;
+        page.href = got.url; page.hidden = false;
+        code.value = ''; send.disabled = false; start.textContent = 'Start again';
+        code.focus();
+      },
+    }, 'Open the login page');
+    code.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !send.disabled) send.click(); });
+    const el = h('div.card.login', {},
+      h('div.t-head', {}, h('b', {}, 'Claude is not logged in'), h('span.state', {}, 'the agent waits')),
+      h('p', {}, 'Open the login page and sign in there: it gives you a code. Paste that here, and the agent answers what was waiting.'),
+      h('div.t-row', {}, start), page, code, h('div.t-row', {}, send));
+    logins.push(el);
+    return el;
+  }
+
   function card(ev: Event): HTMLElement | null {
     switch (ev.type) {
       case 'welcome':
         return welcomeCard(ev);
+      case 'login':
+        return loginCard();
+      case 'login.done':
+        for (const el of logins.splice(0)) el.replaceWith(h('div.sys.engine', {}, icon('engine'), ' Claude was not logged in.'));
+        return h('div.sys.engine', {}, icon('engine'), ' Claude is logged in again; the agent carries on.');
       case 'message':
         // What the engine tells the agent (art was accepted: bring it into the game) is shown, small: it is why the agent starts working.
         // Once the agent has been asked to read the project, the offer to do so is no longer one.

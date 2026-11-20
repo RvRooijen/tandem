@@ -2,7 +2,7 @@
 // terminal (core/start.ts, with the Node that is installed); this only waits
 // for its page and shows it. When tandem is already running, the window shows
 // that one. Closing the window stops what it started.
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -48,6 +48,12 @@ else {
       width: 1400, height: 900, title: 'tandem', backgroundColor: '#111', autoHideMenuBar: true,
       icon: join(dirname(fileURLToPath(import.meta.url)), WINDOWS ? 'icon.ico' : 'icon.png'),
       webPreferences: { preload: join(dirname(fileURLToPath(import.meta.url)), 'preload.cjs') },
+    });
+    // A link out of tandem (the login page, a link in the chat) opens in the browser, not in a window of tandem's.
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:\/\/(127\.0\.0\.1|localhost)[:/]/.test(url)) return { action: 'allow' };
+      void shell.openExternal(url);
+      return { action: 'deny' };
     });
     ipcMain.handle('pick-folder', async (_ev, title) => {
       const got = await dialog.showOpenDialog(win, { title: String(title ?? ''), properties: ['openDirectory', 'createDirectory'] });

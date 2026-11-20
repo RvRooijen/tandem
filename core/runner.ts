@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { SCRATCH } from './code.ts';
 import { within } from './paths.ts';
-import type { CommandDef } from './commands.ts';
+import { CommandError, type CommandDef } from './commands.ts';
 import type { Event } from './events.ts';
 import { ROOT, type Host } from './host.ts';
 import { entityView } from '../ecs/inspect.ts';
@@ -31,6 +31,9 @@ export function runnable(project: Host['project']): string[] {
   const own = existsSync(join(project.root, 'package.json')) ? ['npm test', 'npm run test', 'node --test'] : [];
   return [...new Set([...told, ...own])];
 }
+
+/** What claude says when it is not logged in (or no longer: a session that expired). */
+const LOGGED_OUT = /Failed to authenticate|OAuth|not logged in|Please run \/login|Invalid API key|authentication_error/i;
 
 /** What the agent is told besides the message, written out for each turn (see run). */
 const INTRO = join(tmpdir(), `tandem-agent-${process.pid}.md`);
@@ -156,6 +159,10 @@ export function createRunner(host: Host) {
   const queue: Event[] = [];
   let child: ChildProcess | undefined;
   let busy = false, doing = '', text = '', stopped = false, forgotten = false;
+  /** The message it could not answer because claude is not logged in: it waits for the person to log in (agent.login). */
+  let waiting: Event | undefined;
+  /** `claude auth login`, while the person is logging in: the page to do that on, and what it said. */
+  let login: { proc: ChildProcess; url: string; out: string } | undefined;
   let lastCast = 0;
 
   const status = (): AgentStatus => ({ busy, doing, text: text.slice(-600), waiting: queue.length, session: !!session, off, context: session ? context : 0, limit: CONTEXT_LIMIT });
@@ -404,7 +411,11 @@ export function createRunner(host: Host) {
         forgotten = stopped = false;
         forget();
       } else if (stopped) { stopped = false; say('(stopped)', { error: true }); }
-      else if ((failed || code !== 0) && session && !retry && !said) {
+      else if ((failed || code !== 0) && LOGGED_OUT.test(`${failed}\n${err}`)) {
+        // Not a conversation that is gone: claude is not logged in. The message waits, and the person is asked to.
+        waiting = ev;
+        host.events.add({ type: 'login', by: 'engine', text: failed || err.trim().split('\n').pop() || '' });
+      } else if ((failed || code !== 0) && session && !retry && !said) {
         // Most often the conversation to resume is gone; start a new one, once.
         forget();
         return run(ev, true);
@@ -430,7 +441,7 @@ export function createRunner(host: Host) {
   }
 
   function next() {
-    if (busy || off) return;
+    if (busy || off || waiting) return;
     const ev = queue.shift();
     if (ev) run(ev);
   }
@@ -467,7 +478,54 @@ export function createRunner(host: Host) {
     resume.unref?.();
   }
 
+  /** Start logging claude in: it says the page to sign in on, and then waits for the code that page gives. */
+  function startLogin(): Promise<string> {
+    login?.proc.kill();
+    const proc = spawn(process.env.CLAUDE_BIN ?? 'claude', ['auth', 'login'], { cwd: host.project.root, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    const now = { proc, url: '', out: '' };
+    login = now;
+    proc.stdin!.on('error', () => { /* it ended; its exit says how */ });
+    return new Promise((ok, fail) => {
+      const timer = setTimeout(() => fail(new CommandError('failed', `claude did not say where to log in: ${now.out.trim().split('\n').pop() ?? ''}`)), 20_000);
+      const take = (d: Buffer) => {
+        now.out = (now.out + d).slice(-4000);
+        const url = !now.url && now.out.match(/https:\/\/\S+/)?.[0];
+        if (url) { now.url = url; clearTimeout(timer); ok(url); }
+      };
+      proc.stdout!.on('data', take);
+      proc.stderr!.on('data', take);
+      proc.on('error', (e) => { clearTimeout(timer); fail(new CommandError('failed', `claude could not be started: ${e.message}`)); });
+      proc.on('close', () => { clearTimeout(timer); if (login === now && !now.url) { login = undefined; fail(new CommandError('failed', `claude stopped before it said where to log in: ${now.out.trim().split('\n').pop() ?? ''}`)); } });
+    });
+  }
+
+  /** Finish logging in with the code the page gave; then the message that waited is answered after all. */
+  function finishLogin(code: string): Promise<{ loggedIn: true }> {
+    const now = login;
+    if (!now) throw new CommandError('input', 'start logging in first: agent.login without a code');
+    return new Promise((ok, fail) => {
+      now.proc.on('close', (exit) => {
+        if (login === now) login = undefined;
+        if (exit !== 0) {
+          const said = now.out.split('\n').map((l) => l.replace(/^.*Paste code here if prompted >\s*/, '').trim()).filter(Boolean).pop();
+          return fail(new CommandError('input', `${said || 'the code was not accepted'} Start logging in again for a new code.`));
+        }
+        host.events.add({ type: 'login.done', by: 'me' });
+        if (waiting) { queue.unshift(waiting); waiting = undefined; }
+        next();
+        ok({ loggedIn: true });
+      });
+      now.proc.stdin!.end(`${code}\n`);
+    });
+  }
+
   const commands: CommandDef[] = [
+    {
+      name: 'agent.login', kind: 'write',
+      about: 'Log claude in, when the agent cannot work because it is not. Without a code it starts signing in and answers with the page to do that on (claude opens it in the browser too); with the code that page gives, it finishes, and the agent answers the message that waited.',
+      input: { code: 'string?' },
+      run: async (_c, i) => (i.code?.trim() ? finishLogin(i.code.trim()) : { url: await startLogin() }),
+    },
     {
       name: 'agent.status', kind: 'read',
       about: 'What the agent is doing right now: busy or not, with what, and how many messages are waiting.',
@@ -489,5 +547,5 @@ export function createRunner(host: Host) {
     },
   ];
 
-  return { commands, status, stop() { unsubscribe(); clearInterval(beat); child?.kill(); } };
+  return { commands, status, stop() { unsubscribe(); clearInterval(beat); child?.kill(); login?.proc.kill(); } };
 }

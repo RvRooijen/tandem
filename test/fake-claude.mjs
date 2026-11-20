@@ -2,9 +2,22 @@
 // Stands in for the claude command line in tests: speaks its stream-json, and
 // uses the tandem command line the way the agent does.
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync as write } from 'node:fs';
 
 const args = process.argv.slice(2);
+
+// Logging in: it says where, and takes the code that page gives. Logged in, it leaves a file where it was run.
+if (args[0] === 'auth' && args[1] === 'login') {
+  process.stdout.write('Opening browser to sign in…\nIf the browser didn\'t open, visit: https://claude.example/oauth/authorize?state=x\nPaste code here if prompted > ');
+  if (readFileSync(0, 'utf8').trim() !== 'good-code') {
+    process.stdout.write('Couldn\'t log in: That code wasn\'t accepted.\n');
+    process.exit(1);
+  }
+  write('.fake-claude-login', '');
+  process.stdout.write('Login successful.\n');
+  process.exit(0);
+}
+
 const prompt = readFileSync(0, 'utf8');
 const resumed = args.includes('--resume');
 const say = (o) => process.stdout.write(JSON.stringify(o) + '\n');
@@ -54,6 +67,10 @@ if (process.env.PIXEL_WORKER) {
   process.exit(0);
 }
 
+if (prompt.startsWith('needs a login') && !existsSync('.fake-claude-login')) {
+  say({ type: 'result', is_error: true, result: 'Failed to authenticate: OAuth session expired and could not be refreshed', session_id: 'sess-1' });
+  process.exit(1);
+}
 if (prompt.startsWith('fail')) {
   say({ type: 'result', is_error: true, result: 'out of patience', session_id: 'sess-1' });
   process.exit(1);

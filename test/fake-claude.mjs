@@ -9,6 +9,13 @@ const args = process.argv.slice(2);
 // Logging in: it says where, and takes the code that page gives. Logged in, it leaves a file where it was run.
 if (args[0] === 'auth' && args[1] === 'login') {
   process.stdout.write('Opening browser to sign in…\nIf the browser didn\'t open, visit: https://claude.example/oauth/authorize?state=x\nPaste code here if prompted > ');
+  // (Where it could open the browser itself, the page hands it back without a code.)
+  if (existsSync('.fake-claude-browser')) {
+    await new Promise((r) => setTimeout(r, 300));
+    write('.fake-claude-login', '');
+    process.stdout.write('Login successful.\n');
+    process.exit(0);
+  }
   if (readFileSync(0, 'utf8').trim() !== 'good-code') {
     process.stdout.write('Couldn\'t log in: That code wasn\'t accepted.\n');
     process.exit(1);

@@ -491,7 +491,17 @@ export function createRunner(host: Host) {
     return asked;
   }
 
-  /** Start logging claude in: it says the page to sign in on, and then waits for the code that page gives. */
+  /** Claude is logged in: the card makes way, and the message that waited is answered after all. */
+  function loggedIn() {
+    host.events.add({ type: 'login.done', by: 'me' });
+    if (waiting) { queue.unshift(waiting); waiting = undefined; }
+    next();
+  }
+
+  /**
+   * Start logging claude in: it says the page to sign in on, and then waits for the code that page gives. When it
+   * could open that page in a browser on this machine itself, the page hands it back without a code, and it is done.
+   */
   function startLogin(): Promise<string> {
     login?.proc.kill();
     const proc = spawn(process.env.CLAUDE_BIN ?? 'claude', ['auth', 'login'], { cwd: host.project.root, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
@@ -508,25 +518,24 @@ export function createRunner(host: Host) {
       proc.stdout!.on('data', take);
       proc.stderr!.on('data', take);
       proc.on('error', (e) => { clearTimeout(timer); fail(new CommandError('failed', `claude could not be started: ${e.message}`)); });
-      proc.on('close', () => { clearTimeout(timer); if (login === now && !now.url) { login = undefined; fail(new CommandError('failed', `claude stopped before it said where to log in: ${now.out.trim().split('\n').pop() ?? ''}`)); } });
+      proc.on('close', (exit) => {
+        clearTimeout(timer);
+        if (login === now) login = undefined;
+        if (exit === 0) return loggedIn();
+        if (!now.url) fail(new CommandError('failed', `claude stopped before it said where to log in: ${now.out.trim().split('\n').pop() ?? ''}`));
+      });
     });
   }
 
-  /** Finish logging in with the code the page gave; then the message that waited is answered after all. */
+  /** Finish logging in with the code the page gave (startLogin says the rest when it is done). */
   function finishLogin(code: string): Promise<{ loggedIn: true }> {
     const now = login;
     if (!now) throw new CommandError('input', 'start logging in first: agent.login without a code');
     return new Promise((ok, fail) => {
       now.proc.on('close', (exit) => {
-        if (login === now) login = undefined;
-        if (exit !== 0) {
-          const said = now.out.split('\n').map((l) => l.replace(/^.*Paste code here if prompted >\s*/, '').trim()).filter(Boolean).pop();
-          return fail(new CommandError('input', `${said || 'the code was not accepted'} Start logging in again for a new code.`));
-        }
-        host.events.add({ type: 'login.done', by: 'me' });
-        if (waiting) { queue.unshift(waiting); waiting = undefined; }
-        next();
-        ok({ loggedIn: true });
+        if (exit === 0) return ok({ loggedIn: true });
+        const said = now.out.split('\n').map((l) => l.replace(/^.*Paste code here if prompted >\s*/, '').trim()).filter(Boolean).pop();
+        fail(new CommandError('input', `${said || 'the code was not accepted'} Start logging in again for a new code.`));
       });
       now.proc.stdin!.end(`${code}\n`);
     });

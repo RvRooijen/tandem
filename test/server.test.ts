@@ -2,7 +2,7 @@
 // agent answering a message through nothing but the command line.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startServer } from '../core/server.ts';
@@ -205,4 +205,18 @@ test('claude that is not logged in: the message waits, the person logs in from a
   const evs = host.events.since(before);
   assert.ok(evs.some((e) => e.type === 'login.done'));
   assert.match(String(evs.find((e) => e.type === 'message' && e.by === 'agent')!.text), /I proposed it \(ok\)/, 'and what waited is answered');
+});
+
+test('claude that opened the login page in a browser itself is logged in without a code', async () => {
+  rmSync(join(dir, '.fake-claude-login'), { force: true });
+  writeFileSync(join(dir, '.fake-claude-browser'), '');
+  const before = host.events.last();
+  await post('chat.send', { text: 'needs a login, once more' });
+  await until(() => host.events.since(before).some((e) => e.type === 'login'));
+  await until(() => !s.runner!.status().busy);
+  assert.equal((await post('agent.login')).result.url, 'https://claude.example/oauth/authorize?state=x');
+  await until(() => host.events.since(before).some((e) => e.type === 'login.done'));
+  await until(() => host.events.since(before).some((e) => e.type === 'message' && e.by === 'agent'));
+  await until(() => !s.runner!.status().busy);
+  rmSync(join(dir, '.fake-claude-browser'));
 });

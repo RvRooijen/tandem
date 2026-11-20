@@ -625,7 +625,7 @@ export function chatPanel(): Panel {
     code.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !send.disabled) send.click(); });
     const el = h('div.card.login', {},
       h('div.t-head', {}, h('b', {}, 'Claude is not logged in'), h('span.state', {}, 'the agent waits')),
-      h('p', {}, 'Open the login page and sign in there: it gives you a code. Paste that here, and the agent answers what was waiting.'),
+      h('p', {}, 'Open the login page and sign in there. When it says you are all set, that is it; when it gives you a code, paste that here. Then the agent answers what was waiting.'),
       h('div.t-row', {}, start), page, code, h('div.t-row', {}, send));
     logins.push(el);
     return el;

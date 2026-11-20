@@ -28,12 +28,15 @@ git('commit', '-q', '-m', 'start');
 // What the engine itself writes in a project: tandem's own folder, and the drawings.
 const code = createCode({ root, paths: ['.tandem/concepts', 'art'] });
 
-test('the working copy is the project, somewhere else, with the project\'s dependencies', () => {
+test('the working copy is the project, somewhere else, with dependencies of its own', () => {
   assert.equal(code.usable(), true);
   assert.deepEqual(code.changes(), [], 'before there is one, nothing differs');
   assert.deepEqual(code.sync(), { conflicts: [] });
   assert.equal(read('games/g/src/rules.ts', code.work), 'export const speed = 1;\n');
-  assert.ok(existsSync(join(code.work, 'node_modules')), 'it runs with the project\'s node_modules');
+  assert.ok(!existsSync(join(code.work, 'node_modules')), 'not the project\'s: those may be built for another system');
+  // (What the agent installs there is for this system, and no part of a change.)
+  mkdirSync(join(code.work, 'node_modules'));
+  writeFileSync(join(code.work, 'node_modules', 'x.js'), '');
   assert.deepEqual(code.changes(), []);
 });
 

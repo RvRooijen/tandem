@@ -204,7 +204,9 @@ export function createRunner(host: Host) {
       project.config.art?.build && `The build of its drawings: \`${project.config.art.build}\`.`,
       ...(project.config.run ?? []).map((c) => `Also: \`${c}\`.`),
       ...runnable(project).filter((c) => ![project.config.test, project.config.check, project.config.art?.build, ...(project.config.run ?? [])].includes(c)).map((c) => `Its tests also as \`${c}\`.`),
-      host.code && installs(host) && 'What it depends on: `npm install`, just so (a new dependency is written in package.json first); your copy then has a node_modules of its own.',
+      host.code && installs(host) && (existsSync(join(host.code.work, 'node_modules'))
+        ? 'What it depends on: `npm install`, just so (a new dependency is written in package.json first).'
+        : 'Your copy has no node_modules yet: install what it depends on with `npm ci` (`npm install` when there is no package-lock.json) before you run anything of it. It is installed for this machine; the project\'s own may be built for another system.'),
     ].filter(Boolean).join(' ');
     const about = [
       `${project.name}, in ${project.root}.`,

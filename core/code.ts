@@ -12,7 +12,7 @@
 // it follows the project's files as they are, which the engine keeps as commits
 // of its own under refs/tandem/project, off every branch and never pushed.
 import { execFile, execFileSync } from 'node:child_process';
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, isAbsolute, join } from 'node:path';
 
 export interface FileChange { path: string; added: number; removed: number; status: 'new' | 'changed' | 'gone' }
@@ -62,7 +62,9 @@ export interface CodeOptions {
   /**
    * Where the working copy goes. By default a hidden folder right next to the project (.<project>-tandem-work):
    * outside it, so nothing of the project (a dev server, a test run) trips over a second copy of itself, and at
-   * the same depth, so whatever the project reaches for beside itself (../a-library) the copy finds too.
+   * the same depth, so whatever the project reaches for beside itself (../a-library) the copy finds too. One for
+   * each system tandem runs on (-win32 on Windows), on a branch of its own: what is installed in it is built for
+   * that system, and a project that is opened from Windows and from WSL would otherwise share one.
    */
   work?: string;
   /** What the engine itself writes in the project (concepts, locks, accepted drawings): committed by it, so the copy can take it in. Nothing else of the project is committed for the person. */
@@ -73,9 +75,11 @@ export interface CodeOptions {
 }
 
 export function createCode(o: CodeOptions) {
-  const work = o.work ?? join(o.root, '..', `.${basename(o.root)}-tandem-work`);
+  // (Linux keeps the name it always had.)
+  const system = process.platform === 'linux' ? '' : `-${process.platform}`;
+  const work = o.work ?? join(o.root, '..', `.${basename(o.root)}-tandem-work${system}`);
   // No slash in it: a project may well have a branch called tandem already.
-  const branch = o.branch ?? 'tandem-agent';
+  const branch = o.branch ?? `tandem-agent${system}`;
   const git = (cwd: string, ...args: string[]) =>
     execFileSync('git', ['-c', 'user.name=tandem', '-c', 'user.email=tandem@localhost', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   const tryGit = (cwd: string, ...args: string[]) => { try { return git(cwd, ...args); } catch (e) { return null; } };
@@ -109,7 +113,10 @@ export function createCode(o: CodeOptions) {
   /** Is there a repository to work with at all? */
   const usable = () => tryGit(o.root, 'rev-parse', '--is-inside-work-tree') === 'true';
 
-  /** What the copy runs with is the project's: it has the code, not a second set of dependencies. And that link is never part of a change. */
+  /**
+   * What the copy depends on is installed in it, for the system it runs on (the agent does that: npm ci); the
+   * project's own node_modules may be built for another. It is never part of a change.
+   */
   function deps() {
     const common = git(o.root, 'rev-parse', '--git-common-dir');
     const exclude = join(isAbsolute(common) ? common : join(o.root, common), 'info', 'exclude');
@@ -117,7 +124,6 @@ export function createCode(o: CodeOptions) {
     // (Nor is its scratchpad.)
     for (const line of ['/node_modules', `/${SCRATCH}`])
       if (!existsSync(exclude) || !readFileSync(exclude, 'utf8').split('\n').includes(line)) appendFileSync(exclude, `\n${line}\n`);
-    if (existsSync(join(o.root, 'node_modules')) && !existsSync(join(work, 'node_modules'))) symlinkSync(join(o.root, 'node_modules'), join(work, 'node_modules'));
   }
 
   /** What the person and the engine changed in the project's game is committed, so it is part of the project's history. */

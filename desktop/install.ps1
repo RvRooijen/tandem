@@ -67,6 +67,8 @@ function Install-Tandem {
     Push-Location $dir
     try { Run 'npm.cmd' @('install', '--no-audit', '--no-fund') } finally { Pop-Location }
   }
+  # Electron's package fetches Electron itself only when it is first asked for it; the shortcut asks for the file.
+  Run 'node' @((Join-Path $App 'desktop\node_modules\electron\install.js'))
   $shell = New-Object -ComObject WScript.Shell
   foreach ($place in @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop'))) {
     $link = $shell.CreateShortcut((Join-Path $place 'tandem.lnk'))

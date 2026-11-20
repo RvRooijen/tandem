@@ -9,7 +9,7 @@
 // address without the browser asking here first, and nothing here says yes.
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createReadStream, existsSync } from 'node:fs';
-import { join, normalize } from 'node:path';
+import { join, normalize, resolve } from 'node:path';
 import { CommandError } from './commands.ts';
 import { within } from './paths.ts';
 import { createHost, type Host } from './host.ts';
@@ -170,7 +170,7 @@ export async function startLobby(opts: { port?: number } = {}) {
   return { server, port, close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }) };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && resolve(process.argv[1]) === import.meta.filename) {
   // Started by start.ts, the core tells it what it is doing until it answers itself: the page shows that meanwhile.
   const tell = (m: { doing: string } | { up: true }) => { if (process.connected) process.send?.(m); };
   // The project is the one named when starting, or the one that was open last; without either, the page chooses.

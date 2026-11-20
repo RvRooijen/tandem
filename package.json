@@ -1,7 +1,7 @@
 {
   "name": "tandem",
   "private": true,
-  "version": "0.2.7",
+  "version": "0.2.8",
   "type": "module",
   "description": "A tool for one person and an AI to build a project together: started in a project's folder, it gives both the same commands.",
   "scripts": {

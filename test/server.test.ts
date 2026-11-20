@@ -220,3 +220,15 @@ test('claude that opened the login page in a browser itself is logged in without
   await until(() => !s.runner!.status().busy);
   rmSync(join(dir, '.fake-claude-browser'));
 });
+
+test('what tandem needs on this machine is listed with its version, and installed or updated from the settings', async () => {
+  const list = (await post('deps.list')).result as { id: string; version: string | null; update: boolean }[];
+  assert.deepEqual(list.map((d) => d.id), ['git', 'node', 'claude']);
+  assert.match(list.find((d) => d.id === 'git')!.version!, /^git version/);
+  assert.equal(list.find((d) => d.id === 'node')!.version, process.version);
+  assert.equal(list.find((d) => d.id === 'claude')!.version, '2.1.290 (Claude Code)');
+  assert.equal((await post('deps.install', { id: 'claude' }, { 'x-tandem-by': 'agent:main' })).ok, false, 'the person\'s to do');
+  const done = await post('deps.install', { id: 'claude' });
+  assert.equal(done.result.said, 'Claude Code is the newest already (2.1.290 (Claude Code)).');
+  assert.equal((await post('deps.install', { id: 'python' })).code, 'input');
+});

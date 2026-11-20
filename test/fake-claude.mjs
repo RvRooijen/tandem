@@ -6,6 +6,10 @@ import { existsSync, readFileSync, writeFileSync as write } from 'node:fs';
 
 const args = process.argv.slice(2);
 
+// Its version, and updating it: it is the newest there is.
+if (args[0] === '--version') { process.stdout.write('2.1.290 (Claude Code)\n'); process.exit(0); }
+if (args[0] === 'update') { process.stdout.write('Claude Code is up to date (2.1.290)\n'); process.exit(0); }
+
 // Logging in: it says where, and takes the code that page gives. Logged in, it leaves a file where it was run.
 if (args[0] === 'auth' && args[1] === 'login') {
   process.stdout.write('Opening browser to sign in…\nIf the browser didn\'t open, visit: https://claude.example/oauth/authorize?state=x\nPaste code here if prompted > ');

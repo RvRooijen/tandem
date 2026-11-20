@@ -13,6 +13,7 @@ import { join, normalize, resolve } from 'node:path';
 import { CommandError } from './commands.ts';
 import { within } from './paths.ts';
 import { createHost, type Host } from './host.ts';
+import { depCommands } from './deps.ts';
 import { modelCommands } from './models.ts';
 import { SWITCH, projectCommands, readState, welcome } from './projects.ts';
 import { createRegistry } from './commands.ts';
@@ -49,7 +50,7 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
   host.onStop.push(() => runner?.stop(), () => host.art.workers.stopAll());
   host.busy.why = () => (runner?.status().busy ? 'the agent is in the middle of something here; stop it or let it finish first' : host.art.workers.list().some((w) => w.state === 'running') ? 'a worker is drawing here; stop it or let it finish first' : undefined);
   // Another project is opened from the page: the core ends, and whoever looks after it starts it on that one.
-  host.registry.add(...modelCommands(), ...projectCommands({
+  host.registry.add(...modelCommands(), ...depCommands(), ...projectCommands({
     current: host.project.root,
     busy: () => host.busy.why?.(),
     restart: process.env.TANDEM_SUPERVISED ? () => { for (const stop of host.onStop) stop(); process.exit(SWITCH); } : undefined,
@@ -139,7 +140,7 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
  */
 export async function startLobby(opts: { port?: number } = {}) {
   const registry = createRegistry();
-  registry.add(...modelCommands(), ...projectCommands({ restart: process.env.TANDEM_SUPERVISED ? () => process.exit(SWITCH) : undefined }));
+  registry.add(...modelCommands(), ...depCommands(), ...projectCommands({ restart: process.env.TANDEM_SUPERVISED ? () => process.exit(SWITCH) : undefined }));
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://x');
     try {

@@ -10,6 +10,7 @@ import { babble } from '../voice.ts';
 type Who = 'agent' | 'workers';
 interface Choice { model: string; effort: string }
 interface Models { agent: Choice; workers: Choice; models: { id: string; name: string }[]; efforts: string[] }
+interface Dep { id: string; name: string; version: string | null; install: boolean; update: boolean }
 
 export function settingsPanel(): Panel {
   let app!: App;
@@ -21,6 +22,29 @@ export function settingsPanel(): Panel {
     const effort = h<'select'>('select', { 'aria-label': `${label} effort`, onchange: () => set({ effort: effort.value }) },
       got.efforts.map((e) => h<'option'>('option', { value: e, selected: e === got[who].effort }, e)));
     return h('div.model', {}, h('span', {}, label), model, effort);
+  }
+
+  /** What tandem needs on this machine: the version of each, and a button that installs or updates it. */
+  async function paintDeps(el: HTMLElement) {
+    const got = await app.act<Dep[]>('deps.list');
+    if (!got || !el.isConnected) return;
+    clear(el, [
+      h('h4.models-head', {}, 'What tandem needs'),
+      got.map((d) => {
+        const btn = h<'button'>('button', {
+          onclick: async () => {
+            btn.disabled = true;
+            btn.textContent = d.version ? 'Updating…' : 'Installing…';
+            const done = await app.act<{ said: string }>('deps.install', { id: d.id });
+            if (done) app.toast(done.said);
+            void paintDeps(el);
+          },
+        }, d.version ? 'Update' : 'Install');
+        const can = d.version ? d.update : d.install;
+        return h('div.dep', {}, h('span', {}, d.name), h('small.k', {}, d.version ?? 'not installed'), can ? btn : h('small.k', {}, 'with the system\'s package manager'));
+      }),
+      h('p.hint', {}, 'Installing or updating takes a while. Node.js that was updated is used once tandem is started again.'),
+    ]);
   }
 
   return {
@@ -39,6 +63,7 @@ export function settingsPanel(): Panel {
       });
       const unsubscribe = capture.onChange(() => { if (!shareBox.isConnected) return unsubscribe(); shareBox.checked = capture.sharing(); });
       const models = h('div.models', {});
+      const deps = h('div.deps', {});
       clear(body, [
         h('div.doc-head', {}, h('h3', {}, 'Settings')),
         h('label.keep', {}, box, h('span', {}, 'Sound')),
@@ -50,7 +75,9 @@ export function settingsPanel(): Panel {
             h('p.hint', {}, 'Shares this tab, so what the agent sees of the page and what you point at is a picture of the screen itself. It is asked for too when you let the agent use the page, and the first time you point at something. Off, the page is drawn again from its styles, which is not always what you see. Tandem\'s Chrome extension (the extension folder in tandem, loaded unpacked) does it without sharing.'),
           ],
         models,
+        deps,
       ]);
+      void paintDeps(deps);
       void app.act<Models>('models.get').then((got) => {
         if (!got) return;
         clear(models, [

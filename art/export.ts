@@ -15,13 +15,14 @@
 // A project names this as its build (tandem.json: art.build), so it is run
 // again when a drawing changes. It is pixeldraw's sprite and game export.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { encodePng } from '../core/png.ts';
 import { attachmentsOf } from './src/attach.js';
 import { buildGame } from './src/gamekit.js';
 import { parseArt } from './src/parse.js';
 import { spriteSheet, type SpriteSheet } from './sprites.ts';
+import { within } from '../core/paths.ts';
 
 const RUNTIME = fileURLToPath(new URL('./runtime/pixeldraw.js', import.meta.url));
 
@@ -47,9 +48,9 @@ interface Parsed { base?: string; slot?: string; error?: string; frames?: { pin?
 
 /** A folder or file of the project, by a path from its root: never outside it, never among what is not the project's to load. */
 function inside(root: string, path: string, what: string): string {
-  const at = relative(resolve(root), resolve(root, path));
-  if (!at || at.startsWith('..') || resolve(at) === at) throw new Error(`${what} goes in the project, not ${path}`);
-  if (['art', 'depth', '.tandem', '.git', 'node_modules'].includes(at.split(sep)[0])) throw new Error(`${at} is not a place for what the project loads: choose a folder of its own (public/sprites)`);
+  const at = within(resolve(root), resolve(root, path));
+  if (!at) throw new Error(`${what} goes in the project, not ${path}`);
+  if (['art', 'depth', '.tandem', '.git', 'node_modules'].includes(at.split('/')[0])) throw new Error(`${at} is not a place for what the project loads: choose a folder of its own (public/sprites)`);
   return at;
 }
 

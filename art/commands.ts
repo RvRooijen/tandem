@@ -7,7 +7,7 @@
 // proposed on, accepted, and locked; a locked one no worker and no agent gets.
 import { execFile } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CommandError, isAgent, type CommandDef } from '../core/commands.ts';
 import type { EventLog } from '../core/events.ts';
@@ -76,7 +76,7 @@ export function createArt(o: ArtOptions) {
     if (!command) return Promise.resolve('the project has no build for its drawings (tandem.json: art.build); nothing was built');
     return new Promise((ok, fail) => {
       // (`tandem export`, tandem's own build of drawings, is found like any command of the project's.)
-      const env = { ...process.env, PATH: `${fileURLToPath(new URL('../bin', import.meta.url))}:${process.env.PATH ?? ''}` };
+      const env = { ...process.env, PATH: `${fileURLToPath(new URL('../bin', import.meta.url))}${delimiter}${process.env.PATH ?? ''}` };
       execFile('sh', ['-c', command], { cwd: root, timeout: 120_000, env }, (err, stdout, stderr) => {
         if (err) fail(new CommandError('failed', `the drawings could not be built into the project: ${(stderr || err.message).trim().split('\n').slice(-2).join(' ')}`));
         else ok(stdout.trim().split('\n').pop() ?? '');

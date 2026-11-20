@@ -11,6 +11,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { createReadStream, existsSync } from 'node:fs';
 import { join, normalize } from 'node:path';
 import { CommandError } from './commands.ts';
+import { within } from './paths.ts';
 import { createHost, type Host } from './host.ts';
 import { modelCommands } from './models.ts';
 import { SWITCH, projectCommands, readState, welcome } from './projects.ts';
@@ -104,7 +105,7 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
 
       if (req.method === 'GET' && url.pathname.startsWith('/api/file/looks/')) {
         const file = normalize(join(host.dirs.looks, url.pathname.slice('/api/file/looks/'.length)));
-        if (!file.startsWith(host.dirs.looks) || !existsSync(file)) return send(res, 404, { ok: false, error: 'no such picture' });
+        if (!within(host.dirs.looks, file) || !existsSync(file)) return send(res, 404, { ok: false, error: 'no such picture' });
         const kind = ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' } as Record<string, string>)[file.split('.').pop()!.toLowerCase()] ?? 'image/png';
         res.writeHead(200, { 'content-type': kind, 'cache-control': 'max-age=31536000' });
         return void createReadStream(file).pipe(res);
@@ -113,7 +114,7 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
       // What was shared in the chat: shown in the page as it is.
       if (req.method === 'GET' && url.pathname.startsWith('/api/file/files/')) {
         const file = normalize(join(host.dirs.files, decodeURIComponent(url.pathname.slice('/api/file/files/'.length))));
-        if (!file.startsWith(host.dirs.files) || !existsSync(file)) return send(res, 404, { ok: false, error: 'no such file' });
+        if (!within(host.dirs.files, file) || !existsSync(file)) return send(res, 404, { ok: false, error: 'no such file' });
         const ext = file.slice(file.lastIndexOf('.') + 1).toLowerCase();
         const type = ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp', svg: 'text/plain', txt: 'text/plain', md: 'text/plain', json: 'application/json', pdf: 'application/pdf' } as Record<string, string>)[ext] ?? 'application/octet-stream';
         res.writeHead(200, { 'content-type': type, 'cache-control': 'max-age=31536000', 'x-content-type-options': 'nosniff' });

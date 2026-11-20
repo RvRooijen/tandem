@@ -11,7 +11,7 @@
 // so are the commands it brings.
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CommandError, check, isAgent, type By, type CommandDef } from './commands.ts';
 import type { CommandSpec } from './command-job.ts';
@@ -19,6 +19,7 @@ import { runScript } from './jobs.ts';
 import type { Project, ViewDef } from './project.ts';
 import type { Proposal, RecordValue } from './proposals.ts';
 import { query, tables } from './sqlite.ts';
+import { within } from './paths.ts';
 
 const ENGINE = fileURLToPath(new URL('..', import.meta.url));
 export const KINDS = ['logs', 'api', 'data'] as const;
@@ -103,8 +104,8 @@ export function createViews(d: ViewsDeps) {
   /** A file in that folder; never one outside it. */
   function inside(root: string, path: string): string {
     const at = resolve(root, path);
-    const rel = relative(root, at);
-    if (!rel || rel.startsWith('..') || isAbsolute(rel)) throw new CommandError('input', `${path} is not a file in the project's folder`);
+    const rel = within(root, at);
+    if (!rel) throw new CommandError('input', `${path} is not a file in the project's folder`);
     if (!existsSync(at)) throw new CommandError('missing', `there is no ${rel}${root === project.root ? '' : ' in the working copy'}`);
     return at;
   }

@@ -11,7 +11,7 @@
 // a working copy; with a page command, the person plays the project and the
 // copy inside tandem; with an adapter, the agent can also see inside the
 // running thing (its state, pictures of it, its entities, a bot playing it).
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 
@@ -150,6 +150,13 @@ export function loadProject(dir: string, opts: { data?: string; tandem?: string;
 /** How the core ends when how the project is run was changed: whoever looks after it starts it again, and the project's page with it. */
 export const SETUP = 77;
 
+const WINDOWS = process.platform === 'win32';
+/** The watcher of a page on Windows (startTree): it goes when the page is gone, and takes the page with it when we are. */
+const WATCHER = `const pid = process.argv[1];
+const stop = () => { try { require('node:child_process').execFileSync('taskkill', ['/T', '/F', '/PID', pid], { stdio: 'ignore', windowsHide: true }); } catch {} process.exit(); };
+process.stdin.on('end', stop).on('error', stop).resume();
+setInterval(() => { try { process.kill(Number(pid), 0); } catch { process.exit(); } }, 1000);`;
+
 /** Where one of a started command's streams goes: ours, nowhere, a file that is open, or to be read by us. */
 type Out = 'inherit' | 'ignore' | 'pipe' | number;
 
@@ -162,6 +169,19 @@ type Out = 'inherit' | 'ignore' | 'pipe' | number;
  */
 export function startTree(command: string, options: { cwd: string; env?: NodeJS.ProcessEnv; stdio?: [Out, Out, Out] }): ChildProcess {
   const [stdin, stdout, stderr] = options.stdio ?? ['inherit', 'inherit', 'inherit'];
+  if (WINDOWS) {
+    // Windows has no process groups, and a tree is only stopped whole from its root. The job Node ends its
+    // children with takes the first process of Git's sh but not the rest of it, so the page and its watcher are
+    // both kept out of it (detached): the watcher holds the reading end of a pipe of ours and stops the page's
+    // tree when that end is gone.
+    const page = spawn('sh', ['-c', command], { cwd: options.cwd, env: options.env, stdio: [stdin, stdout, stderr], detached: true, windowsHide: true });
+    if (page.pid) {
+      const watcher = spawn(process.execPath, ['-e', WATCHER, String(page.pid)], { stdio: ['pipe', 'ignore', 'ignore'], detached: true, windowsHide: true });
+      watcher.unref();
+      (watcher.stdin as unknown as { unref(): void }).unref();
+    }
+    return page;
+  }
   return spawn('sh', ['-c', `(cat <&3 >/dev/null; kill -TERM 0) & ${command}`], { cwd: options.cwd, env: options.env, stdio: [stdin, stdout, stderr, 'pipe'], detached: true });
 }
 
@@ -173,6 +193,8 @@ export function startTree(command: string, options: { cwd: string; env?: NodeJS.
  */
 export function stopTree(child: { pid?: number; kill(): boolean } | undefined) {
   if (!child?.pid) return;
+  // (On Windows a tree is what a process started, and what that started.)
+  if (WINDOWS) { try { execFileSync('taskkill', ['/T', '/F', '/PID', String(child.pid)], { stdio: 'ignore', windowsHide: true }); } catch { child.kill(); } return; }
   try { process.kill(-child.pid, 'SIGTERM'); } catch { child.kill(); }
 }
 

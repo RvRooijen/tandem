@@ -1,29 +1,33 @@
 // A page that tandem started does not outlive tandem, however tandem ends.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { connect, createServer } from 'node:net';
 import { test } from 'node:test';
 import { startTree, stopTree } from '../core/project.ts';
 
-const alive = (group: number) => { try { process.kill(-group, 0); return true; } catch { return false; } };
-const gone = async (group: number) => { for (let i = 0; i < 40 && alive(group); i++) await new Promise((r) => setTimeout(r, 100)); return !alive(group); };
+// A page is up while something answers on its port: that is what is in the way when it is left running.
+const freePort = () => new Promise<number>((got) => { const s = createServer().listen(0, '127.0.0.1', () => { const { port } = s.address() as { port: number }; s.close(() => got(port)); }); });
+const answers = (port: number) => new Promise<boolean>((said) => { const c = connect(port, '127.0.0.1', () => { c.destroy(); said(true); }); c.on('error', () => said(false)); });
+const until = async (port: number, up: boolean) => { for (let i = 0; i < 50 && (await answers(port)) !== up; i++) await new Promise((r) => setTimeout(r, 100)); return (await answers(port)) === up; };
+// (A shell line whose real work is a child of the shell, as a page command's is.)
+const page = (port: number) => `node -e "require('http').createServer((q, s) => s.end()).listen(${port}, '127.0.0.1')" & wait`;
 
-test('a started page is stopped as a group, with what it started', async () => {
-  // (A shell line whose real work is a grandchild, as a page command's is.)
-  const page = startTree('sh -c "sleep 30" & wait', { cwd: process.cwd(), stdio: ['ignore', 'ignore', 'ignore'] });
-  await new Promise((r) => setTimeout(r, 200));
-  assert.ok(alive(page.pid!));
-  stopTree(page);
-  assert.ok(await gone(page.pid!), 'nothing of it is left');
+test('a started page is stopped with what it started', async () => {
+  const port = await freePort();
+  const proc = startTree(page(port), { cwd: process.cwd(), stdio: ['ignore', 'ignore', 'ignore'] });
+  assert.ok(await until(port, true), 'the page is up');
+  stopTree(proc);
+  assert.ok(await until(port, false), 'nothing of it is left');
 });
 
 test('a started page ends when the one that started it is killed, without a chance to stop it', async () => {
-  // Another process starts the page and says which group it is; then it is killed outright.
+  // Another process starts the page; then it is killed outright.
+  const port = await freePort();
   const project = new URL('../core/project.ts', import.meta.url).href;
   const starter = spawn(process.execPath, ['--no-warnings', '--input-type=module', '-e',
-    `import { startTree } from ${JSON.stringify(project)}; const page = startTree('sh -c "sleep 30" & wait', { cwd: process.cwd(), stdio: ['ignore', 'ignore', 'ignore'] }); console.log(page.pid); setInterval(() => {}, 1000);`],
-    { stdio: ['ignore', 'pipe', 'inherit'] });
-  const group = Number(await new Promise<string>((said) => starter.stdout.once('data', (d) => said(String(d)))));
-  assert.ok(group > 0 && alive(group), 'the page is up');
+    `import { startTree } from ${JSON.stringify(project)}; startTree(${JSON.stringify(page(port))}, { cwd: process.cwd(), stdio: ['ignore', 'ignore', 'ignore'] }); setInterval(() => {}, 1000);`],
+    { stdio: ['ignore', 'ignore', 'inherit'] });
+  assert.ok(await until(port, true), 'the page is up');
   starter.kill('SIGKILL');
-  assert.ok(await gone(group), 'the page went with it');
+  assert.ok(await until(port, false), 'the page went with it');
 });

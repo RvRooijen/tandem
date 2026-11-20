@@ -6,6 +6,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SCRATCH } from './code.ts';
+import { within } from './paths.ts';
 import type { CommandDef } from './commands.ts';
 import type { Event } from './events.ts';
 import { ROOT, type Host } from './host.ts';
@@ -75,9 +76,9 @@ export function didWith(host: Host, name: string, input: Record<string, unknown>
   const roots = [host.code?.work, host.project.root].filter((r): r is string => !!r);
   const short = (path: unknown) => {
     const p = String(path ?? '');
-    if (p.startsWith(host.dirs.looks) || p.startsWith(host.dirs.files)) return 'a picture';
-    const root = roots.find((r) => p === r || p.startsWith(`${r}/`));
-    return root ? p.slice(root.length + 1) || 'the project' : p;
+    if (within(host.dirs.looks, p) !== undefined || within(host.dirs.files, p) !== undefined) return 'a picture';
+    const rel = roots.map((r) => within(r, p)).find((r) => r !== undefined);
+    return rel === undefined ? p : rel || 'the project';
   };
   const cut = (text: unknown, max: number) => { const t = String(text ?? '').replace(/\s+/g, ' ').trim(); return t.length > max ? `${t.slice(0, max - 1)}…` : t; };
   if (name === 'Read') return /\.(png|jpe?g|gif|webp)$/i.test(String(input.file_path)) ? `looked at ${short(input.file_path)}` : `read ${short(input.file_path)}`;
@@ -354,7 +355,7 @@ export function createRunner(host: Host) {
               if (did) {
                 // A picture it looks at (of the page, or one the person shared) is shown with it.
                 const file = block.name === 'Read' ? String(block.input?.file_path ?? '') : '';
-                const picture = [['looks', host.dirs.looks], ['files', host.dirs.files]].map(([kind, dir]) => (file.startsWith(`${dir}/`) && /\.(png|jpe?g|gif|webp)$/i.test(file) ? `/api/file/${kind}/${encodeURIComponent(file.slice(dir.length + 1))}` : '')).find(Boolean);
+                const picture = [['looks', host.dirs.looks], ['files', host.dirs.files]].map(([kind, dir]) => { const rel = within(dir, file); return rel && /\.(png|jpe?g|gif|webp)$/i.test(rel) ? `/api/file/${kind}/${encodeURIComponent(rel)}` : ''; }).find(Boolean);
                 if (block.id) calls.set(String(block.id), { tool: String(block.name), change: changeOf(String(block.name), block.input ?? {}) });
                 host.events.add({ type: 'agent.did', by: 'agent', round, did, ...(block.id && { id: String(block.id) }), ...(picture && { picture }), ...countOf(String(block.name), block.input ?? {}) });
               }

@@ -3,7 +3,7 @@
 // here knows about pages or agents beyond who is asking (`by`).
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SCRATCH, createCode, forConcepts, type Code, type FileChange } from './code.ts';
 import { CommandError, createRegistry, isAgent, type By, type CommandDef, type Registry } from './commands.ts';
@@ -18,6 +18,7 @@ import { COPY_PORT, createPreview, type Preview } from './preview.ts';
 import { innerPort } from './through.ts';
 import { checkViews, createViews, isSetupFile, type Views } from './views.ts';
 import { encodePng } from './png.ts';
+import { within } from './paths.ts';
 import { SETUP, loadProject, prepare, type Project } from './project.ts';
 import { createProposals, type Json, type Proposal, type Proposals, type RecordValue } from './proposals.ts';
 import { createArt, type Art } from '../art/commands.ts';
@@ -567,7 +568,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   const editable = (file: string) => {
     const parts = file.split('/');
     if (!file || file.startsWith('/') || file.includes('\\') || parts.some((part) => !part || part === '.' || part === '..')) return false;
-    const closed = ['.git', '.tandem', 'node_modules', SCRATCH, relative(project.root, project.dirs.art), relative(project.root, project.dirs.depth)];
+    const closed = ['.git', '.tandem', 'node_modules', SCRATCH, ...[project.dirs.art, project.dirs.depth].map((dir) => within(project.root, dir)).filter(Boolean)];
     if (closed.some((dir) => file === dir || file.startsWith(`${dir}/`))) return false;
     const pattern = (glob: string) => new RegExp(`^${glob.replace(/^\.?\//, '').split('**/').map((a) => a.split('**').map((b) => b.split('*').map((lit) => lit.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*')).join('.*')).join('(?:.*/)?')}$`);
     return project.editable.some((glob) => pattern(glob).test(file));
@@ -997,7 +998,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
             let text = '';
             if (where) {
               const file = from && resolve(from, where);
-              if (!file || !existsSync(file) || relative(from, file).startsWith('..') || isAbsolute(relative(from, file))) throw new CommandError('missing', `there is no file ${where}${isAgent(c.by) ? ' in your working copy' : ' in the project'}`);
+              if (!file || !within(from, file) || !existsSync(file)) throw new CommandError('missing', `there is no file ${where}${isAgent(c.by) ? ' in your working copy' : ' in the project'}`);
               text = readFileSync(file, 'utf8');
             }
             if (!same(text, was[key] ?? '')) after[key] = text;

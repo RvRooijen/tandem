@@ -8,7 +8,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CommandError, type CommandDef } from './commands.ts';
 
@@ -51,7 +51,7 @@ export function home(): string {
 
 /** Where projects are looked for: what the person added, what TANDEM_PROJECTS names, and the folder tandem itself is in. */
 export function roots(current?: string): string[] {
-  const named = (process.env.TANDEM_PROJECTS ?? '').split(':').filter(Boolean);
+  const named = (process.env.TANDEM_PROJECTS ?? '').split(delimiter).filter(Boolean);
   const all = [...(readState().roots ?? []), ...named, dirname(ENGINE), ...(current ? [dirname(resolve(current))] : [])];
   return [...new Set(all.map((r) => resolve(r)))].filter((r) => existsSync(r));
 }

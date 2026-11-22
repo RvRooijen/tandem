@@ -12,7 +12,7 @@
 // it follows the project's files as they are, which the engine keeps as commits
 // of its own under refs/tandem/project, off every branch and never pushed.
 import { execFile, execFileSync } from 'node:child_process';
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, isAbsolute, join } from 'node:path';
 
 export interface FileChange { path: string; added: number; removed: number; status: 'new' | 'changed' | 'gone' }
@@ -144,9 +144,20 @@ export function createCode(o: CodeOptions) {
   /** Is this file of the project as its history has it: not there, or committed and not changed since? Then nothing of the person's is in it. */
   const settled = (path: string) => tryGit(o.root, 'status', '--porcelain', '--', path) === '';
 
+  /** Where a repository keeps what it has, as one path however it is reached. */
+  const store = (cwd: string) => { const d = tryGit(cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir'); return d && existsSync(d) ? realpathSync(d) : null; };
+  /**
+   * The working copy is there, and is one of this project's. A copy whose project was made anew (the folder thrown
+   * away and made again, with a repository of its own) points at a repository that no longer has it: git knows it
+   * as nothing at all.
+   */
+  const copied = () => existsSync(join(work, '.git')) && store(work) !== null && store(work) === store(o.root);
+
   /** The working copy exists and has everything the project has. Says which files clash if it cannot take the project's changes in. */
   function sync(): { conflicts: string[] } {
     commitProject('What was changed and accepted in tandem');
+    // A copy of a project that is gone is put aside, not thrown away: what it had is no change set any more, but it is still there to look at.
+    if (existsSync(join(work, '.git')) && !copied()) renameSync(work, `${work}-${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '')}`);
     if (!existsSync(join(work, '.git'))) {
       mkdirSync(join(work, '..'), { recursive: true });
       tryGit(o.root, 'worktree', 'prune');
@@ -181,7 +192,7 @@ export function createCode(o: CodeOptions) {
 
   /** What the working copy changes. */
   function changes(): FileChange[] {
-    if (!existsSync(join(work, '.git'))) return [];
+    if (!copied()) return [];
     git(work, 'add', '-A', '-N');                                   // so that new files count
     const from = base();
     const out = git(work, 'diff', '--numstat', from);
@@ -195,7 +206,7 @@ export function createCode(o: CodeOptions) {
   }
 
   /** The change itself, to read: a diff of one file, or of everything. */
-  const diff = (path?: string) => (existsSync(join(work, '.git')) ? git(work, 'diff', base(), ...(path ? ['--', path] : [])).slice(0, 60_000) : '');
+  const diff = (path?: string) => (copied() ? git(work, 'diff', base(), ...(path ? ['--', path] : [])).slice(0, 60_000) : '');
 
   /** Take the working copy into the project, as one commit that says what it is. Throws, with the project as it was, when it does not go in cleanly. */
   function accept(message: string): FileChange[] {
@@ -410,7 +421,7 @@ export function createCode(o: CodeOptions) {
     if (name === from) throw new Error(`the project is on ${name} already`);
     const open = uncommitted();
     if (open.length) throw new Error(`${open.length} ${open.length === 1 ? 'file is' : 'files are'} not committed: commit or throw away what you changed first`);
-    if (existsSync(join(work, '.git')) && changes().length) throw new Error('the agent\'s working copy has changes of its own: accept or reject them first');
+    if (changes().length) throw new Error('the agent\'s working copy has changes of its own: accept or reject them first');
     try { own(here ? ['switch', '-q', name] : ['switch', '-q', '-c', name, '--track', `${to!.name}/${name}`]); } catch (e) {
       throw new Error(`it could not be switched: ${String((e as { stderr?: string }).stderr || (e instanceof Error ? e.message : e)).trim().split('\n').slice(-2).join(' ').slice(0, 300)}`);
     }
@@ -473,7 +484,7 @@ export function createCode(o: CodeOptions) {
 
   /** Throw the working copy's changes away: it is the project again. */
   function reject() {
-    if (!existsSync(join(work, '.git'))) return;
+    if (!copied()) return;
     git(work, 'reset', '-q', '--hard', project(true));
     git(work, 'clean', '-q', '-fd');
     deps();

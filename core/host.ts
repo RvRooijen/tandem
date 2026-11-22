@@ -1717,10 +1717,12 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     taken: (by) => publish(by),
     // With an agent that codes, a drawing taken into the project is news for it: it is the one who brings it in.
     accepted: code && ((drawings) => {
-      const what = drawings.map((d) => `${d.name} (${d.isNew ? 'new' : 'changed'}; ${d.w}×${d.h}; looks: ${d.looks.join(', ')}; animations: ${Object.entries(d.anims).map(([a, n]) => `${a} ×${n}`).join(', ')}${d.depth ? '; with a depth map' : ''})`).join('; ');
+      const what = drawings.map((d) => d.model
+        ? `${d.name} (${d.isNew ? 'new' : 'changed'}; a 3D model, ${d.w} wide, ${d.h} high and ${d.d} deep in its own units, y up and its front toward +z; built as ${d.name}.glb, with its colours in the corners of its faces (COLOR_0, no texture)${d.bones.length ? `, its bones as nodes (${d.bones.join(', ')})${Object.keys(d.anims).length ? ` and its animations by name: ${Object.entries(d.anims).map(([a, sec]) => `${a} (${sec} s, a loop)`).join(', ')}` : ' and no animation yet'}` : ''})`
+        : `${d.name} (${d.isNew ? 'new' : 'changed'}; ${d.w}×${d.h}; looks: ${d.looks.join(', ')}; animations: ${Object.entries(d.anims).map(([a, n]) => `${a} ×${n}`).join(', ')}${d.depth ? '; with a depth map' : ''})`).join('; ');
       events.add({
         type: 'message', by: 'engine', refs: drawings.map((d) => `drawing:${d.name}`),
-        text: `Art was accepted into the project: ${what}. It is in the project's art files and in your working copy, but the project does not use it yet. Bring it in: build the drawings in your working copy (the project's own build for them, or \`tandem export <folder>\` when it has none), make the project use what is new about ${drawings.length === 1 ? 'it' : 'them'}, run the tests, and say in a few words what you did and what is left.`,
+        text: `Art was accepted into the project: ${what}. It is in the project's art files and in your working copy, but the project does not use it yet. Bring it in: build the drawings in your working copy (the project's own build for them, or \`tandem export <folder>\` when it has none; that writes a 3D model as <folder>/<name>.glb and lists it in <folder>/models.json), make the project use what is new about ${drawings.length === 1 ? 'it' : 'them'}, run the tests, and say in a few words what you did and what is left.`,
       });
     }),
   });

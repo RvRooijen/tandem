@@ -300,6 +300,7 @@ body.t-offline #t-fab .mark { background: var(--t-bad); }
 #tandem .t-chip.mode[data-mode=js] { color: var(--t-bad); }
 /* A pill for what a message is about is never wider than the conversation: its words are cut short instead. */
 #tandem .t-chip.ref { max-width: 100%; min-width: 0; }
+#tandem .t-chip.toggle[aria-checked=true] { background: color-mix(in srgb, var(--t-accent) 22%, transparent); border-color: var(--t-accent); color: var(--t-accent); }
 #tandem .t-chip.ref > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 #tandem .t-chip.ref > img, #tandem .t-chip.ref > button { flex: none; }
 #tandem .t-chip.ref img { width: 26px; height: 26px; object-fit: cover; border-radius: 6px; margin: 2px 6px 2px -4px; cursor: zoom-in; }
@@ -598,6 +599,10 @@ figure.card.look figcaption { padding: 6px 10px; font-size: var(--t-xs); color: 
 /* ---- art */
 .stage-live { display: grid; place-items: center; background: var(--t-well); border-radius: 12px; padding: 10px; min-height: 120px; overflow: auto; margin-bottom: 10px; }
 canvas.live { image-rendering: pixelated; display: block; }
+#tandem .profiles figure.profile { display: inline-block; margin: 0 14px 10px 0; vertical-align: top; }
+#tandem .profiles figure.profile .t-row { gap: 6px; align-items: flex-end; }
+#tandem .said.thinking { color: var(--t-soft); font-style: italic; max-height: 9em; overflow: auto; }
+#tandem .profiles figcaption { font-size: var(--t-xs); color: var(--t-soft); margin-top: 4px; }
 #tandem .t-hint.looks:empty { display: none; }
 .worker-rest .working { padding: 6px 2px 10px; }
 .worker-rest .working button { min-height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--t-line); background: var(--t-raise); margin-left: auto; }

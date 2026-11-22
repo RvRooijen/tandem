@@ -148,7 +148,7 @@ test('with no project open, the core has only what it takes to choose one', asyn
   const base = `http://127.0.0.1:${lobby.port}/api`;
   const post = async (name: string, input: unknown = {}) => (await fetch(`${base}/run/${name}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) })).json() as Promise<any>;
   assert.deepEqual(await (await fetch(`${base}/info`)).json(), { project: null, name: 'tandem', last: 0, page: null, senses: false, copy: false });
-  assert.deepEqual((await (await fetch(`${base}/commands`)).json() as { name: string }[]).map((c) => c.name), ['models.get', 'models.set', 'deps.list', 'deps.install', 'projects.list', 'projects.open', 'projects.create', 'projects.browse', 'projects.look']);
+  assert.deepEqual((await (await fetch(`${base}/commands`)).json() as { name: string }[]).map((c) => c.name), ['models.get', 'models.set', 'tandem.version', 'tandem.update', 'deps.list', 'deps.install', 'projects.list', 'projects.open', 'projects.create', 'projects.browse', 'projects.look']);
   const list = await post('projects.list');
   assert.equal(list.result.open, null);
   assert.ok(mine(list.result.projects).some((p: any) => p.name === 'Gnome Garden'));

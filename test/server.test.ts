@@ -3,6 +3,8 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startServer } from '../core/server.ts';
@@ -219,6 +221,20 @@ test('claude that opened the login page in a browser itself is logged in without
   await until(() => host.events.since(before).some((e) => e.type === 'message' && e.by === 'agent'));
   await until(() => !s.runner!.status().busy);
   rmSync(join(dir, '.fake-claude-browser'));
+});
+
+test('tandem\'s own version is shown with the newest release, and a checkout of its code is not updated by tandem', async () => {
+  const { version } = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8')) as { version: string };
+  const releases = createServer((_req, res) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ tag_name: 'v99.0.0' })); });
+  await new Promise<void>((r) => releases.listen(0, '127.0.0.1', r));
+  process.env.TANDEM_RELEASES = `http://127.0.0.1:${(releases.address() as AddressInfo).port}/`;
+  try {
+    assert.deepEqual((await post('tandem.version')).result, { version, latest: '99.0.0', newer: true, update: false });
+    assert.equal((await post('tandem.update')).code, 'unsupported');
+  } finally {
+    delete process.env.TANDEM_RELEASES;
+    releases.close();
+  }
 });
 
 test('what tandem needs on this machine is listed with its version, and installed or updated from the settings', async () => {

@@ -2,10 +2,20 @@
 // which version of each is there, and install or update one with a button: on Windows Git and Node.js through
 // winget, Claude Code everywhere with its own installer and `claude update`. Elsewhere Git and Node.js are the
 // system's package manager's.
+// Tandem's own version is shown there too, with the newest release on GitHub. Tandem that desktop/install.ps1 put
+// on Windows updates itself with that script; a checkout of its code is updated with git.
 import { execFile } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { CommandError, type CommandDef } from './commands.ts';
 
 const WINDOWS = process.platform === 'win32';
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+/** The version that runs: package.json as it was when tandem started, not as an update left it since. */
+const VERSION = (JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { version: string }).version;
+const RELEASES = () => process.env.TANDEM_RELEASES ?? 'https://api.github.com/repos/RvRooijen/tandem/releases/latest';
+const INSTALLED = () => WINDOWS && !existsSync(join(ROOT, '.git'));
 const CLAUDE = () => process.env.CLAUDE_BIN ?? 'claude';
 
 interface Dep {
@@ -62,11 +72,54 @@ async function freshPath() {
   process.env[key] = [...own, got.out.trim()].join(';');
 }
 
+/** The newest release's version, asked of GitHub at most every ten minutes (null: it could not be asked). */
+let known: { at: number; version: string } | undefined;
+async function latestRelease(): Promise<string | null> {
+  if (known && Date.now() - known.at < 10 * 60_000) return known.version;
+  try {
+    const res = await fetch(RELEASES(), { headers: { accept: 'application/vnd.github+json', 'user-agent': 'tandem' }, signal: AbortSignal.timeout(8_000) });
+    const tag = res.ok ? String(((await res.json()) as { tag_name?: string }).tag_name ?? '').replace(/^v/, '') : '';
+    if (!tag) return null;
+    known = { at: Date.now(), version: tag };
+    return tag;
+  } catch { return null; }
+}
+
+const newer = (a: string, b: string) => {
+  const [x, y] = [a, b].map((v) => v.split('.').map((n) => parseInt(n, 10) || 0));
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+  return false;
+};
+
 export function depCommands(): CommandDef[] {
   const list = () => Promise.all(DEPS.map(async (d) => ({
     id: d.id, name: d.name, version: await versionOf(d), install: !!d.install, update: !!d.update,
   })));
   return [
+    {
+      name: 'tandem.version', kind: 'read',
+      about: 'The version of tandem that runs, the newest release on GitHub (null: it could not be asked), whether that is newer, and whether tandem can update itself here (tandem.update).',
+      async run() {
+        const latest = await latestRelease();
+        return { version: VERSION, latest, newer: !!latest && newer(latest, VERSION), update: INSTALLED() };
+      },
+    },
+    {
+      name: 'tandem.update', kind: 'write',
+      about: 'Update tandem to its newest release, with the installer it was installed with (Windows). Takes a while; the new version runs once tandem is started again.',
+      async run() {
+        if (!INSTALLED()) throw new CommandError('unsupported', 'this tandem is a checkout of its code, which is updated with git, not by tandem');
+        const script = join(ROOT, 'desktop', 'install.ps1');
+        const got = await run('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-Unattended'], 15 * 60_000);
+        if (!got.ok) throw new CommandError('failed', `tandem could not be updated: ${got.out.split('\n').filter(Boolean).slice(-3).join(' ')}`);
+        known = undefined;
+        const now = (JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { version: string }).version;
+        return {
+          was: VERSION, version: now,
+          said: now === VERSION ? `Tandem is the newest already (${now}).` : `Tandem ${now} is installed (was ${VERSION}); it runs once tandem is started again.`,
+        };
+      },
+    },
     {
       name: 'deps.list', kind: 'read',
       about: 'What tandem needs on this machine (Git, Node.js, Claude Code): the version of each that is there (null: it is not), and whether tandem can install or update it here.',

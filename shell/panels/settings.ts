@@ -11,6 +11,7 @@ type Who = 'agent' | 'workers';
 interface Choice { model: string; effort: string }
 interface Models { agent: Choice; workers: Choice; models: { id: string; name: string }[]; efforts: string[] }
 interface Dep { id: string; name: string; version: string | null; install: boolean; update: boolean }
+interface Version { version: string; latest: string | null; newer: boolean; update: boolean }
 
 export function settingsPanel(): Panel {
   let app!: App;
@@ -24,11 +25,28 @@ export function settingsPanel(): Panel {
     return h('div.model', {}, h('span', {}, label), model, effort);
   }
 
+  /** Tandem's own version and the newest release, with a button to update when that is newer. */
+  function tandemRow(v: Version, el: HTMLElement) {
+    const btn = h<'button'>('button', {
+      onclick: async () => {
+        btn.disabled = true;
+        btn.textContent = 'Updating…';
+        const done = await app.act<{ said: string }>('tandem.update');
+        if (done) app.toast(done.said);
+        void paintDeps(el);
+      },
+    }, 'Update');
+    const latest = !v.latest ? '' : v.newer ? ` · ${v.latest} is out` : ' · the newest';
+    return h('div.dep', {}, h('span', {}, 'Tandem'), h('small.k', {}, v.version + latest),
+      v.newer && (v.update ? btn : h('small.k', {}, 'with git')));
+  }
+
   /** What tandem needs on this machine: the version of each, and a button that installs or updates it. */
   async function paintDeps(el: HTMLElement) {
-    const got = await app.act<Dep[]>('deps.list');
+    const [version, got] = await Promise.all([app.act<Version>('tandem.version'), app.act<Dep[]>('deps.list')]);
     if (!got || !el.isConnected) return;
     clear(el, [
+      version && [h('h4.models-head', {}, 'Tandem'), tandemRow(version, el)],
       h('h4.models-head', {}, 'What tandem needs'),
       got.map((d) => {
         const btn = h<'button'>('button', {

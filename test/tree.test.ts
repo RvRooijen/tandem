@@ -31,3 +31,12 @@ test('a started page ends when the one that started it is killed, without a chan
   starter.kill('SIGKILL');
   assert.ok(await until(port, false), 'the page went with it');
 });
+
+test('a started page is stopped whole when its shell runs another shell, as npm run does', async () => {
+  // (On Windows Git's sh starts that one through a process that is gone at once, which hides it from taskkill /T.)
+  const port = await freePort();
+  const proc = startTree(`true && env sh -c ${JSON.stringify(page(port))}`, { cwd: process.cwd(), stdio: ['ignore', 'ignore', 'ignore'] });
+  assert.ok(await until(port, true), 'the page is up');
+  stopTree(proc);
+  assert.ok(await until(port, false), 'nothing of it is left');
+});

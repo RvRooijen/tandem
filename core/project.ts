@@ -13,6 +13,7 @@
 // running thing (its state, pictures of it, its entities, a bot playing it).
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 
 export interface ProjectConfig {
@@ -151,11 +152,32 @@ export function loadProject(dir: string, opts: { data?: string; tandem?: string;
 export const SETUP = 77;
 
 const WINDOWS = process.platform === 'win32';
-/** The watcher of a page on Windows (startTree): it goes when the page is gone, and takes the page with it when we are. */
-const WATCHER = `const pid = process.argv[1];
-const stop = () => { try { require('node:child_process').execFileSync('taskkill', ['/T', '/F', '/PID', pid], { stdio: 'ignore', windowsHide: true }); } catch {} process.exit(); };
+/**
+ * Stop a page's tree on Windows: node -e STOP <pid> <file>. Git's sh forks and execs by starting new processes whose
+ * Windows parent is gone soon after, so taskkill /T from the page's first process misses the rest of it (the page's
+ * server among them). Its own ps still knows them, by the process group the page's sh started (written in file):
+ * every process in that group is taken with its tree.
+ */
+const STOP = `const { execFileSync } = require('node:child_process');
+const [pid, file] = process.argv.slice(1);
+const ids = [pid];
+try {
+  const group = require('node:fs').readFileSync(file, 'utf8').trim();
+  for (const line of execFileSync('ps', { windowsHide: true }).toString().split('\\n')) {
+    const m = /^\\s*(?:[A-Z]\\s+)?\\d+\\s+\\d+\\s+(\\d+)\\s+(\\d+)/.exec(line);
+    if (m && m[1] === group) ids.push(m[2]);
+  }
+} catch {}
+try { execFileSync('taskkill', ['/T', '/F', ...ids.flatMap((id) => ['/PID', id])], { stdio: 'ignore', windowsHide: true }); } catch {}
+try { require('node:fs').rmSync(file, { force: true }); } catch {}`;
+/** The watcher of a page on Windows (startTree): when we are gone, or the page's first process is, the page goes too. */
+const WATCHER = `const [pid, file] = process.argv.slice(1);
+const stop = () => { try { require('node:child_process').execFileSync(process.execPath, ['-e', ${JSON.stringify(STOP)}, pid, file], { stdio: 'ignore', windowsHide: true }); } catch {} process.exit(); };
 process.stdin.on('end', stop).on('error', stop).resume();
-setInterval(() => { try { process.kill(Number(pid), 0); } catch { process.exit(); } }, 1000);`;
+setInterval(() => { try { process.kill(Number(pid), 0); } catch { stop(); } }, 1000);`;
+/** The file the process group of a page started on Windows is in, by the page. */
+const groups = new WeakMap<object, string>();
+let started = 0;
 
 /** Where one of a started command's streams goes: ours, nowhere, a file that is open, or to be read by us. */
 type Out = 'inherit' | 'ignore' | 'pipe' | number;
@@ -174,9 +196,12 @@ export function startTree(command: string, options: { cwd: string; env?: NodeJS.
     // children with takes the first process of Git's sh but not the rest of it, so the page and its watcher are
     // both kept out of it (detached): the watcher holds the reading end of a pipe of ours and stops the page's
     // tree when that end is gone.
-    const page = spawn('sh', ['-c', command], { cwd: options.cwd, env: options.env, stdio: [stdin, stdout, stderr], detached: true, windowsHide: true });
+    const group = join(tmpdir(), `tandem-group-${process.pid}-${++started}`);
+    const env = { ...(options.env ?? process.env), TANDEM_GROUP: group };
+    const page = spawn('sh', ['-c', `echo $$ > "$TANDEM_GROUP"; ${command}`], { cwd: options.cwd, env, stdio: [stdin, stdout, stderr], detached: true, windowsHide: true });
     if (page.pid) {
-      const watcher = spawn(process.execPath, ['-e', WATCHER, String(page.pid)], { stdio: ['pipe', 'ignore', 'ignore'], detached: true, windowsHide: true });
+      groups.set(page, group);
+      const watcher = spawn(process.execPath, ['-e', WATCHER, String(page.pid), group], { stdio: ['pipe', 'ignore', 'ignore'], detached: true, windowsHide: true });
       watcher.unref();
       (watcher.stdin as unknown as { unref(): void }).unref();
     }
@@ -194,7 +219,12 @@ export function startTree(command: string, options: { cwd: string; env?: NodeJS.
 export function stopTree(child: { pid?: number; kill(): boolean } | undefined) {
   if (!child?.pid) return;
   // (On Windows a tree is what a process started, and what that started.)
-  if (WINDOWS) { try { execFileSync('taskkill', ['/T', '/F', '/PID', String(child.pid)], { stdio: 'ignore', windowsHide: true }); } catch { child.kill(); } return; }
+  if (WINDOWS) {
+    const group = groups.get(child);
+    if (!group) { try { execFileSync('taskkill', ['/T', '/F', '/PID', String(child.pid)], { stdio: 'ignore', windowsHide: true }); } catch { child.kill(); } return; }
+    try { execFileSync(process.execPath, ['-e', STOP, String(child.pid), group], { stdio: 'ignore', windowsHide: true }); } catch { child.kill(); }
+    return;
+  }
   try { process.kill(-child.pid, 'SIGTERM'); } catch { child.kill(); }
 }
 

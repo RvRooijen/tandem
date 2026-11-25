@@ -3,6 +3,7 @@
 // does is a command, and everything it changes is a proposal. One conversation
 // per game, resumed from message to message.
 import { spawn, type ChildProcess } from 'node:child_process';
+import { onDetach, runningProc, startProc, type Proc } from './procs.ts';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
@@ -135,6 +136,16 @@ export interface AgentStatus {
   context: number; limit: number;
 }
 
+/** How far a turn has come: kept when the core starts again in the middle of it, so the next core goes on from there. */
+interface Turn {
+  retry: boolean;
+  /** How many times it said something, and the last of it. */
+  said: number;
+  lastSaid: string;
+  /** What it is doing with a tool right now, by the id of the call: what the tool answers is said with it. */
+  calls: Record<string, { tool: string; change?: string }>;
+}
+
 /** Past this many tokens the next message starts a new conversation. */
 const CONTEXT_LIMIT = Number(process.env.TANDEM_CONTEXT_LIMIT) || 800_000;
 
@@ -147,6 +158,7 @@ export function createRunner(host: Host) {
   let told: string[] | undefined;
   /** The message it is answering right now, kept so that a turn that was cut off (tandem started again) is taken up again. */
   let running: number | undefined;
+  let turn: Turn | undefined;
   let cutOff = false;
   try {
     const kept = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
@@ -154,10 +166,11 @@ export function createRunner(host: Host) {
     context = session ? Number(kept.context) || 0 : 0;
     if (session && Array.isArray(kept.commands)) told = kept.commands.map(String);
     cutOff = typeof kept.running === 'number';
+    if (cutOff) { running = kept.running; turn = kept.turn; }
   } catch { /* start a new conversation */ }
   const off = process.env.TANDEM_AGENT === 'off';
   const queue: Event[] = [];
-  let child: ChildProcess | undefined;
+  let child: Proc | undefined;
   let busy = false, doing = '', text = '', stopped = false, forgotten = false;
   /** The message it could not answer because claude is not logged in: it waits for the person to log in (agent.login). */
   let waiting: Event | undefined;
@@ -175,7 +188,8 @@ export function createRunner(host: Host) {
   const beat = setInterval(() => { if (busy) cast(true); }, 5000);
   beat.unref?.();
 
-  const keep = () => writeFileSync(file, JSON.stringify({ session, context: session ? context : 0, ...(session && told && { commands: told }), ...(running !== undefined && { running }) }, null, 2));
+  const keep = () => writeFileSync(file, JSON.stringify({ session, context: session ? context : 0, ...(session && told && { commands: told }), ...(running !== undefined && { running, ...(turn && { turn }) }) }, null, 2));
+  onDetach.push(() => keep());
   const forget = () => { session = undefined; context = 0; told = undefined; keep(); };
 
   /**
@@ -320,17 +334,21 @@ export function createRunner(host: Host) {
       // Only the tools below: the person's own default permission mode is not inherited.
       '--permission-mode', 'default', '--allowedTools', ...may.allow, ...(may.deny.length ? ['--disallowedTools', ...may.deny] : []),
     ];
-    const proc = spawn(process.env.CLAUDE_BIN ?? 'claude', args, {
-      cwd: host.code?.work ?? host.project.root, stdio: ['pipe', 'pipe', 'pipe'],
+    const proc = startProc('agent', process.env.CLAUDE_BIN ?? 'claude', args, {
+      cwd: host.code?.work ?? host.project.root, input: prompt,
       // `tandem` on its path is the engine's command line, talking to this core.
       env: { ...process.env, PATH: `${join(ROOT, 'bin')}${delimiter}${process.env.PATH ?? ''}`, TANDEM_BY: 'agent:main', TANDEM_ROUND: round },
     });
-    proc.stdin!.on('error', () => { /* it went before it read it; its exit says why */ });
-    proc.stdin!.end(prompt);
+    watch(ev, proc, { retry, said: 0, lastSaid: '', calls: {} });
+  }
+
+  /** What a turn writes, as it writes it, until it ends. */
+  function watch(ev: Event, proc: Proc, t: Turn) {
+    const round = `r${ev.n}`;
     child = proc;
-    let buf = '', err = '', said = 0, failed = '', lastSaid = '';
-    /** What it is doing with a tool right now, by the id of the call: what the tool answers is said with it. */
-    const calls = new Map<string, { tool: string; change?: string }>();
+    turn = t;
+    const { retry, calls } = t;
+    let buf = '', err = '', failed = '';
     let seen = 0;
     const timer = setTimeout(() => { failed = 'it took more than fifteen minutes and was stopped'; proc.kill(); }, 15 * 60_000);
     const say = (t: string, extra: Record<string, unknown> = {}) => host.events.add({ type: 'message', by: 'agent', text: t, round, ...extra });
@@ -361,7 +379,7 @@ export function createRunner(host: Host) {
           const now = u ? (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.output_tokens ?? 0) : 0;
           if (now && now !== context) { context = now; keep(); cast(true); }
           for (const block of msg.message?.content ?? []) {
-            if (block.type === 'text' && block.text.trim()) { said++; text = ''; lastSaid = block.text.trim(); say(lastSaid); }
+            if (block.type === 'text' && block.text.trim()) { t.said++; text = ''; t.lastSaid = block.text.trim(); say(t.lastSaid); }
             if (block.type === 'tool_use') {
               const cmd = String(block.input?.command ?? '');
               const m = cmd.match(/\btandem\s+run\s+([\w.]+)/);
@@ -373,7 +391,7 @@ export function createRunner(host: Host) {
                 // A picture it looks at (of the page, or one the person shared) is shown with it.
                 const file = block.name === 'Read' ? String(block.input?.file_path ?? '') : '';
                 const picture = [['looks', host.dirs.looks], ['files', host.dirs.files]].map(([kind, dir]) => { const rel = within(dir, file); return rel && /\.(png|jpe?g|gif|webp)$/i.test(rel) ? `/api/file/${kind}/${encodeURIComponent(rel)}` : ''; }).find(Boolean);
-                if (block.id) calls.set(String(block.id), { tool: String(block.name), change: changeOf(String(block.name), block.input ?? {}) });
+                if (block.id) calls[String(block.id)] = { tool: String(block.name), change: changeOf(String(block.name), block.input ?? {}) };
                 host.events.add({ type: 'agent.did', by: 'agent', round, did, ...(block.id && { id: String(block.id) }), ...(picture && { picture }), ...countOf(String(block.name), block.input ?? {}) });
               }
             }
@@ -381,11 +399,11 @@ export function createRunner(host: Host) {
         } else if (msg.type === 'user') {
           // What a tool answered: kept with what the agent did, so the conversation shows how it went.
           for (const block of Array.isArray(msg.message?.content) ? msg.message.content : []) {
-            const call = block?.type === 'tool_result' ? calls.get(String(block.tool_use_id)) : undefined;
+            const call = block?.type === 'tool_result' ? calls[String(block.tool_use_id)] : undefined;
             if (!call) continue;
             // A change that went in is said by its lines; one that did not, by what the tool said about it.
             const change = block.is_error ? undefined : call.change;
-            calls.delete(String(block.tool_use_id));
+            delete calls[String(block.tool_use_id)];
             // A picture it was given (it read one, from anywhere) is kept, so the person sees what it saw.
             const image = Array.isArray(block.content) ? block.content.find((c: any) => c?.type === 'image' && c.source?.type === 'base64' && typeof c.source.data === 'string') : undefined;
             let picture: string | undefined;
@@ -400,7 +418,7 @@ export function createRunner(host: Host) {
           }
         } else if (msg.type === 'result') {
           if (msg.is_error) failed = String(msg.result ?? msg.subtype ?? 'it failed');
-          else if (!said && msg.result) say(String(msg.result).trim());
+          else if (!t.said && msg.result) say(String(msg.result).trim());
         }
       }
     });
@@ -417,7 +435,7 @@ export function createRunner(host: Host) {
         // Not a conversation that is gone: claude is not logged in. The message waits, and the person is asked to.
         waiting = ev;
         host.events.add({ type: 'login', by: 'engine', text: failed || err.trim().split('\n').pop() || '' });
-      } else if ((failed || code !== 0) && session && !retry && !said) {
+      } else if ((failed || code !== 0) && session && !retry && !t.said) {
         // Most often the conversation to resume is gone; start a new one, once.
         forget();
         return run(ev, true);
@@ -426,7 +444,7 @@ export function createRunner(host: Host) {
       // and the chat stops offering it.
       else if ((ev.kind === 'init' || ev.kind === 'resume') && setupAsked()) host.events.add({ type: 'setup.done', by: 'agent' });
       // What its working copy now differs from the project is the change set the person gets to play and decide.
-      try { host.proposeCode('agent:main', lastSaid); } catch (e) { say(`(The working copy could not be compared with the project: ${e instanceof Error ? e.message.split('\n')[0] : e})`, { error: true }); }
+      try { host.proposeCode('agent:main', t.lastSaid); } catch (e) { say(`(The working copy could not be compared with the project: ${e instanceof Error ? e.message.split('\n')[0] : e})`, { error: true }); }
       if (session && context > CONTEXT_LIMIT) {
         say(`(The conversation reached ${Math.round(context / 1000)}k tokens; the next message starts a new one.)`);
         forget();
@@ -434,6 +452,7 @@ export function createRunner(host: Host) {
       host.turnOver();
       // The turn is over, however it went: there is nothing to take up again.
       running = undefined;
+      turn = undefined;
       keep();
       busy = false; doing = ''; text = '';
       cast(true);
@@ -475,7 +494,14 @@ export function createRunner(host: Host) {
 
   // Tandem was started again in the middle of a turn (a change to tandem itself, another project opened and this
   // one again, a crash): the turn was cut off with it. The agent is told, and carries on where it was.
-  if (cutOff && !off) {
+  // Still running (the core started again, the agent went on): it is taken up where it is.
+  const still = cutOff ? runningProc('agent') : undefined;
+  const was = still && host.events.since(0).find((e) => e.n === running);
+  if (still && was && !off) {
+    busy = true; doing = 'working';
+    watch(was, still, turn ?? { retry: false, said: 0, lastSaid: '', calls: {} });
+  } else if (still) still.kill();
+  else if (cutOff && !off) {
     const resume = setTimeout(() => host.events.add({
       type: 'message', by: 'engine', kind: 'resume',
       text: 'Tandem was started again while you were in the middle of your turn, and the turn was cut off. Whatever you had already proposed or changed still stands: look at what is there (proposals.list, and your working copy if you were coding), then carry on from where you were and finish. Do not start over, and do not propose again what is already waiting.',

@@ -13,12 +13,26 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
-async function call(path: string, init?: RequestInit) {
+/** Tandem is there, and its core is starting (again): what looks after the core answers on its own port meanwhile. */
+async function starting() {
   try {
-    const res = await fetch(base + path, init);
-    return await res.json() as any;
-  } catch (e) {
-    fail(`the tandem server is not answering on ${base} (${e instanceof Error ? e.message : e}). Start tandem in the project's folder`);
+    await fetch(`http://127.0.0.1:${process.env.TANDEM_STATUS_PORT ?? 5202}/`, { signal: AbortSignal.timeout(1000) });
+    return true;
+  } catch { return false; }
+}
+
+async function call(path: string, init?: RequestInit) {
+  // The core starts again after code is accepted, while the agent goes on: what it asks meanwhile waits for it.
+  const until = Date.now() + 90_000;
+  for (;;) {
+    try {
+      const res = await fetch(base + path, init);
+      return await res.json() as any;
+    } catch (e) {
+      const refused = (e as { cause?: { code?: string } }).cause?.code === 'ECONNREFUSED';
+      if (refused && Date.now() < until && await starting()) { await new Promise((r) => setTimeout(r, 500)); continue; }
+      fail(`the tandem server is not answering on ${base} (${e instanceof Error ? e.message : e}). Start tandem in the project's folder`);
+    }
   }
 }
 

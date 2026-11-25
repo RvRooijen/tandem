@@ -12,7 +12,8 @@
 // change to the code is accepted (exit code 75: it holds the project's adapter
 // as it was when it started), and when another project is opened (76: then the
 // project's page is started again too, on the new one; 77: how the project is
-// run was changed, and its page is started again with that). Tandem's page stays up.
+// run was changed, and its page is started again with that). Tandem's page stays up, and so do the agent and the
+// drawing workers when the core starts again on the same project: they are started here (core/procs.ts).
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:http';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -22,6 +23,7 @@ import { serveBuilt } from './built.ts';
 import { SETUP, loadProject, startTree, stopTree } from './project.ts';
 import { SWITCH, opening, readState, writeState } from './projects.ts';
 import { innerPort, startThrough } from './through.ts';
+import { createProcHost } from './procs.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PAGE_PORT = Number(process.env.TANDEM_PAGE_PORT ?? 5210);
@@ -30,6 +32,8 @@ const STATUS_PORT = Number(process.env.TANDEM_STATUS_PORT ?? 5202);
 let starting = { name: '', root: '', doing: '', since: Date.now() };
 let core: ChildProcess | undefined, page: ChildProcess | undefined, paging: string | undefined;
 let stopping = false;
+/** The agent and the workers: started here for the core, so that they go on while it starts again (core/procs.ts). */
+const procs = createProcHost();
 
 // A folder named on the command line is the one to open; otherwise the one that was open last.
 const named = process.argv.slice(2).find((a) => !a.startsWith('-')) ?? process.env.TANDEM_PROJECT;
@@ -57,9 +61,15 @@ function startProject() {
 
   console.log(project ? `tandem: ${project.name}, in ${project.root}` : 'tandem: no project open; choose one in the page');
   starting = { name: project?.name ?? '', root: project?.root ?? '', doing: 'starting the core', since: Date.now() };
-  core = spawn(process.execPath, ['--no-warnings', 'core/server.ts'], { cwd: ROOT, stdio: ['inherit', 'inherit', 'inherit', 'ipc'], env: { ...env, TANDEM_SUPERVISED: '1' } });
-  core.on('message', (m: { doing?: string; up?: boolean }) => { starting.doing = m.up ? '' : String(m.doing ?? ''); });
-  core.on('exit', (code) => {
+  const mine = spawn(process.execPath, ['--no-warnings', 'core/server.ts'], { cwd: ROOT, stdio: ['inherit', 'inherit', 'inherit', 'ipc'], env: { ...env, TANDEM_SUPERVISED: '1', TANDEM_PROCS: procs.offer() } });
+  core = mine;
+  procs.connect((m) => { if (mine.connected) mine.send(m); });
+  mine.on('message', (m: { doing?: string; up?: boolean }) => {
+    if (procs.message(m as Parameters<typeof procs.message>[0])) return;
+    starting.doing = m.up ? '' : String(m.doing ?? '');
+  });
+  mine.on('exit', (code) => {
+    procs.exited();
     if (stopping) return;
     // How the project is run was changed: its page is started again too, with the new command.
     if (code === SETUP) paging = undefined;
@@ -100,6 +110,7 @@ function stop(code = 0) {
   if (stopping) return;
   stopping = true;
   core?.kill();
+  procs.stopAll();
   status.close();
   stopTree(page);
   stopTree(shell);

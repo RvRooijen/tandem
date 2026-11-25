@@ -5,12 +5,12 @@
 // changed becomes a proposal with a picture before and after, and the agent is
 // told: judging it is the agent's, from the silhouette to taking it into the
 // project. The person watches.
-import { spawn, type ChildProcess } from 'node:child_process';
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EventLog } from '../core/events.ts';
 import { modelFor } from '../core/models.ts';
+import { onDetach, runningProc, startProc, type Proc } from '../core/procs.ts';
 import type { Proposals } from '../core/proposals.ts';
 import type { PictureMaker, Pictures } from './pictures.ts';
 import type { Workspaces } from './workspace.ts';
@@ -67,6 +67,8 @@ As <name> in event.js calls, always use the name of the file you are working on 
 
 Work the way the guide describes (phases, rounds with round and feedback events, shapes written by hand). Work on your own and don't ask questions: at the end of a phase send \`node scripts/event.js phase <name> <form|color>\` and stop with a short summary, then you get feedback.`;
 
+const resumed = (w: Worker) => `Tandem was started again while you were in the middle of your round on art/${w.names[0]}.txt, and the round was cut off. What you already wrote in your files is still there: look at it, then carry on from where you were and finish the round. Do not start over.`;
+
 export interface WorkersOptions {
   spaces: Workspaces;
   events: EventLog;
@@ -80,7 +82,7 @@ export interface WorkersOptions {
 
 export function createWorkers(o: WorkersOptions) {
   const { spaces, events, proposals } = o;
-  const runs = new Map<string, ChildProcess>();
+  const runs = new Map<string, Proc>();
   const stopped = new Set<string>();
 
   /** The workers that are drawing right now, as they are this moment; the others are read from their file. */
@@ -93,10 +95,23 @@ export function createWorkers(o: WorkersOptions) {
   const save = (w: Worker) => writeFileSync(file(w.id), JSON.stringify(w, null, 2));
   const cast = (w: Worker) => events.cast({ type: 'art.status', worker: w.id, name: w.names[0], state: w.state, phase: w.phase, doing: w.doing });
 
-  // A worker that was running when the engine stopped is not running any more.
+  // The core starts again with a worker in the middle of a round: what it said so far is kept, and the next core
+  // takes it up where it is (core/procs.ts).
+  onDetach.push(() => { for (const w of active.values()) save(w); });
+  // A worker that was running when the engine stopped: still running, it is taken up again. When it was stopped
+  // with the engine, it carries on in its own conversation, the way the agent does; without one (it was stopped
+  // before claude said which) it is stopped.
+  let closing = false;
   for (const id of spaces.list()) {
     const w = get(id);
-    if (w?.state === 'running') { w.state = 'stopped'; w.doing = 'stopped when the engine did'; save(w); }
+    if (w?.state !== 'running') continue;
+    const still = runningProc(`worker:${id}`);
+    if (still) { active.set(id, w); watch(w, still); continue; }
+    if (!w.session) { w.state = 'stopped'; w.doing = 'stopped when the engine did'; save(w); continue; }
+    const resume = setTimeout(() => {
+      if (!closing && spaces.exists(id) && !runs.has(id)) run(w, resumed(w));
+    }, 1200);
+    resume.unref?.();
   }
 
   /** Its changes as one round of proposals, each with a picture before and after. */
@@ -122,7 +137,7 @@ export function createWorkers(o: WorkersOptions) {
     save(w); cast(w);
     const edit = w.names.flatMap((n) => [`Edit(art/${n}.txt)`, `Write(art/${n}.txt)`, `Edit(depth/${n}.txt)`, `Write(depth/${n}.txt)`]);
     const { model, effort } = modelFor('workers');
-    const proc = spawn(process.env.CLAUDE_BIN ?? 'claude', [
+    const proc = startProc(`worker:${w.id}`, process.env.CLAUDE_BIN ?? 'claude', [
       // (The request on stdin, the guide as a file: on Windows a command line holds 32,767 characters.)
       '-p', '--append-system-prompt-file', w.kind === 'model' ? MODEL_GUIDE : GUIDE,
       '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
@@ -133,9 +148,12 @@ export function createWorkers(o: WorkersOptions) {
       'Read(art/**)', 'Read(depth/**)', 'Read(out/**)', 'Read(scratch/**)', 'Edit(scratch/**)', 'Write(scratch/**)', ...edit,
       'Bash(node scripts/render.js:*)', 'Bash(node scripts/event.js:*)', 'Bash(node scripts/scratch.js:*)', ...(w.kind === 'model' ? ['Bash(node model/render.ts:*)'] : []),
       // (The model's tools are TypeScript, which node runs as it is and warns about every time: not something a worker has to read.)
-    ], { cwd: spaces.dir(w.id), stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PIXEL_WORKER: w.id, ...(w.kind === 'model' && { NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --no-warnings`.trim() }) } });
-    proc.stdin!.on('error', () => { /* it went before it read it; its exit says why */ });
-    proc.stdin!.end(prompt);
+    ], { cwd: spaces.dir(w.id), input: prompt, env: { CLAUDE_CODE_MAX_OUTPUT_TOKENS: '64000', ...process.env, PIXEL_WORKER: w.id, ...(w.kind === 'model' && { NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --no-warnings`.trim() }) } });
+    watch(w, proc);
+  }
+
+  /** What a run of a worker writes, as it writes it, until it ends: a round. */
+  function watch(w: Worker, proc: Proc) {
     runs.set(w.id, proc);
     let buf = '', err = '', failed = '', lastCast = 0;
     const timer = setTimeout(() => { failed = 'it took more than forty minutes and was stopped'; proc.kill(); }, 40 * 60_000);
@@ -183,7 +201,7 @@ export function createWorkers(o: WorkersOptions) {
       for (const line of lines) {
         let msg: any;
         try { msg = JSON.parse(line); } catch { continue; }
-        if (msg.session_id) w.session = msg.session_id;
+        if (msg.session_id && msg.session_id !== w.session) { w.session = msg.session_id; save(w); }
         if (msg.type === 'stream_event') {
           const e = msg.event;
           if (e?.type === 'content_block_start') {
@@ -224,6 +242,7 @@ export function createWorkers(o: WorkersOptions) {
       runs.delete(w.id);
       active.delete(w.id);
       if (!spaces.exists(w.id)) return;                        // closed while it ran
+      if (closing) return;                                     // the engine stops: it carries on when it starts again
       const wasStopped = stopped.delete(w.id);
       if (wasStopped) { w.state = 'stopped'; w.doing = 'stopped'; }
       else if (failed || code !== 0) { w.state = 'failed'; w.doing = failed || err.trim().split('\n').pop() || `claude ended with code ${code}`; }
@@ -318,7 +337,7 @@ export function createWorkers(o: WorkersOptions) {
       spaces.remove(id);
     },
 
-    stopAll() { for (const proc of runs.values()) proc.kill(); },
+    stopAll() { closing = true; for (const proc of runs.values()) proc.kill(); },
   };
 }
 

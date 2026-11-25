@@ -24,6 +24,7 @@ import { createProposals, type Json, type Proposal, type Proposals, type RecordV
 import { createArt, type Art } from '../art/commands.ts';
 import { ecsCommands } from '../ecs/inspect.ts';
 import { compare, type Pacing } from '../playtest/pacing.ts';
+import { detach } from './procs.ts';
 
 /** Where the engine itself is. */
 export const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -226,8 +227,10 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     if (again !== SETUP) again = code;
     if (!first) return;
     // (A moment after the last command, so that whoever asked still gets its answer; a command that came in that moment is waited for too.)
-    const go = () => void registry.idle().then(() => setTimeout(() => {
+    const go = () => void registry.idle().then(() => setTimeout(async () => {
       if (registry.running()) return go();
+      // The agent and the workers go on meanwhile, and the next core takes them up.
+      await detach();
       for (const stop of onStop) stop();
       process.exit(again);
     }, 600));

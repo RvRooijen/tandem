@@ -25,6 +25,7 @@ import { createArt, type Art } from '../art/commands.ts';
 import { ecsCommands } from '../ecs/inspect.ts';
 import { compare, type Pacing } from '../playtest/pacing.ts';
 import { detach } from './procs.ts';
+import { readState, writeState } from './projects.ts';
 
 /** Where the engine itself is. */
 export const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -1634,13 +1635,19 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
     },
     {
       name: 'page.take', kind: 'write', agent: 'free',
-      about: 'Ask the person to let you have the project\'s page on their screen for a while, to try what you made yourself instead of leaving it to them: why is what you want to see, in a few words. Waits for their answer (yes, or not now). While you have it, page.look, page.tap, page.type and page.go also give a picture of the page as it is on their screen (picture: a file to Read; size: how large it is), so you see what a canvas draws, and page.tap takes a place in that picture (x, y). They watch, and can take it back. Give it back with page.release when you have seen what you needed; it also ends with your turn.',
+      about: 'Ask the person to let you have the project\'s page on their screen for a while, to try what you made yourself instead of leaving it to them: why is what you want to see, in a few words. Waits for their answer (yes, or not now); when they let you take it without asking (page.free), it is yours at once. While you have it, page.look, page.tap, page.type and page.go also give a picture of the page as it is on their screen (picture: a file to Read; size: how large it is), so you see what a canvas draws, and page.tap takes a place in that picture (x, y). They watch, and can take it back. Give it back with page.release when you have seen what you needed; it also ends with your turn.',
       input: { why: 'string' },
       async run(c, i) {
         if (!project.pageCommand(0)) throw new CommandError('unsupported', 'this project has no page set up in tandem (project.configure: page)');
         if (!i.why.trim()) throw new CommandError('input', 'why says what you want to see, in a few words: the person reads it before they answer');
         if (held && held.by === c.by) { hold(c.by); return { taken: true }; }
         const id = `t${Date.now().toString(36)}${++asking}`;
+        // The person let it take the page without asking (page.free); not when they took it back this turn.
+        if (readState().pageFree && !takenBack) {
+          events.add({ type: 'page.taken', by: 'engine', id, allow: true, free: true, why: i.why.trim() });
+          hold(c.by);
+          return { taken: true };
+        }
         events.add({ type: 'page.take', by: c.by, id, why: i.why.trim() });
         const allow = await new Promise<boolean | undefined>((resolve) => {
           taking.set(id, resolve);
@@ -1654,6 +1661,16 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         takenBack = false;
         hold(c.by);
         return { taken: true };
+      },
+    },
+    {
+      name: 'page.free', kind: 'write',
+      about: 'Whether the agent may take the project\'s page (page.take) without asking first, in every project; without free, it says whether it may now. When the person takes the page back, the agent asks again that turn. Only the person sets this.',
+      input: { free: 'boolean?' },
+      run(_c, i) {
+        const state = readState();
+        if (i.free !== undefined) writeState({ ...state, pageFree: i.free });
+        return { free: i.free ?? !!state.pageFree };
       },
     },
     {

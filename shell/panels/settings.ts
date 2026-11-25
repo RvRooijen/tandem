@@ -80,6 +80,11 @@ export function settingsPanel(): Panel {
         onchange: () => { if (shareBox.checked) void capture.share().then((on) => { shareBox.checked = on; }); else capture.stop(); },
       });
       const unsubscribe = capture.onChange(() => { if (!shareBox.isConnected) return unsubscribe(); shareBox.checked = capture.sharing(); });
+      const pageBox = h<'input'>('input.switch', {
+        type: 'checkbox', role: 'switch', 'aria-label': 'Page without asking', disabled: true,
+        onchange: () => void app.act<{ free: boolean }>('page.free', { free: pageBox.checked }).then((got) => { if (got) pageBox.checked = got.free; }),
+      });
+      void app.act<{ free: boolean }>('page.free').then((got) => { if (got) { pageBox.checked = got.free; pageBox.disabled = false; } });
       const models = h('div.models', {});
       const deps = h('div.deps', {});
       clear(body, [
@@ -92,6 +97,8 @@ export function settingsPanel(): Panel {
             h('label.keep', {}, shareBox, h('span', {}, 'Real pictures')),
             h('p.hint', {}, 'Shares this tab, so what the agent sees of the page and what you point at is a picture of the screen itself. It is asked for too when you let the agent use the page, and the first time you point at something. Off, the page is drawn again from its styles, which is not always what you see. Tandem\'s Chrome extension (the extension folder in tandem, loaded unpacked) does it without sharing.'),
           ],
+        h('label.keep', {}, pageBox, h('span', {}, 'Page without asking')),
+        h('p.hint', {}, 'The agent takes the project\'s page to try what it made without asking you first, in every project. You can still take it back; then it asks again.'),
         models,
         deps,
       ]);

@@ -682,7 +682,7 @@ export function chatPanel(): Panel {
       case 'page.take':
         return h('div.sys', {}, icon('page'), ` the agent asked to use the page: ${String(ev.why ?? '')}`);
       case 'page.taken':
-        return h('div.sys', {}, icon('page'), ev.allow ? ' you let the agent use the page' : ev.by === 'me' ? ' you said not now' : ' the agent\'s asking for the page went unanswered');
+        return h('div.sys', {}, icon('page'), ev.free ? ` the agent took the page: ${String(ev.why ?? '')}` : ev.allow ? ' you let the agent use the page' : ev.by === 'me' ? ' you said not now' : ' the agent\'s asking for the page went unanswered');
       case 'page.released':
         return h('div.sys', {}, icon('page'), ev.by === 'me' ? ' you took the page back' : ` the page is yours again${ev.why ? `: ${ev.why}` : ''}`);
       case 'project.ran':

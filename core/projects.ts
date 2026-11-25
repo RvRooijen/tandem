@@ -25,6 +25,8 @@ export interface State {
   opened?: Record<string, number>;
   /** The model and effort chosen for the agent and for the workers (core/models.ts). */
   models?: Partial<Record<'agent' | 'workers', { model?: string; effort?: string }>>;
+  /** The agent may take the project's page without asking (page.take), in every project. */
+  pageFree?: boolean;
 }
 
 const stateFile = () => process.env.TANDEM_STATE ?? join(homedir(), '.tandem', 'state.json');

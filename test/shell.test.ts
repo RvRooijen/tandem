@@ -1025,6 +1025,20 @@ test('the agent shows things on the person\'s screen', async () => {
   assert.deepEqual(await host.run('page.release', {}, AGENT), { released: true });
   await until(() => $('#t-held').hidden, 'the mark to go');
   assert.deepEqual(host.events.since(0).filter((e) => e.type.startsWith('page.t') || e.type === 'page.released').slice(-3).map((e) => [e.type, e.by, e.allow]), [['page.take', AGENT, undefined], ['page.taken', 'me', true], ['page.released', AGENT, undefined]]);
+  // The person lets it take the page without asking (in the settings): it has it at once. Only the person says so.
+  await assert.rejects(host.run('page.free', { free: true }, AGENT) as Promise<any>, /the person's to do/);
+  assert.deepEqual(await host.run('page.free', { free: true }, 'me'), { free: true });
+  assert.deepEqual(await host.run('page.take', { why: 'to see the shop' }, AGENT), { taken: true });
+  await until(() => !$('#t-held').hidden && $('#t-take').hidden, 'the mark, without asking');
+  // Taken back, it asks again that turn.
+  click(button('Take it back', $('#t-held')));
+  await until(() => $('#t-held').hidden, 'the mark to go');
+  const askedAgain = host.run('page.take', { why: 'once again' }, AGENT) as Promise<any>;
+  await until(() => !$('#t-take').hidden, 'the asking');
+  click(button('Not now', $('#t-take')));
+  await assert.rejects(askedAgain, /not now/);
+  host.turnOver();
+  assert.deepEqual(await host.run('page.free', { free: false }, 'me'), { free: false });
   toFrame.length = 0;
   // What the page refuses, the agent is told as it is.
   const typing = assert.rejects(host.run('page.type', { at: 'Surname', text: 'x' }, AGENT), /there is no field on the page called "Surname"/);
@@ -1801,6 +1815,12 @@ test('projects: the folders that could be one are listed, and another is chosen 
   await until(() => gave.filter(([n]) => n === 'models.set').length === 2, 'both to be chosen');
   assert.deepEqual(gave.filter(([n]) => n === 'models.set').map(([, i]) => i), [{ who: 'agent', model: 'claude-opus-5-5' }, { who: 'workers', effort: 'max' }]);
   await until(() => { try { return JSON.parse(readFileSync(process.env.TANDEM_STATE!, 'utf8')).models?.workers?.effort === 'max'; } catch { return false; } }, 'it to be kept');
+  // (And whether the agent may take the project's page without asking.)
+  const pageFree = $('input[aria-label="Page without asking"]') as HTMLInputElement;
+  await until(() => !pageFree.disabled, 'the switch to know how it is');
+  assert.equal(pageFree.checked, false);
+  click(pageFree);
+  await until(() => { try { return JSON.parse(readFileSync(process.env.TANDEM_STATE!, 'utf8')).pageFree === true; } catch { return false; } }, 'it to be kept');
   tab('Projects');
   await until(() => all('.item.project').length >= 3, 'the folders again');
   const item = (name: string) => all('.item.project').find((i) => $('b', i).textContent === name)!;

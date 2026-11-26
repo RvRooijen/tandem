@@ -222,6 +222,20 @@ test('chat: a message goes out, the agent answers with a proposal, and it is acc
   await until(() => !app.agent.busy, 'the agent to be done');
 });
 
+test('chat: while the tests run before an accept, nothing can be said, and how they went is a line in the chat', async () => {
+  const box = $('.composer textarea') as HTMLTextAreaElement;
+  const testing = (on: boolean) => host.events.cast({ type: 'agent.status', busy: false, doing: '', text: '', waiting: 0, session: true, off: false, testing: on, context: 0, limit: 0 });
+  testing(true);
+  await until(() => box.disabled, 'the message field to be shut');
+  assert.ok((button('Send') as HTMLButtonElement).disabled);
+  assert.match($('.agent-status').textContent!, /Running the tests before the change set is accepted/);
+  host.events.add({ type: 'code.tested', by: 'me', ok: false, command: 'npm test' });
+  testing(false);
+  await until(() => !box.disabled, 'the message field to be open again');
+  assert.ok(!(button('Send') as HTMLButtonElement).disabled);
+  assert.match(all('.sys.engine').at(-1)!.textContent!, /npm test failed, so the change set was not accepted/);
+});
+
 test('chat: what waits is one card, whichever turn of the agent it came from, and it is decided as one', async () => {
   for (const name of ['Poppies', 'Thistles']) await host.run('concepts.create', { name, text: `${name} grow.` }, AGENT, 'r950');
   await host.run('concepts.create', { name: 'Clover', text: 'Clover grow.' }, AGENT, 'r951');

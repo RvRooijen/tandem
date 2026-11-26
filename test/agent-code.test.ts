@@ -355,6 +355,27 @@ test('an accepted change to what the project depends on is installed in the proj
   } finally { delete process.env.TANDEM_NPM; }
 });
 
+test('a change set is accepted only when the whole of the tests pass in the copy; when they fail, the agent is told', async () => {
+  writeFileSync(join(copy, 'src/broken.test.js'), "import { test } from 'node:test';\ntest('frost', () => { throw new Error('frost is not cold'); });\n");
+  host.proposeCode('agent:main', 'Frost, with a test that fails.');
+  const before = answers().length;
+  await refused(me('proposals.decide', { accept: true }), 'failed');
+  assert.ok(!existsSync(join(dir, 'src/broken.test.js')), 'not accepted');
+  assert.equal((await me('proposals.list', { status: 'pending' })).length, 1, 'it still waits');
+  assert.deepEqual([host.events.since(0).filter((e) => e.type === 'code.tested').at(-1)!.ok, host.events.since(0).filter((e) => e.type === 'code.tested').at(-1)!.command], [false, 'node --test']);
+  const told = host.events.since(0).filter((e) => e.type === 'message' && e.by === 'engine' && e.kind === 'tests').at(-1)!;
+  assert.match(String(told.text), /`node --test` failed in your working copy, so it was not accepted[\s\S]*frost is not cold/);
+  await until(() => answers().length === before + 1, 'the agent to answer the engine');
+  await idle();
+
+  writeFileSync(join(copy, 'src/broken.test.js'), "import { test } from 'node:test';\ntest('frost', () => {});\n");
+  host.proposeCode('agent:main', 'Frost, with a test that passes.');
+  await me('proposals.decide', { accept: true });
+  assert.ok(existsSync(join(dir, 'src/broken.test.js')), 'accepted');
+  assert.deepEqual(host.events.since(0).filter((e) => e.type === 'code.tested').at(-1)!.commands, ['node --test', 'node check.mjs']);
+  assert.equal(s.runner!.status().testing, false);
+});
+
 test('a change set says which concepts it is for: on the card, in the commit, and with the concept from then on', async () => {
   await me('concepts.create', { name: 'The year turns', text: 'Seasons follow each other.' });
   await me('concepts.create', { name: 'Frost' });
@@ -480,6 +501,8 @@ test('a project that is not committed for gets what is accepted in its files, un
     writeFileSync(join(copy, 'src/weather.js'), 'export const RAIN = 1;\n');
     host.proposeCode('agent:main', 'Weather.');
     assert.deepEqual(await files(), ['new src/weather.js']);
+    // (What was accepted before is told to the agent: an accept waits for its turn to be over.)
+    await idle();
     await me('proposals.decide', { accept: true });
     assert.equal(readFileSync(join(dir, 'src/weather.js'), 'utf8'), 'export const RAIN = 1;\n');
     assert.equal(git('rev-parse', 'HEAD'), head, 'not committed');
@@ -522,6 +545,7 @@ test('a project that is not committed for gets what is accepted in its files, un
     writeFileSync(join(copy, 'src/weather.js'), 'export const RAIN = 4;\n');
     host.proposeCode('agent:main', 'A storm.');
     assert.deepEqual(await files(), ['changed src/weather.js']);
+    await idle();
     await me('proposals.decide', { accept: true });
     assert.notEqual(git('rev-parse', 'HEAD'), head);
     assert.equal(git('status', '--porcelain'), '', 'committed');

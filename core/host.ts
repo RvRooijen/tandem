@@ -62,8 +62,10 @@ export interface Host {
   turnOver(): void;
   /** Things to stop before the core does. */
   onStop: (() => void)[];
-  /** Why the project cannot be put on another footing right now (the agent or a worker is at work in it), as whoever starts them says it. */
-  busy: { why?: () => string | undefined };
+  /** Why the project cannot be put on another footing right now (the agent or a worker is at work in it), as whoever starts them says it; agent: whether the agent is in the middle of a turn. */
+  busy: { why?: () => string | undefined; agent?: () => boolean };
+  /** Whether the project's tests are running in the working copy before its change set is accepted: the agent waits for that. */
+  testing(): boolean;
   dirs: { project: string; data: string; looks: string; files: string };
   /** Run a command as somebody. */
   run(name: string, input: Record<string, unknown> | undefined, by: By, round?: string): Promise<unknown>;
@@ -125,7 +127,8 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   const locks = createLocks(project.locksFile);
   const thoughts = createThoughts(join(project.dirs.tandem, 'thoughts.json'));
   const onStop: (() => void)[] = [];
-  const busy: { why?: () => string | undefined } = {};
+  const busy: Host['busy'] = {};
+  let testing = false;
 
   // Working files and project files: the agent codes in a copy of its own (code.ts), when the project is in a
   // repository. What the engine itself writes in the project (concepts, locks, accepted drawings) is committed by
@@ -412,6 +415,59 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         resolve(err ? (String(said).trim().split('\n').filter((l) => /\berr\b/i.test(l)).slice(0, 2).join(' ') || err.message.split('\n')[0]).slice(0, 300) : true);
       });
     });
+  }
+
+  /**
+   * What is run in the working copy before its change set is accepted: the project's tests (`npm test` when tandem
+   * was not told and its package.json has them) and its type check.
+   */
+  function acceptChecks(): string[] {
+    let test = project.config.test;
+    if (!test && code) {
+      try {
+        const said = JSON.parse(readFileSync(join(code.work, 'package.json'), 'utf8')).scripts?.test;
+        if (typeof said === 'string' && !/no test specified/.test(said)) test = 'npm test';
+      } catch { /* no package.json, or none that says */ }
+    }
+    return [test, project.config.check].filter((c): c is string => !!c);
+  }
+
+  /**
+   * The change set is accepted only when the whole of the project's tests pass in the working copy: the agent runs
+   * only what covers its change, and this is where everything else is run. While it runs, the agent waits. What
+   * failed, and what it said, is said to the agent, whose work it is to fix it.
+   */
+  async function testBeforeAccept(by: By): Promise<string | undefined> {
+    const checks = acceptChecks();
+    if (!code || !checks.length) return undefined;
+    testing = true;
+    events.cast({ type: 'code.testing', by, running: true });
+    // (A core that is itself run by node --test, as in tandem's own tests, passes NODE_TEST_CONTEXT on: the project's node --test would then report to it instead of failing.)
+    const env = { ...process.env };
+    delete env.NODE_TEST_CONTEXT;
+    try {
+      for (const command of checks) {
+        const got = await new Promise<{ ok: boolean; out: string }>((done) => {
+          execFile('sh', ['-c', command], { cwd: code.work, env, timeout: 30 * 60_000, maxBuffer: 50e6, windowsHide: true }, (err, stdout, stderr) => {
+            done({ ok: !err, out: `${stdout}${stderr}`.trim() + (err?.killed ? '\n(stopped after thirty minutes)' : '') });
+          });
+        });
+        if (got.ok) continue;
+        const out = got.out.length > 4000 ? `…${got.out.slice(-4000)}` : got.out;
+        testing = false;
+        events.add({ type: 'code.tested', by, ok: false, command });
+        events.add({
+          type: 'message', by: 'engine', kind: 'tests',
+          text: `The person accepted your change set, but \`${command}\` failed in your working copy, so it was not accepted: it still waits. The end of what it said:\n\n\`\`\`\n${out}\n\`\`\`\n\nFix it, run what failed again, and when the change set is different now, say again what it does (code.describe).`,
+        });
+        return `\`${command}\` failed, so it was not accepted; the agent was told what it said`;
+      }
+      testing = false;
+      events.add({ type: 'code.tested', by, ok: true, commands: checks });
+      return undefined;
+    } finally {
+      if (testing) { testing = false; events.cast({ type: 'code.testing', by, running: false }); }
+    }
   }
 
   /**
@@ -1090,9 +1146,15 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
       about: 'Accept or reject what is proposed: everything that waits for the person is one set (concepts, how the project is run, the working copy\'s change set), and it is decided as one. Accepting makes the changes real; rejecting also makes the working copy the project again. What a drawing worker proposed is not part of it.',
       input: { accept: 'boolean' },
       async run(c, i) {
+        if (testing) throw new CommandError('busy', 'the tests are running before the change set is accepted: wait for them');
         const pending = waiting();
         if (!pending.length) throw new CommandError('missing', 'nothing is waiting to be decided');
         let taken: FileChange[] = [];
+        if (i.accept && code && pending.some((p) => p.kind === 'code')) {
+          if (busy.agent?.()) throw new CommandError('busy', 'the agent is in the middle of its turn: accept when it is done, so that the tests run on what it finished');
+          const failed = await testBeforeAccept(c.by);
+          if (failed) throw new CommandError('failed', failed);
+        }
         if (i.accept) {
           // The working copy goes into the project first: if it does not go in cleanly, nothing is accepted.
           if (code && pending.some((p) => p.kind === 'code')) {
@@ -1742,7 +1804,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
         : `${d.name} (${d.isNew ? 'new' : 'changed'}; ${d.w}×${d.h}; looks: ${d.looks.join(', ')}; animations: ${Object.entries(d.anims).map(([a, n]) => `${a} ×${n}`).join(', ')}${d.depth ? '; with a depth map' : ''})`).join('; ');
       events.add({
         type: 'message', by: 'engine', refs: drawings.map((d) => `drawing:${d.name}`),
-        text: `Art was accepted into the project: ${what}. It is in the project's art files and in your working copy, but the project does not use it yet. Bring it in: build the drawings in your working copy (the project's own build for them, or \`tandem export <folder>\` when it has none; that writes a 3D model as <folder>/<name>.glb and lists it in <folder>/models.json), make the project use what is new about ${drawings.length === 1 ? 'it' : 'them'}, run the tests, and say in a few words what you did and what is left.`,
+        text: `Art was accepted into the project: ${what}. It is in the project's art files and in your working copy, but the project does not use it yet. Bring it in: build the drawings in your working copy (the project's own build for them, or \`tandem export <folder>\` when it has none; that writes a 3D model as <folder>/<name>.glb and lists it in <folder>/models.json), make the project use what is new about ${drawings.length === 1 ? 'it' : 'them'}, run the tests that cover that, and say in a few words what you did and what is left.`,
       });
     }),
   });
@@ -1757,7 +1819,7 @@ export async function createHost(opts: HostOptions = {}): Promise<Host> {
   );
 
   return {
-    project, game: hasGame ? game : undefined, registry, events, proposals, concepts, thoughts, locks, art, code, preview, views, proposeCode, tweaked, onStop, busy,
+    project, game: hasGame ? game : undefined, registry, events, proposals, concepts, thoughts, locks, art, code, preview, views, proposeCode, tweaked, onStop, busy, testing: () => testing,
     turnOver() { release('engine', 'the agent\'s turn is over'); takenBack = false; wantExample(); },
     dirs: { project: project.root, data: dataDir, looks: looksDir, files: filesDir },
     run: (name, input, by, round) => registry.run(name, input, { by, round }),

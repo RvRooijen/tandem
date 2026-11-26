@@ -48,6 +48,7 @@ export async function startServer(opts: { port?: number; host?: Host; agent?: bo
   if (runner) host.registry.add(...runner.commands);
   // Whoever stops the core stops what it started, the agent and the workers; when it only starts again they go on (core/procs.ts).
   host.onStop.push(() => runner?.stop(), () => host.art.workers.stopAll());
+  host.busy.agent = () => !!runner?.status().busy;
   host.busy.why = () => (runner?.status().busy ? 'the agent is in the middle of something here; stop it or let it finish first' : host.art.workers.list().some((w) => w.state === 'running') ? 'a worker is drawing here; stop it or let it finish first' : undefined);
   // Another project is opened from the page: the core ends, and whoever looks after it starts it on that one.
   host.registry.add(...modelCommands(), ...depCommands(), ...projectCommands({

@@ -376,7 +376,7 @@ export function createApp(root: HTMLElement, info: Info, stage: Stage, panels: P
   const app: App & { feed(ev: Event, live: boolean): void; stageChanged(): void } = {
     info, stage,
     events: [],
-    agent: { busy: false, doing: '', text: '', waiting: 0, session: false, off: false, context: 0, limit: 0 },
+    agent: { busy: false, doing: '', text: '', waiting: 0, session: false, off: false, testing: false, context: 0, limit: 0 },
     refs: [],
     pictures: new Map(),
     pictured: Promise.resolve(),

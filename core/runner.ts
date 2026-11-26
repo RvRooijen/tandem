@@ -132,6 +132,8 @@ export function countOf(name: string, input: Record<string, unknown>): { added: 
 
 export interface AgentStatus {
   busy: boolean; doing: string; text: string; waiting: number; session: boolean; off: boolean;
+  /** The project's tests are running before a change set is accepted: nothing is said to the agent until they are done. */
+  testing: boolean;
   /** How big the conversation is, in tokens, and where it starts over by itself. */
   context: number; limit: number;
 }
@@ -178,7 +180,7 @@ export function createRunner(host: Host) {
   let login: { proc: ChildProcess; url: string; out: string } | undefined;
   let lastCast = 0;
 
-  const status = (): AgentStatus => ({ busy, doing, text: text.slice(-600), waiting: queue.length, session: !!session, off, context: session ? context : 0, limit: CONTEXT_LIMIT });
+  const status = (): AgentStatus => ({ busy, doing, text: text.slice(-600), waiting: queue.length, session: !!session, off, testing: host.testing(), context: session ? context : 0, limit: CONTEXT_LIMIT });
   function cast(force = false) {
     const now = Date.now();
     if (!force && now - lastCast < 250) return;
@@ -463,12 +465,13 @@ export function createRunner(host: Host) {
   }
 
   function next() {
-    if (busy || off || waiting) return;
+    if (busy || off || waiting || host.testing()) return;
     const ev = queue.shift();
     if (ev) run(ev);
   }
 
   const unsubscribe = host.events.subscribe((ev) => {
+    if (ev.type === 'code.testing' || ev.type === 'code.tested') { cast(true); return next(); }
     if (ev.n > 0 && ev.type === 'chat.new') {
       // A new conversation: nothing is waiting any more, and nothing is remembered.
       queue.length = 0;

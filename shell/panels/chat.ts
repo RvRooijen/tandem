@@ -266,11 +266,16 @@ export function chatPanel(): Panel {
     clear(usage, h('span', {}, `${k(a.context)} / ${k(a.limit)} tokens`), h('span.bar', {}, h('i', { style: `width:${Math.min(100, (a.context / a.limit) * 100).toFixed(1)}%` })));
   }
 
+  let held = false;
   function paintStatus() {
     paintUsage();
     const a = app.agent;
-    status.hidden = !a.busy && !a.off;
+    // (While the tests run before an accept, nothing can be said: the agent waits for them. Only when that changes:
+    // the send button is also disabled for a moment by being pressed.)
+    if (held !== !!a.testing) { held = !!a.testing; input.disabled = sendBtn.disabled = held; }
+    status.hidden = !a.busy && !a.off && !a.testing;
     if (a.off) return clear(status, h('span', {}, 'The agent is switched off on this server.'));
+    if (a.testing) return clear(status, h('i.spin'), h('div.doing', {}, h('b', {}, 'Running the tests'), ' before the change set is accepted'));
     if (!a.busy) return;
     clear(status,
       h('i.spin'),
@@ -640,6 +645,8 @@ export function chatPanel(): Panel {
       case 'setup.done':
         setUp = true; offerSetup();
         return null;
+      case 'code.tested':
+        return h('div.sys.engine', {}, icon('engine'), ev.ok ? ' The tests passed.' : [' ', h('code', {}, String(ev.command)), ' failed, so the change set was not accepted. The agent was told what it said.']);
       case 'login.done':
         for (const el of logins.splice(0)) el.replaceWith(h('div.sys.engine', {}, icon('engine'), ' Claude was not logged in.'));
         return h('div.sys.engine', {}, icon('engine'), ' Claude is logged in again; the agent carries on.');
@@ -653,6 +660,8 @@ export function chatPanel(): Panel {
         // (That a worker's round ended is said by the line of the round itself, right above.)
         if (ev.by === 'engine' && ev.kind === 'art') return null;
         if (ev.by === 'engine' && ev.kind === 'example') return h('div.sys.engine', {}, icon('engine'), ' The agent was asked for an example to judge the values on.');
+        // (Why the agent is told is the line of the tests, right above.)
+        if (ev.by === 'engine' && ev.kind === 'tests') return null;
         if (ev.by === 'engine' && ev.kind === 'accepted') return h('div.sys.engine', {}, icon('engine'), ` The agent was told what you accepted${ev.changed ? ', and what you made different in it' : ''}.`);
         if (ev.by === 'engine') return h('div.sys.engine', {}, icon('engine'), ev.kind === 'init' ? ' The agent was asked to read this project and set tandem up for it: its concepts, and how it is run.' : ` to the agent: ${String(ev.text ?? '')}`);
         return h(`div.msg.${ev.by === 'me' ? 'me' : 'agent'}${ev.error ? '.error' : ''}`, {},

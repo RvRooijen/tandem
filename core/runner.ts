@@ -350,7 +350,6 @@ export function createRunner(host: Host) {
     const { retry, calls } = t;
     let buf = '', err = '', failed = '';
     let seen = 0;
-    const timer = setTimeout(() => { failed = 'it took more than fifteen minutes and was stopped'; proc.kill(); }, 15 * 60_000);
     const say = (t: string, extra: Record<string, unknown> = {}) => host.events.add({ type: 'message', by: 'agent', text: t, round, ...extra });
 
     proc.stderr!.on('data', (d) => { err = (err + d).slice(-2000); });
@@ -424,7 +423,6 @@ export function createRunner(host: Host) {
     });
     proc.on('error', (e) => { failed = `claude could not be started: ${e.message}`; });
     proc.on('close', (code) => {
-      clearTimeout(timer);
       child = undefined;
       if (forgotten) {
         // A new conversation was started while it was answering: this answer belongs to the old one, and so does its session.
